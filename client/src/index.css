@@ -1,0 +1,56 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #FFFDF9;
+  font-family: 'Poppins', ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Remove tap highlight on mobile */
+button, a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: #f1f1f1; }
+::-webkit-scrollbar-thumb { background: #C62828; border-radius: 2px; }
+
+/* Tiffin card pop-in animation */
+@keyframes card-pop {
+  0%   { opacity: 0; transform: translateY(10px) scale(0.97); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+.card-pop {
+  animation: card-pop 300ms ease-out both;
+}
+
+/* Pulse ring for active quantity */
+@keyframes pulse-ring {
+  0%   { box-shadow: 0 0 0 0 rgba(198,40,40,0.35); }
+  70%  { box-shadow: 0 0 0 6px rgba(198,40,40,0); }
+  100% { box-shadow: 0 0 0 0 rgba(198,40,40,0); }
+}
+.pulse-ring {
+  animation: pulse-ring 1s ease-out;
+}
+
+/* Zone badge shimmer */
+@keyframes shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+.shimmer-gold {
+  background: linear-gradient(90deg, #F9A825 0%, #FFF176 40%, #F9A825 100%);
+  background-size: 200% auto;
+  animation: shimmer 2s linear infinite;
+}
