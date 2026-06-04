@@ -92,9 +92,9 @@ foreach ($pair in $envVars.GetEnumerator()) {
     # Simple YAML escaping for the private key and other strings
     if ($val -match "`n" -or $val -match "\\n") {
         # The private key string already has \n literals, we wrap in quotes
-        $yamlContent += "$key: `"$val`""
+        $yamlContent += "${key}: `"$val`""
     } else {
-        $yamlContent += "$key: `"$val`""
+        $yamlContent += "${key}: `"$val`""
     }
 }
 $yamlContent | Set-Content $envYamlPath -Encoding UTF8
