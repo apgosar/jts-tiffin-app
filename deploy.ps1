@@ -76,23 +76,30 @@ if ($envVars["SPREADSHEET_ID"] -eq "") {
 
 Log-OK "All required variables present"
 
-# ── 6. Build env-vars string for Cloud Run ──────────────────
+# ── 6. Build env.yaml file for Cloud Run ─────────────────────
 Log-Step "Preparing environment variables for Cloud Run..."
 
-# Production overrides (always set these regardless of .env)
 $envVars["NODE_ENV"]       = "production"
 $envVars["USE_MOCK_DATA"]  = "false"
 $envVars["PORT"]           = "8080"
 
-# Build the --set-env-vars string
-$envPairs = $envVars.GetEnumerator() | ForEach-Object {
-    # Escape commas and equals signs in values
-    $val = $_.Value -replace "=", "\="
-    "$($_.Key)=$val"
+$envYamlPath = Join-Path $PSScriptRoot "env.yaml"
+$yamlContent = @()
+foreach ($pair in $envVars.GetEnumerator()) {
+    $key = $pair.Key
+    $val = $pair.Value
+    
+    # Simple YAML escaping for the private key and other strings
+    if ($val -match "`n" -or $val -match "\\n") {
+        # The private key string already has \n literals, we wrap in quotes
+        $yamlContent += "$key: `"$val`""
+    } else {
+        $yamlContent += "$key: `"$val`""
+    }
 }
-$envString = $envPairs -join ","
+$yamlContent | Set-Content $envYamlPath -Encoding UTF8
 
-Log-OK "Environment variables prepared ($($envVars.Count) vars)"
+Log-OK "Generated env.yaml ($($envVars.Count) vars)"
 
 # ── 7. Enable required APIs (idempotent) ────────────────────
 Log-Step "Enabling required Google Cloud APIs..."
@@ -114,7 +121,7 @@ $deployOutput = gcloud run deploy $SERVICE_NAME `
     --memory 512Mi `
     --min-instances 0 `
     --max-instances 3 `
-    --set-env-vars $envString `
+    --env-vars-file $envYamlPath `
     --quiet 2>&1
 
 # Print deploy output
@@ -124,20 +131,10 @@ if ($LASTEXITCODE -ne 0) {
     Log-Error "Deployment failed. Check the output above."
 }
 
-# ── 9. Set environment variables ─────────────────────────────
-Log-Step "Setting environment variables on Cloud Run..."
+# Clean up env.yaml so secrets aren't left around
+Remove-Item $envYamlPath -ErrorAction SilentlyContinue
 
-foreach ($pair in $envVars.GetEnumerator()) {
-    $val = $pair.Value
-    if ($val -match ",") {
-        # Value contains commas (e.g. BORIVALI_PINCODES) - use ; as delimiter
-        gcloud run services update $SERVICE_NAME --region $REGION --update-env-vars "^;^$($pair.Key)=$val" --quiet 2>&1 | Out-Null
-    } else {
-        gcloud run services update $SERVICE_NAME --region $REGION --update-env-vars "$($pair.Key)=$val" --quiet 2>&1 | Out-Null
-    }
-}
-
-# ── 10. Get the deployed URL ──────────────────────────────────
+# ── 9. Get the deployed URL ──────────────────────────────────
 Log-Step "Fetching deployed service URL..."
 $SERVICE_URL = gcloud run services describe $SERVICE_NAME `
     --region $REGION `
@@ -148,7 +145,7 @@ if (-not $SERVICE_URL -or $SERVICE_URL -eq "") {
 } else {
     Log-OK "Service URL: $SERVICE_URL"
 
-    # ── 11. Update PRODUCTION_DOMAIN and redeploy env var ───
+    # ── 10. Update PRODUCTION_DOMAIN and redeploy env var ───
     Log-Step "Updating PRODUCTION_DOMAIN env var on Cloud Run..."
     gcloud run services update $SERVICE_NAME `
         --region $REGION `
