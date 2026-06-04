@@ -38,3 +38,6 @@ desktop.ini
 
 # ── Diagnostic / scratch scripts ──────────────────────────────────────────────
 scripts/diagnose-*.js
+
+# ── Deployment script output / gcloud temp files ──────────────────────────────
+.gcloudignore
