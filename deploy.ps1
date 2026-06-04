@@ -124,7 +124,20 @@ if ($LASTEXITCODE -ne 0) {
     Log-Error "Deployment failed. Check the output above."
 }
 
-# ── 9. Get the deployed URL ──────────────────────────────────
+# ── 9. Set environment variables ─────────────────────────────
+Log-Step "Setting environment variables on Cloud Run..."
+
+foreach ($pair in $envVars.GetEnumerator()) {
+    $val = $pair.Value
+    if ($val -match ",") {
+        # Value contains commas (e.g. BORIVALI_PINCODES) - use ; as delimiter
+        gcloud run services update $SERVICE_NAME --region $REGION --update-env-vars "^;^$($pair.Key)=$val" --quiet 2>&1 | Out-Null
+    } else {
+        gcloud run services update $SERVICE_NAME --region $REGION --update-env-vars "$($pair.Key)=$val" --quiet 2>&1 | Out-Null
+    }
+}
+
+# ── 10. Get the deployed URL ──────────────────────────────────
 Log-Step "Fetching deployed service URL..."
 $SERVICE_URL = gcloud run services describe $SERVICE_NAME `
     --region $REGION `
@@ -135,7 +148,7 @@ if (-not $SERVICE_URL -or $SERVICE_URL -eq "") {
 } else {
     Log-OK "Service URL: $SERVICE_URL"
 
-    # ── 10. Update PRODUCTION_DOMAIN and redeploy env var ───
+    # ── 11. Update PRODUCTION_DOMAIN and redeploy env var ───
     Log-Step "Updating PRODUCTION_DOMAIN env var on Cloud Run..."
     gcloud run services update $SERVICE_NAME `
         --region $REGION `
