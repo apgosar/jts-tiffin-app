@@ -79,9 +79,10 @@ Log-OK "All required variables present"
 # ── 6. Build env.yaml file for Cloud Run ─────────────────────
 Log-Step "Preparing environment variables for Cloud Run..."
 
+# Production overrides (always set these regardless of .env)
 $envVars["NODE_ENV"]       = "production"
 $envVars["USE_MOCK_DATA"]  = "false"
-$envVars["PORT"]           = "8080"
+$envVars.Remove("PORT")
 
 $envYamlPath = Join-Path $PSScriptRoot "env.yaml"
 $yamlContent = @()
