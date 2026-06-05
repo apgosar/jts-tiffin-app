@@ -39,10 +39,10 @@ if (ADMIN_PASSWORD === 'changeme') {
 }
 const SURCHARGE_AMOUNT = parseInt(process.env.OUTSIDE_DELIVERY_SURCHARGE || '40', 10);
 
-// Borivali pincodes: comma-separated list. Empty = no surcharge for anyone.
+// Borivali pincodes: comma or space-separated list. Empty = no surcharge for anyone.
 const BORIVALI_PINCODES = new Set(
   (process.env.BORIVALI_PINCODES || '')
-    .split(',')
+    .split(/[,| \t]+/)
     .map(p => p.trim())
     .filter(Boolean)
 );
@@ -146,12 +146,12 @@ function getZone(pincode) {
 
 /** Format date as DD/MM/YYYY */
 function formatDate(date) {
-  return date.toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  return date.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
 /** Format time as HH:MM */
 function formatTime(date) {
-  return date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+  return date.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' });
 }
 
 /** Sheet title for a specific date */
