@@ -4,6 +4,7 @@ import MenuPage from './components/MenuPage';
 import CheckoutPage from './components/CheckoutPage';
 import ConfirmationPage from './components/ConfirmationPage';
 import AdminPage from './components/AdminPage';
+import DeliveryPage from './components/DeliveryPage';
 
 // ─── Cart Context ─────────────────────────────────────────────────────────────
 export const CartContext = createContext(null);
@@ -24,7 +25,7 @@ function getStoredJson(key, fallback) {
   }
 }
 
-export function getOrderingState() {
+export function getOrderingState(betaTesting = 'No') {
   // Allow ?simHour=X in the URL for testing — disabled in production builds
   const isDev = process.env.NODE_ENV !== 'production';
   const urlParams = new URLSearchParams(window.location.search);
@@ -48,6 +49,11 @@ export function getOrderingState() {
     targetDate.setDate(targetDate.getDate() + 1);
   }
 
+  // Beta testing bypass
+  if (betaTesting === 'Yes') {
+    status = 'OPEN';
+  }
+
   return {
     status,
     targetDate,
@@ -62,6 +68,7 @@ export default function App() {
   // cart: { "ItemName": { name, description, price, quantity } }
   const [cart, setCart] = useState(() => getStoredJson(CART_STORAGE_KEY, {}));
   const [menu, setMenu] = useState([]);
+  const [metadata, setMetadata] = useState({});
   const [lastOrder, setLastOrder] = useState(() => getStoredJson(ORDER_STORAGE_KEY, null));
 
   // Persist cart
@@ -116,6 +123,7 @@ export default function App() {
     <CartContext.Provider value={{
       cart, cartItems, cartCount, cartSubtotal,
       menu, setMenu,
+      metadata, setMetadata,
       lastOrder, setLastOrder, clearLastOrder,
       updateQuantity, clearCart,
     }}>
@@ -125,6 +133,7 @@ export default function App() {
           <Route path="/checkout"     element={<CheckoutPage />} />
           <Route path="/confirmation" element={<ConfirmationPage />} />
           <Route path="/admin"        element={<AdminPage />} />
+          <Route path="/delivery"     element={<DeliveryPage />} />
         </Routes>
       </Router>
     </CartContext.Provider>

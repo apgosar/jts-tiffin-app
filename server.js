@@ -14,18 +14,7 @@ app.set('trust proxy', 1); // needed when behind React dev proxy / reverse proxy
 app.use(helmet());
 
 // ─── CORS ─────────────────────────────────────────────────────────────────────
-const allowedOrigins = ['http://localhost:3000', 'http://localhost:5000'];
-const PRODUCTION_DOMAIN = process.env.PRODUCTION_DOMAIN;
-if (PRODUCTION_DOMAIN) allowedOrigins.push(PRODUCTION_DOMAIN);
-
-app.use(cors({
-  origin: (origin, callback) => {
-    // Allow server-to-server / curl requests (no Origin header) in dev
-    if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
-    callback(new Error(`CORS: origin '${origin}' not allowed`));
-  },
-  methods: ['GET', 'POST', 'PUT'],
-}));
+app.use(cors());
 
 // ─── Body size limit (prevents large-payload DoS) ────────────────────────────
 app.use(express.json({ limit: '50kb' }));
@@ -88,16 +77,18 @@ function parseJsonSafe(str, fallback = []) {
 }
 
 /**
- * Fetch menu items for server-side price validation.
- * Returns an array of { name, price, category, available }.
+ * Fetch menu items and metadata for server-side price validation.
+ * Returns { menuItems, metadata }.
  */
 async function getMenuForPricing(sheets) {
-  if (USE_MOCK) return MOCK_MENU;
+  if (USE_MOCK) return { menuItems: MOCK_MENU, metadata: MOCK_METADATA };
   const response = await sheets.spreadsheets.values.get({
     spreadsheetId: SPREADSHEET_ID,
-    range: 'TomorrowMenu!A2:E',
+    range: 'TomorrowMenu!A2:G',
   });
-  return (response.data.values || [])
+  const rows = response.data.values || [];
+  
+  const menuItems = rows
     .filter(row => row[0])
     .map(row => ({
       name:      (row[0] || '').trim(),
@@ -105,37 +96,37 @@ async function getMenuForPricing(sheets) {
       available: (row[3] || 'Yes').toLowerCase() !== 'no',
       category:  (row[4] || 'Lunch').trim(),
     }));
-}
 
-const ROTI_PRICE    = 8;
-const VALID_ROTI_QTY = new Set([12, 15, 18, 21, 24, 27, 30]);
+  const metadata = {};
+  rows.forEach(row => {
+    const key = (row[5] || '').trim();
+    const val = (row[6] || '').trim();
+    if (key) metadata[key] = val;
+  });
+
+  return { menuItems, metadata };
+}
 
 /**
  * Compute the authoritative server-side price for an order item name.
  * Returns null if the item is unrecognised (order should be rejected).
  */
-function computeServerPrice(itemName, menuItems) {
-  // "Only Roti (15 pcs)"
-  const rotiMatch = itemName.match(/^Only Roti \((\d+) pcs\)$/);
-  if (rotiMatch) {
-    const count = parseInt(rotiMatch[1], 10);
-    if (!VALID_ROTI_QTY.has(count)) return null; // invalid quantity
-    return count * ROTI_PRICE;
-  }
-  // "Mini Lunch (No Rice)"
-  const noRiceMatch = itemName.match(/^(.+) \(No Rice\)$/);
-  if (noRiceMatch) {
-    const baseName = noRiceMatch[1].trim();
-    const baseItem = menuItems.find(m => m.name === baseName);
-    if (!baseItem) return null;
-    const isLunch = baseItem.category === 'Lunch' || !baseItem.category;
-    if (!isLunch) return null;
-    const discount = (baseName.includes('Mini') || baseName.includes('Brunch')) ? 20 : 40;
-    return Math.max(0, baseItem.price - discount);
-  }
-  // Regular menu item
+function computeServerPrice(itemName, menuItems, metadata) {
+  // "Roti"
+  if (itemName === 'Roti') return { price: parseFloat(metadata.rotiPrice) || 8, category: 'Individual' };
+  
+  // Custom Order Items
+  if (itemName === `Sabji (Half) - ${metadata.sabji || 'Sabji'}`) return { price: parseFloat(metadata.sabjiHalfPrice) || 0, category: 'Individual' };
+  if (itemName === `Sabji (Full) - ${metadata.sabji || 'Sabji'}`) return { price: parseFloat(metadata.sabjiFullPrice) || 0, category: 'Individual' };
+  if (itemName === `Dal (Half) - ${metadata.dal || 'Dal'}`) return { price: parseFloat(metadata.dalHalfPrice) || 0, category: 'Individual' };
+  if (itemName === `Dal (Full) - ${metadata.dal || 'Dal'}`) return { price: parseFloat(metadata.dalFullPrice) || 0, category: 'Individual' };
+  if (itemName === `Rice`) return { price: parseFloat(metadata.ricePrice) || 0, category: 'Individual' };
+  if (itemName === `Farsan - ${metadata.farsan || 'Farsan'}`) return { price: parseFloat(metadata.farsanPrice) || 0, category: 'Individual' };
+  if (itemName === `Sweet - ${metadata.sweet || 'Sweet'}`) return { price: parseFloat(metadata.sweetPrice) || 0, category: 'Individual' };
+
+  // Regular menu item (Lunch / Choviar)
   const item = menuItems.find(m => m.name === itemName);
-  return item ? item.price : null;
+  return item ? { price: item.price, category: item.category || 'Lunch' } : null;
 }
 
 /** Determine zone based on pincode */
@@ -309,10 +300,12 @@ app.post('/api/orders', orderLimiter, async (req, res) => {
   }
 
   // ── Server-side price validation (C-2) ───────────────────────────────────
-  let menuItems;
+  let menuItems, metadata;
   try {
     const sheetsForPricing = USE_MOCK ? null : getSheetsClient();
-    menuItems = await getMenuForPricing(sheetsForPricing);
+    const result = await getMenuForPricing(sheetsForPricing);
+    menuItems = result.menuItems;
+    metadata = result.metadata;
   } catch (err) {
     console.error('[INTERNAL] Failed to fetch menu for pricing:', err.message);
     return res.status(500).json({ error: 'Failed to validate order. Please try again.' });
@@ -320,40 +313,98 @@ app.post('/api/orders', orderLimiter, async (req, res) => {
 
   const validatedItems = [];
   for (const item of items) {
-    const serverPrice = computeServerPrice(item.name, menuItems);
-    if (serverPrice === null) {
+    const serverData = computeServerPrice(item.name, menuItems, metadata);
+    if (!serverData) {
       return res.status(400).json({ error: `Unknown or invalid item: "${item.name}"` });
     }
-    validatedItems.push({ name: item.name, price: serverPrice, quantity: parseInt(item.quantity, 10) });
+    validatedItems.push({ name: item.name, price: serverData.price, quantity: parseInt(item.quantity, 10), category: serverData.category });
   }
 
   // ── Zone + server-computed totals ────────────────────────────────────────
-  const zone           = getZone(customer.pincode.trim());
-  const totalQuantity  = validatedItems.reduce((s, i) => s + i.quantity, 0);
-  const subtotal       = validatedItems.reduce((s, i) => s + i.price * i.quantity, 0);
-  const surchargeTotal = zone === 'outside' ? SURCHARGE_AMOUNT * totalQuantity : 0;
-  const grandTotal     = subtotal + surchargeTotal;
-
-  const orderId      = uuidv4().slice(0, 8).toUpperCase();
+  const zone = getZone(customer.pincode.trim());
+  const subtotal = validatedItems.reduce((s, i) => s + i.price * i.quantity, 0);
+  
+  const baseOrderId  = uuidv4().slice(0, 8).toUpperCase();
   const now          = new Date();
   const date         = formatDate(now);
   const time         = formatTime(now);
-  const itemsJson    = JSON.stringify(validatedItems);
-  const itemsSummary = validatedItems.map(i => `${i.name}×${i.quantity}`).join(', ');
+
+  const lunchItems = validatedItems.filter(i => i.category !== 'Choviar');
+  const choviarItems = validatedItems.filter(i => i.category === 'Choviar');
+
+  const lunchSubtotal = lunchItems.reduce((s, i) => s + i.price * i.quantity, 0);
+  const choviarSubtotal = choviarItems.reduce((s, i) => s + i.price * i.quantity, 0);
+
+  let lunchSurcharge = 0;
+  let choviarSurcharge = 0;
+
+  if (zone === 'outside') {
+    let lunchOutsideTiffins = lunchItems.filter(i => i.name.includes('Lunch') || i.name.includes('Meal') || i.name.includes('Brunch')).reduce((s, i) => s + i.quantity, 0);
+    if (lunchOutsideTiffins === 0 && lunchItems.length > 0) lunchOutsideTiffins = 1;
+    
+    let choviarOutsideTiffins = choviarItems.filter(i => i.name.includes('Choviar') || i.name.includes('Meal')).reduce((s, i) => s + i.quantity, 0);
+    if (choviarOutsideTiffins === 0 && choviarItems.length > 0) choviarOutsideTiffins = 1;
+
+    lunchSurcharge = lunchItems.length > 0 ? 40 * lunchOutsideTiffins : 0;
+    choviarSurcharge = choviarItems.length > 0 ? 40 * choviarOutsideTiffins : 0;
+  } else if (zone === 'borivali') {
+    if (lunchItems.length > 0 && lunchSubtotal < 250) lunchSurcharge = 30;
+    if (choviarItems.length > 0 && choviarSubtotal < 250) choviarSurcharge = 30;
+  }
+
+  const totalSurcharge = lunchSurcharge + choviarSurcharge;
+  const exactTotal = subtotal + totalSurcharge;
+  const grandTotalRounded = Math.round(exactTotal / 5) * 5;
+  const roundOffAmount = grandTotalRounded - exactTotal;
+
+  const subOrders = [];
+  let roundOffApplied = false;
+  
+  if (lunchItems.length > 0) {
+    const isFirst = !roundOffApplied;
+    roundOffApplied = true;
+    subOrders.push({
+      orderId: choviarItems.length > 0 ? `${baseOrderId}-L` : baseOrderId,
+      items: lunchItems,
+      subtotal: lunchSubtotal,
+      surchargeTotal: lunchSurcharge,
+      roundOffAmount: isFirst ? roundOffAmount : 0,
+      grandTotal: lunchSubtotal + lunchSurcharge + (isFirst ? roundOffAmount : 0),
+      category: 'Lunch'
+    });
+  }
+
+  if (choviarItems.length > 0) {
+    const isFirst = !roundOffApplied;
+    roundOffApplied = true;
+    subOrders.push({
+      orderId: lunchItems.length > 0 ? `${baseOrderId}-C` : baseOrderId,
+      items: choviarItems,
+      subtotal: choviarSubtotal,
+      surchargeTotal: choviarSurcharge,
+      roundOffAmount: isFirst ? roundOffAmount : 0,
+      grandTotal: choviarSubtotal + choviarSurcharge + (isFirst ? roundOffAmount : 0),
+      category: 'Choviar'
+    });
+  }
 
   if (USE_MOCK) {
-    MOCK_ORDERS.push({
-      orderId, date, time,
-      name:    customer.name.trim(),
-      phone:   customer.phone.trim(),
-      address: customer.address.trim(),
-      pincode: customer.pincode.trim(),
-      zone,
-      items: validatedItems,
-      itemsSummary,
-      surchargeTotal,
-      grandTotal,
-    });
+    for (const sub of subOrders) {
+      MOCK_ORDERS.push({
+        orderId: sub.orderId, date, time,
+        name:    customer.name.trim(),
+        phone:   customer.phone.trim(),
+        address: customer.address.trim(),
+        pincode: customer.pincode.trim(),
+        zone,
+        items: sub.items,
+        itemsSummary: sub.items.map(i => `${i.name}×${i.quantity}`).join(', '),
+        surchargeTotal: sub.surchargeTotal,
+        grandTotal: sub.grandTotal,
+        deliveryPerson: '',
+        routeOrder: ''
+      });
+    }
 
     // Upsert customer
     const existingIdx = MOCK_CUSTOMERS.findIndex(
@@ -376,25 +427,92 @@ app.post('/api/orders', orderLimiter, async (req, res) => {
       MOCK_CUSTOMERS.push(customerRecord);
     }
 
-    return res.json({ success: true, orderId, zone, surchargeTotal, grandTotal });
+    return res.json({ success: true, orderId: baseOrderId, zone, surchargeTotal: totalSurcharge, grandTotal: subtotal + totalSurcharge });
   }
 
   // ── Real Google Sheets write ──────────────────────────────────────────────
   try {
     const sheets = getSheetsClient();
+    
+    const masterRows = [];
+    const dateRows = [];
+    const billingRows = [];
+
+    for (const sub of subOrders) {
+      const itemsJson = JSON.stringify(sub.items);
+      const itemsSummary = sub.items.map(i => `${i.name}×${i.quantity}`).join(', ');
+
+      // 1. Master row
+      masterRows.push([
+        sub.orderId, date, time,
+        customer.name.trim(), customer.phone.trim(),
+        customer.address.trim(), customer.pincode.trim(), zone,
+        itemsSummary, itemsJson, sub.surchargeTotal, sub.grandTotal,
+        '', '' // Delivery Person, Route Order
+      ]);
+
+      // 2. Date & Billing rows
+      for (const item of sub.items) {
+        dateRows.push([
+          sub.orderId, time,
+          customer.name.trim(), customer.phone.trim(),
+          customer.address.trim(), customer.pincode.trim(), zone,
+          item.name, item.quantity, item.price,
+          0,
+          item.price * item.quantity,
+        ]);
+        billingRows.push([
+          date, sub.orderId,
+          customer.name.trim(), customer.phone.trim(),
+          item.name, item.quantity, item.price,
+          0,
+          item.price * item.quantity,
+        ]);
+      }
+      
+      if (sub.surchargeTotal > 0) {
+        dateRows.push([
+          sub.orderId, time,
+          customer.name.trim(), customer.phone.trim(),
+          customer.address.trim(), customer.pincode.trim(), zone,
+          'Delivery Charge', 1, sub.surchargeTotal,
+          0,
+          sub.surchargeTotal,
+        ]);
+        billingRows.push([
+          date, sub.orderId,
+          customer.name.trim(), customer.phone.trim(),
+          'Delivery Charge', 1, sub.surchargeTotal,
+          0,
+          sub.surchargeTotal,
+        ]);
+      }
+
+      if (sub.roundOffAmount && sub.roundOffAmount !== 0) {
+        dateRows.push([
+          sub.orderId, time,
+          customer.name.trim(), customer.phone.trim(),
+          customer.address.trim(), customer.pincode.trim(), zone,
+          'Round Off', 1, sub.roundOffAmount,
+          0,
+          sub.roundOffAmount,
+        ]);
+        billingRows.push([
+          date, sub.orderId,
+          customer.name.trim(), customer.phone.trim(),
+          'Round Off', 1, sub.roundOffAmount,
+          0,
+          sub.roundOffAmount,
+        ]);
+      }
+    }
 
     // 1. Append to Orders master
-    const orderRow = [
-      orderId, date, time,
-      customer.name.trim(), customer.phone.trim(),
-      customer.address.trim(), customer.pincode.trim(), zone,
-      itemsSummary, itemsJson, surchargeTotal, grandTotal,
-    ];
     await sheets.spreadsheets.values.append({
       spreadsheetId: SPREADSHEET_ID,
-      range: 'Orders!A:L',
+      range: 'Orders!A:N',
       valueInputOption: 'USER_ENTERED',
-      resource: { values: [orderRow] },
+      resource: { values: masterRows },
     });
 
     // 2. Append to datewise sheet (Orders_DD-MM-YYYY)
@@ -403,17 +521,6 @@ app.post('/api/orders', orderLimiter, async (req, res) => {
       'Order ID', 'Time', 'Name', 'Phone', 'Address', 'Pincode', 'Zone',
       'Item Name', 'Qty', 'Unit Price', 'Surcharge Per Item', 'Item Total',
     ]);
-    const dateRows = validatedItems.map(item => {
-      const itemSurcharge = zone === 'outside' ? SURCHARGE_AMOUNT : 0;
-      return [
-        orderId, time,
-        customer.name.trim(), customer.phone.trim(),
-        customer.address.trim(), customer.pincode.trim(), zone,
-        item.name, item.quantity, item.price,
-        itemSurcharge,
-        (item.price + itemSurcharge) * item.quantity,
-      ];
-    });
     await sheets.spreadsheets.values.append({
       spreadsheetId: SPREADSHEET_ID,
       range: `'${dateTitle}'!A:L`,
@@ -426,16 +533,6 @@ app.post('/api/orders', orderLimiter, async (req, res) => {
     await ensureSheet(sheets, SPREADSHEET_ID, billingTitle, [
       'Date', 'Order ID', 'Name', 'Phone', 'Item', 'Qty', 'Unit Price', 'Surcharge', 'Total',
     ]);
-    const billingRows = validatedItems.map(item => {
-      const itemSurcharge = zone === 'outside' ? SURCHARGE_AMOUNT : 0;
-      return [
-        date, orderId,
-        customer.name.trim(), customer.phone.trim(),
-        item.name, item.quantity, item.price,
-        itemSurcharge,
-        (item.price + itemSurcharge) * item.quantity,
-      ];
-    });
     await sheets.spreadsheets.values.append({
       spreadsheetId: SPREADSHEET_ID,
       range: `'${billingTitle}'!A:I`,
@@ -477,7 +574,13 @@ app.post('/api/orders', orderLimiter, async (req, res) => {
       });
     }
 
-    res.json({ success: true, orderId, zone, surchargeTotal, grandTotal });
+    res.json({ 
+      success: true, 
+      orderId: baseOrderId, 
+      zone, 
+      surchargeTotal: totalSurcharge, 
+      grandTotal: grandTotalRounded 
+    });
   } catch (err) {
     console.error('Error placing order:', err.message);
     res.status(500).json({ error: 'Failed to place order. Please try again.' });
@@ -509,7 +612,7 @@ app.get('/api/admin/orders', adminLimiter, requireAdmin, async (req, res) => {
     const sheets   = getSheetsClient();
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
-      range: 'Orders!A2:L',
+      range: 'Orders!A2:N',
     });
     const rows = response.data.values || [];
     let orders = rows.map((row, idx) => ({
@@ -526,6 +629,8 @@ app.get('/api/admin/orders', adminLimiter, requireAdmin, async (req, res) => {
       items:          parseJsonSafe(row[9]),
       surchargeTotal: parseFloat(row[10]) || 0,
       grandTotal:     parseFloat(row[11]) || 0,
+      deliveryPerson: row[12] || '',
+      routeOrder:     row[13] || '',
     }));
 
     if (date)  orders = orders.filter(o => o.date === date);
@@ -535,6 +640,62 @@ app.get('/api/admin/orders', adminLimiter, requireAdmin, async (req, res) => {
   } catch (err) {
     console.error('Error fetching admin orders:', err.message);
     res.status(500).json({ error: 'Failed to fetch orders.' });
+  }
+});
+
+// PUT /api/admin/orders/delivery/batch
+app.put('/api/admin/orders/delivery/batch', adminLimiter, requireAdmin, async (req, res) => {
+  const { updates } = req.body; // Array of { orderId, deliveryPerson, routeOrder }
+  if (!Array.isArray(updates) || updates.length === 0) {
+    return res.json({ success: true });
+  }
+
+  if (USE_MOCK) {
+    for (const update of updates) {
+      const order = MOCK_ORDERS.find(o => o.orderId === update.orderId);
+      if (order) {
+        order.deliveryPerson = update.deliveryPerson || '';
+        order.routeOrder = update.routeOrder || '';
+      }
+    }
+    return res.json({ success: true });
+  }
+
+  try {
+    const sheets = getSheetsClient();
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: 'Orders!A:A',
+    });
+    const rows = response.data.values || [];
+    
+    // Build array of update requests
+    const data = [];
+    for (const update of updates) {
+      const rowIndex = rows.findIndex(row => row[0] === update.orderId);
+      if (rowIndex !== -1) {
+        const rowNum = rowIndex + 1;
+        data.push({
+          range: `Orders!M${rowNum}:N${rowNum}`,
+          values: [[update.deliveryPerson || '', update.routeOrder || '']],
+        });
+      }
+    }
+
+    if (data.length > 0) {
+      await sheets.spreadsheets.values.batchUpdate({
+        spreadsheetId: SPREADSHEET_ID,
+        resource: {
+          valueInputOption: 'USER_ENTERED',
+          data: data
+        }
+      });
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error batch updating delivery:', err.message);
+    res.status(500).json({ error: 'Failed to update delivery details.' });
   }
 });
 
@@ -601,6 +762,42 @@ app.put('/api/admin/menu', adminLimiter, requireAdmin, async (req, res) => {
   }
 });
 
+function getRawComponents(items) {
+  const comp = { Roti: 0, Sabji: 0, Dal: 0, Rice: 0, Sweet: 0, Farsan: 0 };
+  
+  (items || []).forEach(item => {
+    const n = (item.name || '').toLowerCase();
+    const q = item.quantity || 0;
+    
+    if (n.includes('mini lunch')) {
+      comp.Roti += 3 * q; comp.Sabji += 1 * q; comp.Dal += 1 * q; comp.Rice += 1 * q; comp.Sweet += 1 * q; comp.Farsan += 1 * q;
+    } else if (n.includes('brunch')) {
+      comp.Roti += 6 * q; comp.Sabji += 1 * q; comp.Dal += 0.5 * q; comp.Rice += 0.5 * q; comp.Sweet += 1 * q; comp.Farsan += 1 * q;
+    } else if (n.includes('full lunch')) {
+      comp.Roti += 6 * q; comp.Sabji += 1 * q; comp.Dal += 1 * q; comp.Rice += 1 * q; comp.Sweet += 1 * q; comp.Farsan += 1 * q;
+    } else if (n.includes('family meal')) {
+      comp.Roti += 9 * q; comp.Sabji += 1.5 * q; comp.Dal += 1.5 * q; comp.Rice += 1 * q; comp.Sweet += 1 * q; comp.Farsan += 1 * q;
+    } else if (n === 'roti') {
+      comp.Roti += 1 * q;
+    } else if (n.includes('sabji (half)')) {
+      comp.Sabji += 0.5 * q;
+    } else if (n.includes('sabji (full)')) {
+      comp.Sabji += 1 * q;
+    } else if (n.includes('dal (half)')) {
+      comp.Dal += 0.5 * q;
+    } else if (n.includes('dal (full)')) {
+      comp.Dal += 1 * q;
+    } else if (n === 'rice') {
+      comp.Rice += 1 * q;
+    } else if (n.includes('sweet')) {
+      comp.Sweet += 1 * q;
+    } else if (n.includes('farsan')) {
+      comp.Farsan += 1 * q;
+    }
+  });
+  return comp;
+}
+
 // GET /api/admin/kitchen?date=DD/MM/YYYY
 app.get('/api/admin/kitchen', adminLimiter, requireAdmin, async (req, res) => {
   const { date } = req.query;
@@ -615,12 +812,16 @@ app.get('/api/admin/kitchen', adminLimiter, requireAdmin, async (req, res) => {
       const sheets   = getSheetsClient();
       const response = await sheets.spreadsheets.values.get({
         spreadsheetId: SPREADSHEET_ID,
-        range: 'Orders!A2:L',
+        range: 'Orders!A2:N',
       });
       const rows = (response.data.values || []).filter(row => (row[1] || '') === date);
       orders = rows.map(row => ({
+        orderId: row[0],
+        name: row[3] || '',
         zone:  row[7] || 'borivali',
         items: parseJsonSafe(row[9]),
+        deliveryPerson: row[12] || 'Unassigned',
+        routeOrder: parseInt(row[13], 10) || 9999
       }));
     } catch (err) {
       console.error('Error fetching kitchen summary:', err.message);
@@ -628,30 +829,139 @@ app.get('/api/admin/kitchen', adminLimiter, requireAdmin, async (req, res) => {
     }
   }
 
-  // Aggregate by item name
-  const itemMap = new Map();
+  const grandTotals = { Roti: 0, Sabji: 0, Dal: 0, Rice: 0, Sweet: 0, Farsan: 0 };
+  const kitchenOrders = [];
+
   orders.forEach(order => {
-    (order.items || []).forEach(item => {
-      if (!itemMap.has(item.name)) {
-        itemMap.set(item.name, { name: item.name, borivaliQty: 0, outsideQty: 0 });
-      }
-      const entry = itemMap.get(item.name);
-      if (order.zone === 'outside') {
-        entry.outsideQty += item.quantity;
-      } else {
-        entry.borivaliQty += item.quantity;
-      }
-    });
+    // Only process lunch orders for kitchen breakdown (ignore Choviar-only orders)
+    const isChoviarOnly = order.items && order.items.length > 0 && order.items.every(i => i.category === 'Choviar');
+    if (!isChoviarOnly) {
+      const comp = getRawComponents(order.items);
+      grandTotals.Roti += comp.Roti;
+      grandTotals.Sabji += comp.Sabji;
+      grandTotals.Dal += comp.Dal;
+      grandTotals.Rice += comp.Rice;
+      grandTotals.Sweet += comp.Sweet;
+      grandTotals.Farsan += comp.Farsan;
+
+      kitchenOrders.push({
+        orderId: order.orderId,
+        name: order.name,
+        deliveryPerson: order.deliveryPerson,
+        routeOrder: order.routeOrder,
+        ...comp
+      });
+    }
   });
 
-  const items = Array.from(itemMap.values()).map(entry => ({
-    ...entry,
-    totalQty: entry.borivaliQty + entry.outsideQty,
-  }));
+  kitchenOrders.sort((a, b) => a.routeOrder - b.routeOrder);
 
-  const grandTotal = items.reduce((s, i) => s + i.totalQty, 0);
+  res.json({ date, orderCount: kitchenOrders.length, grandTotals, kitchenOrders });
+});
 
-  res.json({ date, orderCount: orders.length, items, grandTotal });
+// ─── Delivery Portal ─────────────────────────────────────────────────────────
+
+const translationCache = new Map();
+async function translateToHindi(text) {
+  if (!text) return '';
+  if (translationCache.has(text)) return translationCache.get(text);
+  try {
+    // using dynamic import for native fetch if needed, but fetch is global in Node 18+
+    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=hi&dt=t&q=${encodeURIComponent(text)}`;
+    const response = await fetch(url);
+    const data = await response.json();
+    let translated = '';
+    if (data && data[0]) {
+      data[0].forEach(part => {
+        if (part[0]) translated += part[0];
+      });
+    }
+    translationCache.set(text, translated);
+    return translated;
+  } catch (err) {
+    console.error('Translation error:', err.message);
+    return text;
+  }
+}
+
+// GET /api/delivery/orders
+app.get('/api/delivery/orders', publicLimiter, async (req, res) => {
+  try {
+    const now = new Date();
+    const today = formatDate(now);
+    
+    if (USE_MOCK) {
+       return res.json({ success: true, orders: [] });
+    }
+
+    const sheets = getSheetsClient();
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: 'Orders!A2:P',
+    });
+    
+    const rows = response.data.values || [];
+    const orders = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const date = row[1] || '';
+      const deliveryPerson = row[12] || '';
+      const routeOrder = parseInt(row[13], 10) || 999;
+      
+      if (date === today && deliveryPerson.trim().length > 0) {
+        const nameEn = row[3] || '';
+        const phone = row[4] || '';
+        const addressEn = row[5] || '';
+        
+        const nameHi = await translateToHindi(nameEn);
+        const addressHi = await translateToHindi(addressEn);
+        
+        orders.push({
+          rowIndex: i + 2,
+          orderId: row[0],
+          name: nameHi,
+          phone: phone,
+          address: addressHi,
+          amount: row[11] || '0',
+          deliveryPerson: deliveryPerson,
+          routeOrder: routeOrder,
+          paymentReceived: (row[14] || '').toLowerCase() === 'yes',
+          paymentMethod: row[15] || 'Cash'
+        });
+      }
+    }
+    
+    orders.sort((a, b) => a.routeOrder - b.routeOrder);
+    res.json({ success: true, orders });
+  } catch (err) {
+    console.error('Error fetching delivery orders:', err.message);
+    res.status(500).json({ error: 'Failed to fetch delivery orders' });
+  }
+});
+
+// PUT /api/delivery/orders/payment
+app.put('/api/delivery/orders/payment', publicLimiter, express.json(), async (req, res) => {
+  const { rowIndex, paymentReceived, paymentMethod } = req.body;
+  if (!rowIndex) return res.status(400).json({ error: 'rowIndex required' });
+
+  try {
+    if (!USE_MOCK) {
+      const sheets = getSheetsClient();
+      await sheets.spreadsheets.values.update({
+        spreadsheetId: SPREADSHEET_ID,
+        range: `Orders!O${rowIndex}:P${rowIndex}`,
+        valueInputOption: 'USER_ENTERED',
+        resource: {
+          values: [[paymentReceived ? 'Yes' : 'No', paymentMethod || 'Cash']]
+        }
+      });
+    }
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error updating payment:', err.message);
+    res.status(500).json({ error: 'Failed to update payment' });
+  }
 });
 
 // ─── Serve React in production ────────────────────────────────────────────────

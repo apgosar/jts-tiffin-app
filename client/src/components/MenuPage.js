@@ -43,13 +43,10 @@ function QuantityStepper({ quantity, onIncrement, onDecrement, disabled = false 
 
 // ─── Tiffin Card ──────────────────────────────────────────────────────────────
 function TiffinCard({ item, cart, updateQuantity, animDelay }) {
-  const [noRice, setNoRice] = useState(false);
   const unavailable = !item.available;
-  const isLunch = item.category === 'Lunch' || !item.category;
   
-  const discount = (item.name.includes('Mini') || item.name.includes('Brunch')) ? 20 : 40;
-  const currentName = (isLunch && noRice) ? `${item.name} (No Rice)` : item.name;
-  const currentPrice = (isLunch && noRice) ? item.price - discount : item.price;
+  const currentName = item.name;
+  const currentPrice = item.price;
   
   const quantity = cart[currentName]?.quantity || 0;
 
@@ -91,20 +88,6 @@ function TiffinCard({ item, cart, updateQuantity, animDelay }) {
         <p className="text-sm text-gray-600 leading-relaxed">
           {item.description}
         </p>
-        
-        {isLunch && !unavailable && (
-          <label className="flex items-center gap-2 cursor-pointer bg-red-50 p-2 rounded-lg border border-red-100 w-fit">
-            <input 
-              type="checkbox" 
-              checked={noRice} 
-              onChange={e => setNoRice(e.target.checked)} 
-              className="w-4 h-4 text-jts-red focus:ring-jts-red rounded border-gray-300"
-            />
-            <span className="text-xs font-bold text-red-800">
-              No Rice
-            </span>
-          </label>
-        )}
 
         <div className="border-t border-dotted border-gray-300 my-1" />
 
@@ -134,53 +117,133 @@ function TiffinCard({ item, cart, updateQuantity, animDelay }) {
   );
 }
 
-// ─── Only Roti Card ───────────────────────────────────────────────────────────
-function OnlyRotiCard({ cart, updateQuantity }) {
-  const [rotiCount, setRotiCount] = useState(12);
-  const name = `Only Roti (${rotiCount} pcs)`;
-  const price = rotiCount * 8;
+// ─── Stepper Item for Custom / Individual Orders ──────────────────────────────
+function StepperItem({ title, name, price, subtitle, cart, updateQuantity, category = 'Lunch' }) {
   const quantity = cart[name]?.quantity || 0;
-
-  const handleInc = () => updateQuantity(name, 1, { name, description: 'Fresh warm rotis', price, available: true });
+  const handleInc = () => updateQuantity(name, 1, { name, price: Number(price), available: true, category });
   const handleDec = () => updateQuantity(name, -1);
+  
+  if (!Number(price)) return null;
 
   return (
-    <div className={`card-pop rounded-2xl overflow-hidden shadow-md border transition-all ${quantity > 0 ? 'border-jts-red shadow-red-100' : 'border-gray-100 hover:border-red-200'}`}>
-      <div className="bg-jts-navy px-4 py-3 flex items-center justify-between">
-        <h3 className="text-white font-bold text-lg tracking-wide uppercase" style={{ fontFamily: "'Oswald', Impact, sans-serif" }}>
-          Only Roti
-        </h3>
-        {quantity > 0 && <span className="bg-white text-jts-navy text-xs font-extrabold px-2 py-0.5 rounded-full">×{quantity}</span>}
+    <div className="flex items-center justify-between py-3 border-b border-gray-100 last:border-0">
+      <div>
+        <p className="font-bold text-gray-800 text-sm">{title}</p>
+        <p className="text-xs text-gray-500">₹{price}/- {subtitle && <span className="italic">({subtitle})</span>}</p>
       </div>
+      <QuantityStepper quantity={quantity} onIncrement={handleInc} onDecrement={handleDec} />
+    </div>
+  );
+}
 
-      <div className={`px-4 pt-3 pb-4 flex flex-col gap-3 ${quantity > 0 ? 'bg-jts-cream' : 'bg-white'}`}>
-        <div className="flex items-center gap-3">
-          <label className="text-sm font-bold text-gray-700">Rotis per order:</label>
-          <select 
-            value={rotiCount} 
-            onChange={e => setRotiCount(Number(e.target.value))}
-            className="text-sm border border-gray-300 rounded-lg px-2 py-1 focus:ring-2 focus:ring-jts-navy bg-white font-bold"
-          >
-            {[12, 15, 18, 21, 24, 27, 30].map(c => (
-              <option key={c} value={c}>{c} pcs</option>
-            ))}
-          </select>
+// ─── Custom Order Stepper Items ───────────────────────────────────────────────
+const VariantItem = ({ title, subtitle, namePrefix, halfPrice, fullPrice, cart, updateQuantity }) => {
+  const [variant, setVariant] = useState('Full'); // 'Half' or 'Full'
+  
+  const currentName = `${namePrefix} (${variant}) - ${subtitle}`;
+  const currentPrice = variant === 'Half' ? halfPrice : fullPrice;
+  const quantity = cart[currentName]?.quantity || 0;
+  
+  const handleInc = () => updateQuantity(currentName, 1, { name: currentName, price: Number(currentPrice), available: true });
+  const handleDec = () => updateQuantity(currentName, -1);
+  
+  if (!Number(halfPrice) && !Number(fullPrice)) return null;
+
+  return (
+    <div className="py-3 border-b border-gray-100 last:border-0">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="font-bold text-gray-800 text-sm">{title} <span className="italic font-normal text-xs text-gray-500">({subtitle})</span></p>
         </div>
+        <QuantityStepper quantity={quantity} onIncrement={handleInc} onDecrement={handleDec} />
+      </div>
+      <div className="flex gap-4 mt-2">
+         <label className="flex items-center gap-1.5 text-xs font-bold text-gray-700 cursor-pointer">
+           <input type="radio" name={`${title}-variant`} checked={variant==='Half'} onChange={() => setVariant('Half')} className="text-jts-red focus:ring-jts-red" />
+           Half (₹{halfPrice})
+         </label>
+         <label className="flex items-center gap-1.5 text-xs font-bold text-gray-700 cursor-pointer">
+           <input type="radio" name={`${title}-variant`} checked={variant==='Full'} onChange={() => setVariant('Full')} className="text-jts-red focus:ring-jts-red" />
+           Full (₹{fullPrice})
+         </label>
+      </div>
+    </div>
+  );
+};
+
+const RotiItem = ({ metadata, cart, updateQuantity }) => {
+  const name = 'Roti';
+  const price = Number(metadata?.rotiPrice) || 8;
+  const quantity = cart[name]?.quantity || 0;
+  
+  const handleSetQuantity = (val) => {
+    const diff = val - quantity;
+    if (diff !== 0) {
+      updateQuantity(name, diff, { name, price, available: true });
+    }
+  };
+
+  return (
+    <div className="flex items-center justify-between py-3 border-b border-gray-100 last:border-0">
+      <div>
+        <p className="font-bold text-gray-800 text-sm">Roti</p>
+        <p className="text-xs text-gray-500">₹{price}/- per piece</p>
+      </div>
+      <div className="flex items-center gap-2">
+        <input 
+          type="number" 
+          min="0"
+          value={quantity || ''}
+          onChange={(e) => handleSetQuantity(Math.max(0, parseInt(e.target.value) || 0))}
+          className="w-16 text-center text-sm font-bold border border-gray-300 rounded-lg px-2 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none"
+          placeholder="0"
+        />
+        <span className="text-xs font-bold text-gray-500">pcs</span>
+      </div>
+    </div>
+  );
+};
+
+// ─── Custom Order Section ───────────────────────────────────────────────────────────
+function CustomOrderSection({ cart, updateQuantity, metadata }) {
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mt-1">
+      <div className="px-4 py-1 flex flex-col">
+        <RotiItem metadata={metadata} cart={cart} updateQuantity={updateQuantity} />
         
-        <div className="border-t border-dotted border-gray-300 my-1" />
-
-        <div className="flex items-end justify-between gap-3">
-          <div>
-            <div className="inline-flex items-baseline gap-1 bg-jts-gold rounded-lg px-3 py-1">
-              <span className="text-jts-navy font-extrabold text-base">₹{price}/-</span>
-              <span className="text-jts-navy text-xs font-semibold opacity-80">per order</span>
-            </div>
-            <p className="text-[10px] text-gray-400 mt-1.5 font-medium">₹8 per roti</p>
-          </div>
-          <div className="flex-shrink-0">
-            <QuantityStepper quantity={quantity} onIncrement={handleInc} onDecrement={handleDec} />
-          </div>
-        </div>
+        {metadata?.sabji && (
+          <VariantItem 
+            title="Sabji" 
+            subtitle={metadata.sabji} 
+            namePrefix="Sabji" 
+            halfPrice={metadata.sabjiHalfPrice} 
+            fullPrice={metadata.sabjiFullPrice} 
+            cart={cart}
+            updateQuantity={updateQuantity}
+          />
+        )}
+        
+        {metadata?.dal && (
+          <VariantItem 
+            title="Dal" 
+            subtitle={metadata.dal} 
+            namePrefix="Dal" 
+            halfPrice={metadata.dalHalfPrice} 
+            fullPrice={metadata.dalFullPrice} 
+            cart={cart}
+            updateQuantity={updateQuantity}
+          />
+        )}
+        
+        <StepperItem title="Rice" name="Rice" price={metadata?.ricePrice} cart={cart} updateQuantity={updateQuantity} />
+        
+        {metadata?.farsanAvailable === 'Yes' && metadata?.farsan && (
+          <StepperItem title="Farsan" subtitle={metadata.farsan} name={`Farsan - ${metadata.farsan}`} price={metadata.farsanPrice} cart={cart} updateQuantity={updateQuantity} />
+        )}
+        
+        {metadata?.sweetAvailable === 'Yes' && metadata?.sweet && (
+          <StepperItem title="Sweet" subtitle={metadata.sweet} name={`Sweet - ${metadata.sweet}`} price={metadata.sweetPrice} cart={cart} updateQuantity={updateQuantity} />
+        )}
       </div>
     </div>
   );
@@ -210,14 +273,13 @@ function CartBar({ cartCount, cartSubtotal, onViewOrder }) {
 // ─── MenuPage ─────────────────────────────────────────────────────────────────
 export default function MenuPage() {
   const navigate = useNavigate();
-  const { cart, updateQuantity, menu, setMenu, cartCount, cartSubtotal } = useCart();
+  const { cart, updateQuantity, menu, setMenu, metadata, setMetadata, cartCount, cartSubtotal } = useCart();
 
-  const [metadata, setMetadata] = useState(null);
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState(null);
   
   // Use ordering state helper
-  const { status, targetDateLabel } = getOrderingState();
+  const { status, targetDateLabel } = getOrderingState(metadata?.betaTesting);
 
   useEffect(() => {
     let cancelled = false;
@@ -326,14 +388,14 @@ export default function MenuPage() {
                 ) : (
                   <>
                     {/* Metadata Banner */}
-                    {metadata && (metadata.sabji || metadata.sweet || metadata.dal || metadata.farsan) && (
+                    {metadata && (metadata.sabji || (metadata.sweetAvailable === 'Yes' && metadata.sweet) || metadata.dal || (metadata.farsanAvailable === 'Yes' && metadata.farsan)) && (
                       <div className="bg-white border-2 border-jts-gold rounded-xl p-3 shadow-sm relative overflow-hidden">
                         <div className="absolute top-0 right-0 bg-jts-gold text-jts-navy text-[10px] font-bold px-2 py-1 rounded-bl-lg">TODAY'S SPECIAL</div>
                         <div className="grid grid-cols-2 gap-y-2 gap-x-4 mt-1">
                           {metadata.sabji && <div><span className="text-[10px] text-gray-500 font-bold uppercase tracking-wide block">Sabji</span><span className="text-sm font-semibold text-gray-800">{metadata.sabji}</span></div>}
-                          {metadata.sweet && <div><span className="text-[10px] text-gray-500 font-bold uppercase tracking-wide block">Sweet</span><span className="text-sm font-semibold text-gray-800">{metadata.sweet}</span></div>}
+                          {metadata.sweetAvailable === 'Yes' && metadata.sweet && <div><span className="text-[10px] text-gray-500 font-bold uppercase tracking-wide block">Sweet</span><span className="text-sm font-semibold text-gray-800">{metadata.sweet}</span></div>}
                           {metadata.dal && <div><span className="text-[10px] text-gray-500 font-bold uppercase tracking-wide block">Dal</span><span className="text-sm font-semibold text-gray-800">{metadata.dal}</span></div>}
-                          {metadata.farsan && <div><span className="text-[10px] text-gray-500 font-bold uppercase tracking-wide block">Farsan / Namkeen</span><span className="text-sm font-semibold text-gray-800">{metadata.farsan}</span></div>}
+                          {metadata.farsanAvailable === 'Yes' && metadata.farsan && <div><span className="text-[10px] text-gray-500 font-bold uppercase tracking-wide block">Farsan</span><span className="text-sm font-semibold text-gray-800">{metadata.farsan}</span></div>}
                         </div>
                       </div>
                     )}
@@ -346,6 +408,17 @@ export default function MenuPage() {
               </div>
             )}
 
+            {/* ── Custom Order Section ── */}
+            {status !== 'LUNCH_CLOSED' && (
+              <div className="flex flex-col gap-4 mt-2">
+                <div className="flex items-center gap-2 mb-1">
+                  <h2 className="text-2xl font-bold text-gray-800 uppercase" style={{ fontFamily: "'Oswald', Impact, sans-serif" }}>Custom Order</h2>
+                  <div className="flex-1 border-b-2 border-gray-300"></div>
+                </div>
+                <CustomOrderSection cart={cart} updateQuantity={updateQuantity} metadata={metadata} />
+              </div>
+            )}
+
             {/* ── Choviar Section ── */}
             {choviarMenu.length > 0 && (
               <div className="flex flex-col gap-4 mt-2">
@@ -353,20 +426,13 @@ export default function MenuPage() {
                   <h2 className="text-2xl font-bold text-gray-800 uppercase" style={{ fontFamily: "'Oswald', Impact, sans-serif" }}>Choviar</h2>
                   <div className="flex-1 border-b-2 border-gray-300"></div>
                 </div>
-                {choviarMenu.map((item, idx) => (
-                  <TiffinCard key={item.name} item={item} cart={cart} updateQuantity={updateQuantity} animDelay={idx * 70} />
-                ))}
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mt-1 px-4 py-1 flex flex-col">
+                  {choviarMenu.map((item, idx) => (
+                    <StepperItem key={item.name} title={item.name} name={item.name} price={item.price} cart={cart} updateQuantity={updateQuantity} category="Choviar" />
+                  ))}
+                </div>
               </div>
             )}
-
-            {/* ── Extras Section ── */}
-            <div className="flex flex-col gap-4 mt-2">
-              <div className="flex items-center gap-2 mb-1">
-                <h2 className="text-2xl font-bold text-gray-800 uppercase" style={{ fontFamily: "'Oswald', Impact, sans-serif" }}>Extras</h2>
-                <div className="flex-1 border-b-2 border-gray-300"></div>
-              </div>
-              <OnlyRotiCard cart={cart} updateQuantity={updateQuantity} />
-            </div>
 
           </div>
         )}

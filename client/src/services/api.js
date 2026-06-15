@@ -23,3 +23,6 @@ export const updateAdminMenu = (data, password) =>
 
 export const getKitchenSummary = (date, password) =>
   API.get('/api/admin/kitchen', { params: { date }, ...adminHeaders(password) });
+
+export const updateAdminDeliveryBatch = (updates, password) =>
+  API.put('/api/admin/orders/delivery/batch', { updates }, adminHeaders(password));

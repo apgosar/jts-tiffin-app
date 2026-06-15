@@ -34,15 +34,20 @@ function TextInput({ id, value, onChange, placeholder, type = 'text', maxLength,
 }
 
 // ─── Zone Badge ───────────────────────────────────────────────────────────────
-function ZoneBadge({ zone }) {
+function ZoneBadge({ zone, cartSubtotal }) {
   if (!zone) return null;
   if (zone === 'borivali') {
+    const fee = cartSubtotal < 250 ? 30 : 0;
     return (
       <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl px-3 py-2">
         <span className="text-green-600 text-base">✅</span>
         <div>
           <p className="text-xs font-bold text-green-800">Delivery in Borivali</p>
-          <p className="text-[11px] text-green-600">No extra delivery charge</p>
+          {fee > 0 ? (
+            <p className="text-[11px] text-green-600">₹30 delivery charge (orders &lt; ₹250)</p>
+          ) : (
+            <p className="text-[11px] text-green-600">Free delivery</p>
+          )}
         </div>
       </div>
     );
@@ -94,7 +99,7 @@ const EMPTY_FORM = {
 // ─── CheckoutPage ─────────────────────────────────────────────────────────────
 export default function CheckoutPage() {
   const navigate = useNavigate();
-  const { cartItems, cartSubtotal, updateQuantity, clearCart, setLastOrder } = useCart();
+  const { cartItems, cartSubtotal, updateQuantity, clearCart, setLastOrder, metadata } = useCart();
 
   // Phone lookup
   const [phone, setPhone]                     = useState('');
@@ -115,15 +120,43 @@ export default function CheckoutPage() {
   const [serverError, setServerError] = useState('');
 
   // ── Ordering cutoffs ─────────────────────────────────────────────────────────
-  const { status } = getOrderingState();
+  const { status } = getOrderingState(metadata?.betaTesting);
   const hasLunch = cartItems.some(item => item.category === 'Lunch' || !item.category);
   const isCheckoutBlocked = status === 'CLOSED' || (status === 'LUNCH_CLOSED' && hasLunch);
   
   // ── Derived zone / surcharge ─────────────────────────────────────────────────
-  const surchargePerTiffin = zone === 'outside' ? 40 : 0;
-  const totalQuantity      = cartItems.reduce((s, i) => s + i.quantity, 0);
-  const surchargeTotal     = surchargePerTiffin * totalQuantity;
-  const grandTotal         = cartSubtotal + surchargeTotal;
+  const lunchItems = cartItems.filter(i => i.category === 'Lunch' || !i.category);
+  const choviarItems = cartItems.filter(i => i.category === 'Choviar');
+
+  const lunchSubtotal = lunchItems.reduce((sum, i) => sum + i.price * i.quantity, 0);
+  const choviarSubtotal = choviarItems.reduce((sum, i) => sum + i.price * i.quantity, 0);
+
+  const lunchQty = lunchItems.reduce((s, i) => s + i.quantity, 0);
+  const choviarQty = choviarItems.reduce((s, i) => s + i.quantity, 0);
+
+  let lunchSurcharge = 0;
+  let choviarSurcharge = 0;
+  let lunchOutsideTiffins = 0;
+  let choviarOutsideTiffins = 0;
+
+  if (zone === 'outside') {
+    lunchOutsideTiffins = lunchItems.filter(i => i.name.includes('Lunch') || i.name.includes('Meal') || i.name.includes('Brunch')).reduce((s, i) => s + i.quantity, 0);
+    if (lunchOutsideTiffins === 0 && lunchItems.length > 0) lunchOutsideTiffins = 1;
+    
+    choviarOutsideTiffins = choviarItems.filter(i => i.name.includes('Choviar') || i.name.includes('Meal')).reduce((s, i) => s + i.quantity, 0);
+    if (choviarOutsideTiffins === 0 && choviarItems.length > 0) choviarOutsideTiffins = 1;
+
+    lunchSurcharge = lunchItems.length > 0 ? 40 * lunchOutsideTiffins : 0;
+    choviarSurcharge = choviarItems.length > 0 ? 40 * choviarOutsideTiffins : 0;
+  } else if (zone === 'borivali') {
+    if (lunchItems.length > 0 && lunchSubtotal < 250) lunchSurcharge = 30;
+    if (choviarItems.length > 0 && choviarSubtotal < 250) choviarSurcharge = 30;
+  }
+
+  const surchargeTotal = lunchSurcharge + choviarSurcharge;
+  const exactTotal = cartSubtotal + surchargeTotal;
+  const grandTotal = Math.round(exactTotal / 5) * 5;
+  const roundOffAmount = grandTotal - exactTotal;
 
   // ── Redirect if cart empty ───────────────────────────────────────────────────
   if (cartItems.length === 0 && !submitting) {
@@ -335,31 +368,78 @@ export default function CheckoutPage() {
             </button>
           </div>
 
-          <div className="flex flex-col">
-            {cartItems.map(item => (
-              <OrderRow
-                key={item.name}
-                item={item}
-                onIncrement={() => updateQuantity(item.name, 1)}
-                onDecrement={() => updateQuantity(item.name, -1)}
-              />
-            ))}
-          </div>
-
-          {/* Totals */}
-          <div className="mt-3 pt-3 border-t border-gray-100 space-y-1.5">
-            <div className="flex justify-between text-sm text-gray-700">
-              <span>Subtotal ({totalQuantity} tiffin{totalQuantity !== 1 ? 's' : ''})</span>
-              <span className="font-semibold">₹{cartSubtotal.toLocaleString('en-IN')}</span>
+          {/* Lunch Order Section */}
+          {lunchItems.length > 0 && (
+            <div className="mb-4">
+              <h3 className="font-bold text-gray-800 text-sm mb-2 border-b border-gray-100 pb-1">Lunch Order</h3>
+              <div className="flex flex-col">
+                {lunchItems.map(item => (
+                  <OrderRow
+                    key={item.name}
+                    item={item}
+                    onIncrement={() => updateQuantity(item.name, 1)}
+                    onDecrement={() => updateQuantity(item.name, -1)}
+                  />
+                ))}
+              </div>
+              <div className="mt-2 pt-2 border-t border-gray-100 space-y-1.5">
+                <div className="flex justify-between text-sm text-gray-700">
+                  <span>Subtotal ({lunchQty} item{lunchQty !== 1 ? 's' : ''})</span>
+                  <span className="font-semibold">₹{lunchSubtotal.toLocaleString('en-IN')}</span>
+                </div>
+                {lunchSurcharge > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-amber-700">
+                      {zone === 'borivali' ? 'Delivery Charge (Orders < ₹250)' : `Outside Borivali surcharge (₹40 × ${lunchOutsideTiffins})`}
+                    </span>
+                    <span className="font-semibold text-amber-700">+₹{lunchSurcharge}</span>
+                  </div>
+                )}
+              </div>
             </div>
-            {surchargeTotal > 0 && (
-              <div className="flex justify-between text-sm">
-                <span className="text-amber-700">Outside Borivali surcharge (₹40 × {totalQuantity})</span>
-                <span className="font-semibold text-amber-700">+₹{surchargeTotal}</span>
+          )}
+
+          {/* Choviar Order Section */}
+          {choviarItems.length > 0 && (
+            <div className="mb-2">
+              <h3 className="font-bold text-gray-800 text-sm mb-2 border-b border-gray-100 pb-1">Choviar Order</h3>
+              <div className="flex flex-col">
+                {choviarItems.map(item => (
+                  <OrderRow
+                    key={item.name}
+                    item={item}
+                    onIncrement={() => updateQuantity(item.name, 1)}
+                    onDecrement={() => updateQuantity(item.name, -1)}
+                  />
+                ))}
+              </div>
+              <div className="mt-2 pt-2 border-t border-gray-100 space-y-1.5">
+                <div className="flex justify-between text-sm text-gray-700">
+                  <span>Subtotal ({choviarQty} item{choviarQty !== 1 ? 's' : ''})</span>
+                  <span className="font-semibold">₹{choviarSubtotal.toLocaleString('en-IN')}</span>
+                </div>
+                {choviarSurcharge > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-amber-700">
+                      {zone === 'borivali' ? 'Delivery Charge (Orders < ₹250)' : `Outside Borivali surcharge (₹40 × ${choviarOutsideTiffins})`}
+                    </span>
+                    <span className="font-semibold text-amber-700">+₹{choviarSurcharge}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Grand Total */}
+          <div className="mt-1 pt-1 space-y-1.5">
+            {roundOffAmount !== 0 && (
+              <div className="flex justify-between text-sm text-gray-700">
+                <span>Round Off</span>
+                <span className="font-semibold">{roundOffAmount > 0 ? '+' : ''}₹{roundOffAmount}</span>
               </div>
             )}
-            <div className="flex justify-between font-bold text-base pt-1 border-t border-gray-100 mt-1">
-              <span className="text-gray-800">Total</span>
+            <div className="flex justify-between font-bold text-base pt-2 border-t border-gray-200 mt-2">
+              <span className="text-gray-800">Grand Total</span>
               <span className="text-jts-red text-xl">₹{grandTotal.toLocaleString('en-IN')}</span>
             </div>
           </div>
@@ -489,7 +569,7 @@ export default function CheckoutPage() {
                   </Field>
 
                   {/* Zone Badge */}
-                  {form.pincode.length === 6 && zone && <ZoneBadge zone={zone} />}
+                  {form.pincode.length === 6 && zone && <ZoneBadge zone={zone} cartSubtotal={cartSubtotal} />}
                 </div>
               </div>
             </>
@@ -497,7 +577,7 @@ export default function CheckoutPage() {
 
           {/* Show zone badge for selected profile */}
           {lookupState === 'done' && selectedProfile >= 0 && zone && (
-            <ZoneBadge zone={zone} />
+            <ZoneBadge zone={zone} cartSubtotal={cartSubtotal} />
           )}
 
           {/* Server error */}

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import JtsLogo from './JtsLogo';
-import { getAdminOrders, updateAdminMenu, getKitchenSummary } from '../services/api';
+import { getAdminOrders, updateAdminMenu, getKitchenSummary, updateAdminDeliveryBatch } from '../services/api';
 
 // ─── Login ────────────────────────────────────────────────────────────────────
 function LoginScreen({ onLogin, authError }) {
@@ -131,30 +131,100 @@ const TIFFIN_DEFAULTS = [
   { name: 'Mini Lunch',   description: '3 Roti, Sabji, Dal, Rice, Salad / Sweet / Namkeen / Farsan', price: 140, available: true, category: 'Lunch' },
   { name: 'Brunch',       description: '6 Roti, Sabji, 1/2 Dal, 1/2 Rice, Salad / Sweet / Namkeen / Farsan', price: 180, available: true, category: 'Lunch' },
   { name: 'Full Lunch',   description: '6 Roti, Sabji, Dal, Rice, Salad / Sweet / Namkeen / Farsan', price: 220, available: true, category: 'Lunch' },
-  { name: 'Family Meal',  description: '9 Roti, Sabji, Dal, Rice, Salad / Sweet / Namkeen / Farsan', price: 320, available: true, category: 'Lunch' },
+  { name: 'Family Meal',  description: '9 Roti, 1.5 Sabji, 1.5 Dal, Rice, Salad / Sweet / Namkeen / Farsan', price: 320, available: true, category: 'Lunch' },
   { name: 'Choviar Special', description: 'Ragdo, 4 Kelawada, Dal Khichdi', price: 160, available: true, category: 'Choviar' },
 ];
 
 function MenuTab({ password, currentMenu, currentMetadata }) {
   const [items, setItems]       = useState(currentMenu.length > 0 ? currentMenu : TIFFIN_DEFAULTS);
-  const [metadata, setMetadata] = useState(currentMetadata || { sabji: '', sweet: '', dal: '', farsan: '' });
+  const [metadata, setMetadata] = useState({
+    sabji: '', sweet: '', dal: '', farsan: '',
+    rotiPrice: '8', ricePrice: '30',
+    sabjiHalfPrice: '25', sabjiFullPrice: '50',
+    dalHalfPrice: '25', dalFullPrice: '50',
+    farsanPrice: '0', farsanAvailable: 'No',
+    sweetPrice: '0', sweetAvailable: 'No',
+    namkeenAvailable: 'No', saladAvailable: 'No',
+    ...currentMetadata
+  });
   const [saving, setSaving]     = useState(false);
   const [msg, setMsg]           = useState('');
 
   useEffect(() => {
-    if (currentMenu.length > 0) setItems(currentMenu);
-    if (currentMetadata && Object.keys(currentMetadata).length > 0) setMetadata(currentMetadata);
+    if (currentMenu.length > 0) {
+      setItems(currentMenu);
+    } else {
+      setItems([
+        { name: 'Mini Lunch',  description: '3 Roti, Sabji, Dal, Rice, Salad / Sweet / Namkeen / Farsan', price: 140, available: true, category: 'Lunch' },
+        { name: 'Brunch',      description: '6 Roti, Sabji, 1/2 Dal, 1/2 Rice, Salad / Sweet / Namkeen / Farsan', price: 180, available: true, category: 'Lunch' },
+        { name: 'Full Lunch',  description: '6 Roti, Sabji, Dal, Rice, Salad / Sweet / Namkeen / Farsan', price: 220, available: true, category: 'Lunch' },
+        { name: 'Family Meal', description: '9 Roti, 1.5 Sabji, 1.5 Dal, Rice, Salad / Sweet / Namkeen / Farsan', price: 320, available: true, category: 'Lunch' },
+        { name: 'Choviar Special', description: 'Ragdo, 4 Kelawada, Dal Khichdi', price: 160, available: true, category: 'Choviar' },
+      ]);
+    }
+    if (currentMetadata && Object.keys(currentMetadata).length > 0) {
+      setMetadata(prev => ({ ...prev, ...currentMetadata }));
+    }
   }, [currentMenu, currentMetadata]);
 
   const updateItem = (idx, field, value) => {
     setItems(prev => prev.map((item, i) => i === idx ? { ...item, [field]: value } : item));
   };
 
-  const updateMeta = (field, value) => {
-    setMetadata(prev => ({ ...prev, [field]: value }));
+  const updateLunchDescriptions = (meta) => {
+    const addons = [];
+    if (meta.saladAvailable === 'Yes') addons.push('Salad');
+    if (meta.sweetAvailable === 'Yes') addons.push('Sweet');
+    if (meta.namkeenAvailable === 'Yes') addons.push('Namkeen');
+    if (meta.farsanAvailable === 'Yes') addons.push('Farsan');
+    const suffix = addons.length > 0 ? ', ' + addons.join(' / ') : '';
+
+    setItems(prevItems => prevItems.map(item => {
+      if (item.category !== 'Lunch') return item;
+      
+      let base = '';
+      if (item.name === 'Mini Lunch') base = '3 Roti, Sabji, Dal, Rice';
+      else if (item.name === 'Brunch') base = '6 Roti, Sabji, 1/2 Dal, 1/2 Rice';
+      else if (item.name === 'Full Lunch') base = '6 Roti, Sabji, Dal, Rice';
+      else if (item.name === 'Family Meal') base = '9 Roti, 1.5 Sabji, 1.5 Dal, Rice';
+      else return item;
+      
+      return { ...item, description: base + suffix };
+    }));
   };
 
-  const addItem = () => {
+  const updateMeta = (field, value) => {
+    setMetadata(prev => {
+      const next = { ...prev, [field]: value };
+      if (['farsanAvailable', 'sweetAvailable', 'namkeenAvailable', 'saladAvailable'].includes(field)) {
+        updateLunchDescriptions(next);
+      }
+      return next;
+    });
+  };
+
+  const loadPresets = () => {
+    const addons = [];
+    if (metadata.saladAvailable === 'Yes') addons.push('Salad');
+    if (metadata.sweetAvailable === 'Yes') addons.push('Sweet');
+    if (metadata.namkeenAvailable === 'Yes') addons.push('Namkeen');
+    if (metadata.farsanAvailable === 'Yes') addons.push('Farsan');
+    const suffix = addons.length > 0 ? ', ' + addons.join(' / ') : '';
+
+    setItems([
+      { name: 'Mini Lunch',  description: `3 Roti, Sabji, Dal, Rice${suffix}`, price: 140, available: true, category: 'Lunch' },
+      { name: 'Brunch',      description: `6 Roti, Sabji, 1/2 Dal, 1/2 Rice${suffix}`, price: 180, available: true, category: 'Lunch' },
+      { name: 'Full Lunch',  description: `6 Roti, Sabji, Dal, Rice${suffix}`, price: 220, available: true, category: 'Lunch' },
+      { name: 'Family Meal', description: `9 Roti, 1.5 Sabji, 1.5 Dal, Rice${suffix}`, price: 320, available: true, category: 'Lunch' },
+      { name: 'Choviar Special', description: 'Ragdo, 4 Kelawada, Dal Khichdi', price: 160, available: true, category: 'Choviar' },
+    ]);
+  };
+
+  const addLunchItem = () => {
+    setItems(prev => [...prev, { name: '', description: '', price: 0, available: true, category: 'Lunch' }]);
+  };
+
+  const addChoviarItem = () => {
     setItems(prev => [...prev, { name: '', description: '', price: 0, available: true, category: 'Choviar' }]);
   };
 
@@ -184,35 +254,154 @@ function MenuTab({ password, currentMenu, currentMetadata }) {
     <div className="flex flex-col gap-4">
       <div className="bg-jts-gold/20 border border-jts-gold rounded-xl px-4 py-2.5 text-sm text-jts-navy font-semibold text-center flex justify-between items-center">
         <span>📅 Setting menu for: <span className="font-bold">{tomorrowLabel}</span></span>
-        <button onClick={addItem} className="bg-jts-red text-white px-3 py-1 rounded-lg text-xs font-bold hover:bg-jts-crimson shadow-sm transition">
-          + Add Item
-        </button>
-      </div>
-
-      {/* Metadata Section */}
-      <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
-        <h3 className="text-sm font-bold text-gray-800 mb-3 border-b pb-2">Daily Lunch Details</h3>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Sabji</label>
-            <input type="text" value={metadata.sabji || ''} onChange={e => updateMeta('sabji', e.target.value)} placeholder="e.g. Bhindi" className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
-          </div>
-          <div>
-            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Sweet</label>
-            <input type="text" value={metadata.sweet || ''} onChange={e => updateMeta('sweet', e.target.value)} placeholder="e.g. Aamras" className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
-          </div>
-          <div>
-            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Dal</label>
-            <input type="text" value={metadata.dal || ''} onChange={e => updateMeta('dal', e.target.value)} placeholder="e.g. Gujarati Dal" className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
-          </div>
-          <div>
-            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Farsan / Namkeen</label>
-            <input type="text" value={metadata.farsan || ''} onChange={e => updateMeta('farsan', e.target.value)} placeholder="e.g. Dhokla" className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
-          </div>
+        <div className="flex gap-2">
+          <button onClick={loadPresets} className="bg-jts-navy text-white px-3 py-1 rounded-lg text-xs font-bold hover:bg-blue-900 shadow-sm transition">
+            Load Presets
+          </button>
+          <button onClick={addLunchItem} className="bg-jts-red text-white px-3 py-1 rounded-lg text-xs font-bold hover:bg-jts-crimson shadow-sm transition">
+            + Add Lunch Item
+          </button>
         </div>
       </div>
 
-      {items.map((item, idx) => (
+      {/* Metadata Section */}
+      <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm flex flex-col gap-4">
+        <h3 className="text-sm font-bold text-gray-800 border-b pb-2">Custom Order & Lunch Details</h3>
+        
+        {/* Roti & Rice */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Roti Price</label>
+            <input type="number" value={metadata.rotiPrice || ''} onChange={e => updateMeta('rotiPrice', e.target.value)} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Rice Price (Standard)</label>
+            <input type="number" value={metadata.ricePrice || ''} onChange={e => updateMeta('ricePrice', e.target.value)} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
+          </div>
+        </div>
+
+        {/* Sabji */}
+        <div>
+          <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide block mb-1">Sabji Name</label>
+          <input type="text" value={metadata.sabji || ''} onChange={e => updateMeta('sabji', e.target.value)} placeholder="e.g. Bhindi" className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
+          <div className="grid grid-cols-2 gap-3 mt-2">
+            <div>
+              <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Half Price</label>
+              <input type="number" value={metadata.sabjiHalfPrice || ''} onChange={e => updateMeta('sabjiHalfPrice', e.target.value)} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
+            </div>
+            <div>
+              <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Full Price</label>
+              <input type="number" value={metadata.sabjiFullPrice || ''} onChange={e => updateMeta('sabjiFullPrice', e.target.value)} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
+            </div>
+          </div>
+        </div>
+
+        {/* Dal */}
+        <div>
+          <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide block mb-1">Dal Name</label>
+          <input type="text" value={metadata.dal || ''} onChange={e => updateMeta('dal', e.target.value)} placeholder="e.g. Gujarati Dal" className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
+          <div className="grid grid-cols-2 gap-3 mt-2">
+            <div>
+              <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Half Price</label>
+              <input type="number" value={metadata.dalHalfPrice || ''} onChange={e => updateMeta('dalHalfPrice', e.target.value)} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
+            </div>
+            <div>
+              <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Full Price</label>
+              <input type="number" value={metadata.dalFullPrice || ''} onChange={e => updateMeta('dalFullPrice', e.target.value)} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
+            </div>
+          </div>
+        </div>
+
+        {/* Farsan */}
+        <div>
+          <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide block mb-1">Farsan</label>
+          <div className="flex gap-2 items-center">
+            <input type="text" value={metadata.farsan || ''} onChange={e => updateMeta('farsan', e.target.value)} placeholder="e.g. Dhokla" className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
+            <input type="number" value={metadata.farsanPrice || ''} onChange={e => updateMeta('farsanPrice', e.target.value)} placeholder="₹" className="w-16 text-sm border border-gray-200 rounded-lg px-2 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
+            <label className="flex items-center gap-1 cursor-pointer text-xs font-bold text-gray-600 bg-gray-100 px-2 py-1.5 rounded-lg border border-gray-200">
+              <input type="checkbox" checked={metadata.farsanAvailable === 'Yes'} onChange={e => updateMeta('farsanAvailable', e.target.checked ? 'Yes' : 'No')} className="w-4 h-4 text-jts-red" />
+              On
+            </label>
+          </div>
+        </div>
+
+        {/* Sweet */}
+        <div>
+          <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide block mb-1">Sweet</label>
+          <div className="flex gap-2 items-center">
+            <input type="text" value={metadata.sweet || ''} onChange={e => updateMeta('sweet', e.target.value)} placeholder="e.g. Aamras" className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
+            <input type="number" value={metadata.sweetPrice || ''} onChange={e => updateMeta('sweetPrice', e.target.value)} placeholder="₹" className="w-16 text-sm border border-gray-200 rounded-lg px-2 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
+            <label className="flex items-center gap-1 cursor-pointer text-xs font-bold text-gray-600 bg-gray-100 px-2 py-1.5 rounded-lg border border-gray-200">
+              <input type="checkbox" checked={metadata.sweetAvailable === 'Yes'} onChange={e => updateMeta('sweetAvailable', e.target.checked ? 'Yes' : 'No')} className="w-4 h-4 text-jts-red" />
+              On
+            </label>
+          </div>
+        </div>
+
+        {/* Namkeen and Salad Checkboxes */}
+        <div className="flex gap-4">
+          <label className="flex items-center gap-1.5 cursor-pointer text-xs font-bold text-gray-700">
+            <input type="checkbox" checked={metadata.namkeenAvailable === 'Yes'} onChange={e => updateMeta('namkeenAvailable', e.target.checked ? 'Yes' : 'No')} className="w-4 h-4 text-jts-red rounded" />
+            Namkeen Included
+          </label>
+          <label className="flex items-center gap-1.5 cursor-pointer text-xs font-bold text-gray-700">
+            <input type="checkbox" checked={metadata.saladAvailable === 'Yes'} onChange={e => updateMeta('saladAvailable', e.target.checked ? 'Yes' : 'No')} className="w-4 h-4 text-jts-red rounded" />
+            Salad Included
+          </label>
+        </div>
+
+        {/* Testing Mode */}
+        <div className="mt-2 bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 flex items-center justify-between">
+          <div>
+            <p className="text-sm font-bold text-blue-900">Beta Testing Mode</p>
+            <p className="text-[10px] font-medium text-blue-700">Disables all timing restrictions for ordering</p>
+          </div>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <div className={`w-12 h-6 rounded-full flex items-center transition-colors ${metadata.betaTesting === 'Yes' ? 'bg-blue-600' : 'bg-gray-300'}`}>
+              <div className={`w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${metadata.betaTesting === 'Yes' ? 'translate-x-6' : 'translate-x-1'}`} />
+            </div>
+            <input type="checkbox" className="hidden" checked={metadata.betaTesting === 'Yes'} onChange={e => updateMeta('betaTesting', e.target.checked ? 'Yes' : 'No')} />
+          </label>
+        </div>
+      </div>
+
+      {/* Choviar Details Section */}
+      <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm flex flex-col gap-4">
+        <div className="flex items-center justify-between border-b pb-2">
+          <h3 className="text-sm font-bold text-gray-800">Choviar Details</h3>
+          <button onClick={addChoviarItem} className="text-xs font-bold text-white bg-jts-red hover:bg-jts-crimson px-2 py-1 rounded-lg shadow-sm transition">+ Add Item</button>
+        </div>
+        
+        {items.filter(i => i.category === 'Choviar').length > 0 ? (
+          <div className="flex flex-col gap-2">
+            <div className="grid grid-cols-[1fr_80px_40px_30px] gap-2 text-[10px] font-bold text-gray-500 uppercase tracking-wide px-1">
+              <span>Item Name</span>
+              <span>Price (₹)</span>
+              <span>Avail</span>
+              <span></span>
+            </div>
+            {items.map((item, idx) => {
+              if (item.category !== 'Choviar') return null;
+              return (
+                <div key={idx} className="grid grid-cols-[1fr_80px_40px_30px] gap-2 items-center bg-gray-50 p-2 rounded-lg border border-gray-100">
+                  <input type="text" value={item.name} onChange={e => updateItem(idx, 'name', e.target.value)} className="w-full text-sm border border-gray-200 rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-jts-red bg-white" placeholder="Name" />
+                  <input type="number" value={item.price} onChange={e => updateItem(idx, 'price', e.target.value)} className="w-full text-sm border border-gray-200 rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-jts-red bg-white" placeholder="₹" />
+                  <input type="checkbox" checked={item.available} onChange={e => updateItem(idx, 'available', e.target.checked)} className="w-4 h-4 text-jts-red mx-auto" />
+                  <button onClick={() => removeItem(idx)} className="text-red-500 hover:text-red-700 font-bold flex items-center justify-center">✕</button>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="text-xs text-gray-400 italic text-center py-2">No Choviar items added.</p>
+        )}
+      </div>
+
+      <h3 className="text-sm font-bold text-gray-800 mt-2 px-1">Lunch Menu Cards</h3>
+      
+      {items.map((item, idx) => {
+        if (item.category !== 'Lunch') return null;
+        return (
         <div key={idx} className="bg-white rounded-xl border border-gray-100 p-4 flex flex-col gap-3 relative shadow-sm">
           <button onClick={() => removeItem(idx)} className="absolute -top-2 -right-2 bg-red-100 text-red-600 hover:bg-red-200 rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold transition">✕</button>
           
@@ -273,13 +462,18 @@ function MenuTab({ password, currentMenu, currentMetadata }) {
             </div>
           </div>
         </div>
-      ))}
+        );
+      })}
 
       {msg && (
         <div className={`rounded-xl px-4 py-3 text-sm font-medium ${msg.startsWith('✅') ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
           {msg}
         </div>
       )}
+
+      <button onClick={addLunchItem} className="w-full py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold rounded-xl transition text-sm border border-gray-300 border-dashed mb-1">
+        + Add Another Lunch Item
+      </button>
 
       <button
         onClick={handleSave}
@@ -304,6 +498,9 @@ function OrdersTab({ password }) {
   const [filterMonth, setFilterMonth] = useState(defaultMonth);
   const [filterDate, setFilterDate]   = useState('');
   const [modalOrder, setModalOrder]   = useState(null);
+  const [assignments, setAssignments] = useState({});
+  const [savingAssignments, setSavingAssignments] = useState(false);
+  const [msg, setMsg] = useState('');
 
   const convertMonth = (m) => { if (!m) return undefined; const [y, mo] = m.split('-'); return `${mo}/${y}`; };
   const convertDate  = (d) => { if (!d) return undefined; const [y, mo, dd] = d.split('-'); return `${dd}/${mo}/${y}`; };
@@ -315,7 +512,13 @@ function OrdersTab({ password }) {
       if (filterDate) params.date = convertDate(filterDate);
       else if (filterMonth) params.month = convertMonth(filterMonth);
       const res = await getAdminOrders(params, password);
-      setOrders(res.data.orders || []);
+      const dataOrders = res.data.orders || [];
+      setOrders(dataOrders);
+      const initial = {};
+      dataOrders.forEach(o => {
+        initial[o.orderId] = { deliveryPerson: o.deliveryPerson || '', routeOrder: o.routeOrder || '' };
+      });
+      setAssignments(initial);
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to fetch orders.');
     } finally {
@@ -324,6 +527,28 @@ function OrdersTab({ password }) {
   }, [password, filterMonth, filterDate]);
 
   useEffect(() => { fetchOrders(); }, [fetchOrders]);
+
+  const handleUpdateAssignment = (orderId, field, value) => {
+    setAssignments(prev => ({ ...prev, [orderId]: { ...prev[orderId], [field]: value } }));
+  };
+
+  const handleSaveAssignments = async (orderList) => {
+    setSavingAssignments(true); setMsg('');
+    try {
+      const updates = orderList.map(o => ({
+        orderId: o.orderId,
+        deliveryPerson: assignments[o.orderId]?.deliveryPerson || '',
+        routeOrder: assignments[o.orderId]?.routeOrder || ''
+      }));
+      await updateAdminDeliveryBatch(updates, password);
+      setMsg('✅ Delivery assignments saved!');
+      setTimeout(() => setMsg(''), 3000);
+    } catch (err) {
+      setMsg('❌ Failed to save assignments.');
+    } finally {
+      setSavingAssignments(false);
+    }
+  };
 
   // Analytics
   const totalRevenue     = orders.reduce((s, o) => s + o.grandTotal, 0);
@@ -402,6 +627,12 @@ function OrdersTab({ password }) {
         </div>
       </div>
 
+      {msg && (
+        <div className={`rounded-xl px-4 py-3 text-sm font-medium ${msg.startsWith('✅') ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+          {msg}
+        </div>
+      )}
+
       {/* Error */}
       {error && <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-sm text-red-700">{error}</div>}
 
@@ -419,45 +650,110 @@ function OrdersTab({ password }) {
         </div>
       )}
 
-      {!loading && orders.length > 0 && (
-        <div className="flex flex-col gap-2">
-          {orders.map(order => (
-            <div
-              key={order.orderId}
-              onClick={() => setModalOrder(order)}
-              className="bg-white rounded-xl border border-gray-100 p-3 cursor-pointer hover:border-red-200 hover:shadow-sm transition"
-            >
-              <div className="flex items-center justify-between gap-2 flex-wrap">
-                <span className="font-bold text-jts-red text-xs tracking-widest">{order.orderId}</span>
-                <div className="flex items-center gap-1.5">
-                  {order.zone === 'outside' && (
-                    <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-semibold">Outside</span>
-                  )}
-                  <span className="text-xs text-gray-400">{order.date}</span>
-                </div>
+      {!loading && orders.length > 0 && (() => {
+        const lunchOrders = orders.filter(o => o.items.some(i => i.category !== 'Choviar'));
+        const choviarOrders = orders.filter(o => o.items.every(i => i.category === 'Choviar'));
+        
+        const sortByRoute = (a, b) => {
+          const rA = parseInt(assignments[a.orderId]?.routeOrder, 10) || 9999;
+          const rB = parseInt(assignments[b.orderId]?.routeOrder, 10) || 9999;
+          return rA - rB;
+        };
+
+        const sortedLunch = [...lunchOrders].sort(sortByRoute);
+        const sortedChoviar = [...choviarOrders].sort(sortByRoute);
+
+        const renderGroup = (title, groupOrders) => {
+          if (groupOrders.length === 0) return null;
+          return (
+            <div className="flex flex-col gap-3 mt-4">
+              <div className="flex items-center justify-between">
+                <h3 className="font-bold text-gray-800 text-lg uppercase tracking-wide">{title} ({groupOrders.length})</h3>
+                <button
+                  onClick={() => handleSaveAssignments(groupOrders)}
+                  disabled={savingAssignments}
+                  className={`px-4 py-1.5 text-white text-sm font-bold rounded-lg transition ${savingAssignments ? 'bg-red-300 cursor-not-allowed' : 'bg-jts-red hover:bg-jts-crimson shadow-sm'}`}
+                >
+                  {savingAssignments ? 'Saving...' : '💾 Save Assignments'}
+                </button>
               </div>
-              <p className="text-sm font-semibold text-gray-800 mt-0.5">{order.name}</p>
-              <p className="text-xs text-gray-500">{order.phone}</p>
-              <div className="flex justify-between items-center mt-1.5">
-                <span className="text-xs text-gray-400">
-                  {order.items.map(i => `${i.name}×${i.quantity}`).join(', ')}
-                </span>
-                <span className="text-sm font-bold text-gray-700">₹{order.grandTotal.toLocaleString('en-IN')}</span>
+              <div className="flex flex-col gap-2">
+                {groupOrders.map(order => (
+                  <div key={order.orderId} className="bg-white rounded-xl border border-gray-100 p-3 hover:border-red-200 hover:shadow-sm transition">
+                    <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+                      {/* Order Info */}
+                      <div className="flex-1 cursor-pointer" onClick={() => setModalOrder(order)}>
+                        <div className="flex items-center gap-2 flex-wrap mb-1">
+                          <span className="font-bold text-jts-red text-xs tracking-widest">{order.orderId}</span>
+                          {order.zone === 'outside' && <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-semibold">Outside</span>}
+                          <span className="text-xs text-gray-400">{order.date}</span>
+                        </div>
+                        <p className="text-sm font-semibold text-gray-800">{order.name}</p>
+                        <p className="text-xs text-gray-500">{order.phone} • {order.address}</p>
+                        <div className="flex justify-between items-center mt-1.5">
+                          <span className="text-xs text-gray-500 font-medium">{order.items.map(i => `${i.name}×${i.quantity}`).join(', ')}</span>
+                          <span className="text-sm font-bold text-gray-700 ml-2">₹{order.grandTotal.toLocaleString('en-IN')}</span>
+                        </div>
+                      </div>
+                      
+                      {/* Delivery Controls */}
+                      <div className="w-full md:w-auto bg-gray-50/80 p-2.5 rounded-lg border border-gray-100 flex flex-col gap-2.5 min-w-[200px]" onClick={e => e.stopPropagation()}>
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Driver</span>
+                          <div className="flex flex-col gap-1">
+                            {['Dabbawala', 'Sagar', 'Dalpat'].map(driver => (
+                              <label key={driver} className="flex items-center gap-1.5 cursor-pointer">
+                                <input
+                                  type="radio"
+                                  name={`driver-${order.orderId}`}
+                                  value={driver}
+                                  checked={assignments[order.orderId]?.deliveryPerson === driver}
+                                  onChange={() => handleUpdateAssignment(order.orderId, 'deliveryPerson', driver)}
+                                  className="text-jts-red focus:ring-jts-red w-3.5 h-3.5"
+                                />
+                                <span className="text-xs font-medium text-gray-700">{driver}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between gap-2 pt-2 border-t border-gray-200">
+                          <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Route #</span>
+                          <input
+                            type="number"
+                            min="1"
+                            placeholder="Seq"
+                            value={assignments[order.orderId]?.routeOrder || ''}
+                            onChange={e => handleUpdateAssignment(order.orderId, 'routeOrder', e.target.value)}
+                            className="w-16 px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:border-jts-red font-semibold text-center"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
-          ))}
-        </div>
-      )}
+          );
+        };
+
+        return (
+          <div className="flex flex-col gap-4">
+            {renderGroup('Lunch Orders', sortedLunch)}
+            {renderGroup('Choviar Orders', sortedChoviar)}
+          </div>
+        );
+      })()}
     </div>
   );
 }
 
 // ─── Tab 3: Send to Kitchen ────────────────────────────────────────────────────
 function KitchenTab({ password }) {
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const [, month, day] = tomorrow.toISOString().slice(0, 10).split('-');
-  const defaultDate = `${tomorrow.getFullYear()}-${month}-${day}`;
+  // Default to today's date instead of tomorrow
+  const today = new Date();
+  const offset = today.getTimezoneOffset();
+  const todayLocal = new Date(today.getTime() - (offset * 60 * 1000));
+  const defaultDate = todayLocal.toISOString().split('T')[0];
 
   const [kitchenDate, setKitchenDate] = useState(defaultDate);
   const [summary, setSummary]         = useState(null);
@@ -471,10 +767,10 @@ function KitchenTab({ password }) {
     return `${dd}/${mo}/${y}`;
   };
 
-  const fetchSummary = async () => {
+  const fetchSummary = async (dateStr) => {
     setLoading(true); setError(''); setSummary(null);
     try {
-      const res = await getKitchenSummary(convertDate(kitchenDate), password);
+      const res = await getKitchenSummary(convertDate(dateStr), password);
       setSummary(res.data);
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to fetch kitchen summary.');
@@ -483,17 +779,24 @@ function KitchenTab({ password }) {
     }
   };
 
+  useEffect(() => {
+    if (kitchenDate && password) {
+      fetchSummary(kitchenDate);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kitchenDate, password]);
+
   const buildKitchenText = () => {
     if (!summary) return '';
     const lines = [`🍱 Kitchen Order Summary – ${convertDate(kitchenDate)}`, ''];
-    summary.items.forEach(row => {
-      lines.push(`${row.name}: ${row.totalQty} tiffins`);
-      if (row.borivaliQty > 0 && row.outsideQty > 0) {
-        lines.push(`  (Borivali: ${row.borivaliQty}, Outside: ${row.outsideQty})`);
-      }
-    });
+    lines.push(`Total Roti: ${summary.grandTotals?.Roti || 0}`);
+    lines.push(`Total Sabji: ${summary.grandTotals?.Sabji || 0}`);
+    lines.push(`Total Dal: ${summary.grandTotals?.Dal || 0}`);
+    lines.push(`Total Rice: ${summary.grandTotals?.Rice || 0}`);
+    lines.push(`Total Sweet: ${summary.grandTotals?.Sweet || 0}`);
+    lines.push(`Total Farsan: ${summary.grandTotals?.Farsan || 0}`);
     lines.push('');
-    lines.push(`Total Tiffins: ${summary.grandTotal}`);
+    lines.push(`Total Tiffins: ${summary.orderCount}`);
     return lines.join('\n');
   };
 
@@ -516,17 +819,17 @@ function KitchenTab({ password }) {
           <input
             type="date"
             value={kitchenDate}
-            onChange={e => { setKitchenDate(e.target.value); setSummary(null); }}
+            onChange={e => setKitchenDate(e.target.value)}
             className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-jts-red transition"
           />
         </div>
         <button
-          onClick={fetchSummary}
+          onClick={() => fetchSummary(kitchenDate)}
           disabled={loading}
           className={`w-full py-3 rounded-xl font-bold text-sm text-white transition
             ${loading ? 'bg-red-300 cursor-not-allowed' : 'bg-jts-red hover:bg-jts-crimson'}`}
         >
-          {loading ? 'Loading…' : '📊 Get Kitchen Summary'}
+          {loading ? 'Loading…' : '🔄 Refresh Kitchen Summary'}
         </button>
       </div>
 
@@ -535,44 +838,71 @@ function KitchenTab({ password }) {
       {summary && (
         <>
           <div className="bg-white rounded-xl border border-gray-100 p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-bold text-gray-800 text-sm">
-                🍱 {convertDate(kitchenDate)} – {summary.orderCount} order{summary.orderCount !== 1 ? 's' : ''}
-              </h3>
-            </div>
+            <h3 className="font-bold text-gray-800 text-sm mb-4">
+              🍱 {convertDate(kitchenDate)} – {summary.orderCount} order{summary.orderCount !== 1 ? 's' : ''}
+            </h3>
 
-            {summary.items.length === 0 ? (
+            {summary.orderCount === 0 ? (
               <p className="text-sm text-gray-400 text-center py-4">No orders for this date</p>
             ) : (
-              <div className="flex flex-col divide-y divide-gray-100">
-                {summary.items.map(row => (
-                  <div key={row.name} className="py-3 flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-gray-800">{row.name}</p>
-                      {row.borivaliQty > 0 && row.outsideQty > 0 && (
-                        <p className="text-xs text-gray-500 mt-0.5">
-                          Borivali: {row.borivaliQty} &nbsp;|&nbsp; Outside: {row.outsideQty}
-                        </p>
-                      )}
+              <>
+                {/* Grand Totals Grid */}
+                <div className="grid grid-cols-3 gap-3 mb-6">
+                  {[
+                    { label: 'Roti', val: summary.grandTotals?.Roti },
+                    { label: 'Sabji', val: summary.grandTotals?.Sabji },
+                    { label: 'Dal', val: summary.grandTotals?.Dal },
+                    { label: 'Rice', val: summary.grandTotals?.Rice },
+                    { label: 'Sweet', val: summary.grandTotals?.Sweet },
+                    { label: 'Farsan', val: summary.grandTotals?.Farsan },
+                  ].map(stat => (
+                    <div key={stat.label} className="bg-red-50 rounded-lg p-3 text-center border border-red-100">
+                      <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">{stat.label}</p>
+                      <p className="text-2xl font-black text-jts-red mt-1">{stat.val || 0}</p>
                     </div>
-                    <div className="text-right flex-shrink-0">
-                      <p className="text-2xl font-black text-jts-red">{row.totalQty}</p>
-                      <p className="text-[10px] text-gray-400">tiffins</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+                  ))}
+                </div>
 
-            {summary.items.length > 0 && (
-              <div className="border-t border-gray-100 pt-3 flex justify-between items-center font-bold">
-                <span className="text-gray-700">Grand Total</span>
-                <span className="text-2xl text-jts-red">{summary.grandTotal} tiffins</span>
-              </div>
+                {/* Orders Table */}
+                {summary.kitchenOrders && summary.kitchenOrders.length > 0 && (
+                  <div className="overflow-x-auto -mx-4 px-4">
+                    <table className="w-full text-left text-sm whitespace-nowrap">
+                      <thead>
+                        <tr className="bg-gray-50 text-gray-500 text-[10px] uppercase tracking-wider">
+                          <th className="py-2 px-3 rounded-l-lg font-bold">Seq No</th>
+                          <th className="py-2 px-3 font-bold">Driver</th>
+                          <th className="py-2 px-3 font-bold">Name</th>
+                          <th className="py-2 px-3 text-center font-bold">Roti</th>
+                          <th className="py-2 px-3 text-center font-bold">Sabji</th>
+                          <th className="py-2 px-3 text-center font-bold">Dal</th>
+                          <th className="py-2 px-3 text-center font-bold">Rice</th>
+                          <th className="py-2 px-3 text-center font-bold">Sweet</th>
+                          <th className="py-2 px-3 rounded-r-lg text-center font-bold">Farsan</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {summary.kitchenOrders.map((order, i) => (
+                          <tr key={order.orderId || i} className="hover:bg-gray-50 transition">
+                            <td className="py-3 px-3 font-bold text-gray-800">#{order.routeOrder === 9999 ? '-' : order.routeOrder}</td>
+                            <td className="py-3 px-3 text-gray-600 font-medium">{order.deliveryPerson}</td>
+                            <td className="py-3 px-3 text-gray-800 font-semibold">{order.name}</td>
+                            <td className="py-3 px-3 text-center text-gray-700 font-bold">{order.Roti || '-'}</td>
+                            <td className="py-3 px-3 text-center text-gray-700 font-bold">{order.Sabji || '-'}</td>
+                            <td className="py-3 px-3 text-center text-gray-700 font-bold">{order.Dal || '-'}</td>
+                            <td className="py-3 px-3 text-center text-gray-700 font-bold">{order.Rice || '-'}</td>
+                            <td className="py-3 px-3 text-center text-gray-700 font-bold">{order.Sweet || '-'}</td>
+                            <td className="py-3 px-3 text-center text-gray-700 font-bold">{order.Farsan || '-'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
             )}
           </div>
 
-          {summary.items.length > 0 && (
+          {summary.orderCount > 0 && (
             <button
               onClick={handleCopy}
               className={`w-full py-3.5 rounded-xl font-bold text-sm transition
