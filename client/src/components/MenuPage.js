@@ -8,7 +8,16 @@ import JtsLogo from './JtsLogo';
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 // ─── Quantity Stepper ─────────────────────────────────────────────────────────
+// ─── Stepper Button Helper ──────────────────────────────────────────────────────
 function QuantityStepper({ quantity, onIncrement, onDecrement, disabled = false }) {
+  const [popping, setPopping] = useState(false);
+  
+  const handleInc = () => {
+    setPopping(true);
+    setTimeout(() => setPopping(false), 250);
+    onIncrement();
+  };
+
   return (
     <div className="flex items-center gap-1.5">
       <button
@@ -27,12 +36,13 @@ function QuantityStepper({ quantity, onIncrement, onDecrement, disabled = false 
         {quantity}
       </span>
       <button
-        onClick={onIncrement}
+        onClick={handleInc}
         disabled={disabled}
         className={`w-9 h-9 rounded-full flex items-center justify-center text-xl font-bold transition-all
           ${disabled
             ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-            : 'bg-jts-red text-white hover:bg-jts-crimson active:scale-90 shadow-sm'}`}
+            : 'bg-jts-red text-white hover:bg-jts-crimson shadow-sm'} 
+          ${popping ? 'animate-button-pop' : ''}`}
         aria-label="Increase quantity"
       >
         +
@@ -251,6 +261,16 @@ function CustomOrderSection({ cart, updateQuantity, metadata }) {
 
 // ─── Floating Cart Bar ────────────────────────────────────────────────────────
 function CartBar({ cartCount, cartSubtotal, onViewOrder }) {
+  const [bouncing, setBouncing] = useState(false);
+
+  useEffect(() => {
+    if (cartCount > 0) {
+      setBouncing(true);
+      const timer = setTimeout(() => setBouncing(false), 250);
+      return () => clearTimeout(timer);
+    }
+  }, [cartCount]);
+
   if (cartCount === 0) return null;
   return (
     <div className="fixed bottom-0 left-0 right-0 z-50 px-4 pb-4 pt-2 bg-gradient-to-t from-jts-cream via-jts-cream/95 to-transparent">
@@ -259,7 +279,7 @@ function CartBar({ cartCount, cartSubtotal, onViewOrder }) {
           onClick={onViewOrder}
           className="w-full flex items-center justify-between bg-jts-red hover:bg-jts-crimson active:bg-red-900 text-white rounded-2xl px-5 py-4 shadow-lg transition-colors"
         >
-          <span className="bg-red-700 rounded-lg px-2.5 py-1 text-sm font-bold">
+          <span className={`bg-red-700 rounded-lg px-2.5 py-1 text-sm font-bold ${bouncing ? 'animate-button-pop' : ''}`}>
             {cartCount} {cartCount === 1 ? 'item' : 'items'}
           </span>
           <span className="font-bold text-base">View Order</span>

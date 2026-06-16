@@ -561,15 +561,38 @@ function OrdersTab({ password }) {
     itemCounts[i.name] = (itemCounts[i.name] || 0) + i.quantity;
   }));
 
+  // Top selling item
+  let topSellingItem = { name: 'N/A', qty: 0 };
+  Object.entries(itemCounts).forEach(([name, qty]) => {
+    if (qty > topSellingItem.qty) {
+      topSellingItem = { name, qty };
+    }
+  });
+
   return (
     <div className="flex flex-col gap-4">
       {modalOrder && <OrderModal order={modalOrder} onClose={() => setModalOrder(null)} />}
 
-      {/* Stats */}
-      <div className="grid grid-cols-3 gap-3">
+      {/* Dashboard Insights */}
+      <div className="bg-gradient-to-br from-jts-navy to-gray-900 rounded-2xl p-4 text-white shadow-lg print-hide">
+        <h2 className="text-sm font-bold uppercase tracking-widest text-gray-400 mb-3">Dashboard Insights</h2>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <p className="text-xs text-gray-300 font-medium">Revenue (Filtered)</p>
+            <p className="text-2xl font-black text-jts-gold mt-0.5">₹{totalRevenue.toLocaleString('en-IN')}</p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-300 font-medium">Top Selling Item</p>
+            <p className="text-lg font-black text-white mt-0.5 leading-tight">{topSellingItem.name}</p>
+            <p className="text-xs text-jts-red font-bold mt-0.5">{topSellingItem.qty} sold</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Basic Stats */}
+      <div className="grid grid-cols-2 gap-3 print-hide">
         <StatCard label="Total Orders" value={orders.length} />
         <StatCard label="Total Tiffins" value={totalTiffins} color="text-jts-red" />
-        <StatCard label="Revenue" value={`₹${(totalRevenue/1000).toFixed(1)}k`} color="text-jts-red" sub={`₹${totalRevenue.toLocaleString('en-IN')}`} />
       </div>
 
       {/* Item breakdown */}
@@ -826,21 +849,29 @@ function KitchenTab({ password }) {
         <button
           onClick={() => fetchSummary(kitchenDate)}
           disabled={loading}
-          className={`w-full py-3 rounded-xl font-bold text-sm text-white transition
+          className={`w-full py-3 rounded-xl font-bold text-sm text-white transition print-hide
             ${loading ? 'bg-red-300 cursor-not-allowed' : 'bg-jts-red hover:bg-jts-crimson'}`}
         >
           {loading ? 'Loading…' : '🔄 Refresh Kitchen Summary'}
         </button>
       </div>
 
-      {error && <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-sm text-red-700">{error}</div>}
+      {error && <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-sm text-red-700 print-hide">{error}</div>}
 
       {summary && (
         <>
           <div className="bg-white rounded-xl border border-gray-100 p-4">
-            <h3 className="font-bold text-gray-800 text-sm mb-4">
-              🍱 {convertDate(kitchenDate)} – {summary.orderCount} order{summary.orderCount !== 1 ? 's' : ''}
-            </h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-gray-800 text-sm">
+                🍱 {convertDate(kitchenDate)} – {summary.orderCount} order{summary.orderCount !== 1 ? 's' : ''}
+              </h3>
+              <button
+                onClick={() => window.print()}
+                className="print-hide bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-bold py-1.5 px-3 rounded-lg flex items-center gap-1 transition"
+              >
+                🖨️ Print
+              </button>
+            </div>
 
             {summary.orderCount === 0 ? (
               <p className="text-sm text-gray-400 text-center py-4">No orders for this date</p>

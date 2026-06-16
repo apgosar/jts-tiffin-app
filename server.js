@@ -43,7 +43,7 @@ if (!USE_MOCK && !SPREADSHEET_ID) {
 
 // ─── Rate limiting ────────────────────────────────────────────────────────────
 const orderLimiter    = rateLimit({ windowMs: 15 * 60 * 1000, max: 20,  standardHeaders: true, legacyHeaders: false });
-const adminLimiter    = rateLimit({ windowMs: 15 * 60 * 1000, max: 10,  standardHeaders: true, legacyHeaders: false }); // tightened from 100 → 10
+const adminLimiter    = rateLimit({ windowMs: 15 * 60 * 1000, max: 100, standardHeaders: true, legacyHeaders: false });
 const publicLimiter   = rateLimit({ windowMs: 15 * 60 * 1000, max: 200, standardHeaders: true, legacyHeaders: false });
 const lookupLimiter   = rateLimit({ windowMs: 15 * 60 * 1000, max: 10,  standardHeaders: true, legacyHeaders: false }); // phone lookup: 10/15min
 

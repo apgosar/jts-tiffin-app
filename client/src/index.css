@@ -34,6 +34,16 @@ html {
   animation: card-pop 300ms ease-out both;
 }
 
+/* Micro-animations */
+@keyframes button-pop {
+  0%   { transform: scale(1); }
+  50%  { transform: scale(1.15); }
+  100% { transform: scale(1); }
+}
+.animate-button-pop {
+  animation: button-pop 0.25s ease-out;
+}
+
 /* Pulse ring for active quantity */
 @keyframes pulse-ring {
   0%   { box-shadow: 0 0 0 0 rgba(198,40,40,0.35); }
@@ -53,4 +63,33 @@ html {
   background: linear-gradient(90deg, #F9A825 0%, #FFF176 40%, #F9A825 100%);
   background-size: 200% auto;
   animation: shimmer 2s linear infinite;
+}
+
+/* Print Optimization for Kitchen Packing List */
+@media print {
+  /* Hide UI elements */
+  header, nav, button, .print-hide {
+    display: none !important;
+  }
+  /* Remove backgrounds and shadows */
+  body, .bg-gray-50, .bg-white {
+    background-color: white !important;
+  }
+  .shadow-sm, .shadow-md, .shadow-lg {
+    box-shadow: none !important;
+  }
+  /* Force table formatting */
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+  }
+  th, td {
+    border: 1px solid #ccc !important;
+    padding: 8px !important;
+    color: black !important;
+  }
+  .bg-red-50 {
+    background-color: #f9f9f9 !important;
+    border: 1px solid #ccc !important;
+  }
 }

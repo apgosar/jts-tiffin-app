@@ -1,4 +1,67 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+
+function SwipeButton({ isCompleted, onComplete }) {
+  const [sliderPos, setSliderPos] = useState(4);
+  const containerRef = useRef(null);
+
+  const handleTouchMove = (e) => {
+    if (isCompleted) return;
+    const container = containerRef.current;
+    if (!container) return;
+    
+    const touch = e.touches[0];
+    const rect = container.getBoundingClientRect();
+    let newPos = touch.clientX - rect.left - 24;
+    
+    const maxPos = rect.width - 52;
+    if (newPos < 4) newPos = 4;
+    if (newPos > maxPos) newPos = maxPos;
+    
+    setSliderPos(newPos);
+  };
+
+  const handleTouchEnd = () => {
+    if (isCompleted) return;
+    const container = containerRef.current;
+    if (!container) return;
+    
+    const maxPos = container.getBoundingClientRect().width - 52;
+    if (sliderPos > maxPos * 0.7) {
+      setSliderPos(maxPos);
+      onComplete();
+    } else {
+      setSliderPos(4);
+    }
+  };
+
+  useEffect(() => {
+    if (!isCompleted) setSliderPos(4);
+  }, [isCompleted]);
+
+  return (
+    <div 
+      ref={containerRef}
+      className={`relative h-14 rounded-full overflow-hidden flex items-center transition-colors shadow-inner ${
+        isCompleted ? 'bg-green-500' : 'bg-gray-200'
+      }`}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+    >
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+        <span className={`font-extrabold text-base ${isCompleted ? 'text-white' : 'text-gray-500'} ml-6`}>
+          {isCompleted ? 'पेमेंट प्राप्त (Received)' : 'Swipe to Complete ➔'}
+        </span>
+      </div>
+      
+      <div 
+        className={`absolute top-1 bottom-1 w-12 rounded-full shadow-md flex items-center justify-center transition-all ${isCompleted ? 'bg-white text-green-500' : 'bg-white text-gray-400 duration-150 ease-out'}`}
+        style={{ left: isCompleted ? 'calc(100% - 52px)' : sliderPos + 'px' }}
+      >
+        <span className="text-xl font-bold">{isCompleted ? '✓' : '➔'}</span>
+      </div>
+    </div>
+  );
+}
 
 function DeliveryPage() {
   const [orders, setOrders] = useState([]);
@@ -185,19 +248,19 @@ function DeliveryPage() {
                   </label>
                 </div>
 
-                <label className={`flex items-center gap-3 p-4 rounded-xl border-2 cursor-pointer transition-colors ${
-                  order.paymentReceived ? 'bg-green-100 border-green-500' : 'bg-white border-gray-300 hover:bg-gray-50'
-                }`}>
-                  <input 
-                    type="checkbox" 
-                    checked={order.paymentReceived}
-                    onChange={(e) => handlePaymentChange(order.rowIndex, order.orderId, e.target.checked, order.paymentMethod)}
-                    className="w-8 h-8 text-green-600 rounded focus:ring-green-500"
-                  />
-                  <span className={`text-xl font-extrabold ${order.paymentReceived ? 'text-green-800' : 'text-gray-700'}`}>
-                    पेमेंट प्राप्त (Payment Received)
-                  </span>
-                </label>
+                <SwipeButton 
+                  isCompleted={order.paymentReceived} 
+                  onComplete={() => handlePaymentChange(order.rowIndex, order.orderId, true, order.paymentMethod)} 
+                />
+                
+                {order.paymentReceived && (
+                  <button 
+                    onClick={() => handlePaymentChange(order.rowIndex, order.orderId, false, order.paymentMethod)}
+                    className="w-full py-2 text-center text-sm font-bold text-gray-400 hover:text-gray-600 underline mt-2"
+                  >
+                    Undo (गलती से हो गया?)
+                  </button>
+                )}
               </div>
 
             </div>

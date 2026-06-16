@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCart, getOrderingState } from '../App';
 import { lookupCustomer, placeOrder } from '../services/api';
@@ -114,6 +114,27 @@ export default function CheckoutPage() {
   // Pincode / zone
   const [zone, setZone]     = useState(null); // null | 'borivali' | 'outside'
 
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('jts_customer_profile');
+      if (saved) {
+        const profile = JSON.parse(saved);
+        setPhone(profile.phone || '');
+        setForm({
+          name:     profile.name || '',
+          wingFlat: profile.wingFlat || '',
+          building: profile.building || '',
+          street:   profile.street || '',
+          landmark: profile.landmark || '',
+          locality: profile.locality || '',
+          pincode:  profile.pincode || '',
+        });
+        if (profile.pincode) computeZone(profile.pincode);
+      }
+    } catch (err) {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
 
   // Submission
   const [submitting, setSubmitting]   = useState(false);
@@ -161,12 +182,17 @@ export default function CheckoutPage() {
   // ── Redirect if cart empty ───────────────────────────────────────────────────
   if (cartItems.length === 0 && !submitting) {
     return (
-      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center gap-4 px-4">
-        <p className="text-5xl">🛒</p>
-        <p className="text-gray-600 font-medium text-center">Your cart is empty. Add tiffins from the menu first.</p>
+      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center gap-6 px-4 pb-20">
+        <div className="w-32 h-32 bg-white rounded-full shadow-sm flex items-center justify-center animate-bounce">
+          <p className="text-6xl">🛒</p>
+        </div>
+        <div className="text-center">
+          <h2 className="text-2xl font-black text-gray-800 mb-2">Your Tiffin is Empty</h2>
+          <p className="text-gray-500 font-medium">Looks like you haven't added anything to your cart yet.</p>
+        </div>
         <button
           onClick={() => navigate('/')}
-          className="mt-2 px-6 py-3 bg-jts-red text-white font-semibold rounded-xl hover:bg-jts-crimson transition"
+          className="mt-4 px-8 py-3.5 bg-jts-red text-white font-bold rounded-full shadow-lg shadow-red-200 hover:bg-jts-crimson active:scale-95 transition-all w-full max-w-xs"
         >
           Browse Menu
         </button>
@@ -324,6 +350,14 @@ export default function CheckoutPage() {
         zone:           res.data.zone,
         customer:       { ...form, phone },
       });
+      
+      try {
+        localStorage.setItem('jts_customer_profile', JSON.stringify({
+          phone: phone,
+          ...form
+        }));
+      } catch (err) {}
+
       clearCart();
       navigate('/confirmation');
     } catch (err) {
