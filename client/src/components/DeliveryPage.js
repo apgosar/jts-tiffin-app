@@ -144,6 +144,9 @@ function DeliveryPage() {
         <h1 className="text-2xl font-bold text-center" style={{ fontFamily: "'Oswald', sans-serif" }}>
           JTS Delivery Portal
         </h1>
+        <p className="text-center text-red-200 text-xs mt-1 font-medium tracking-wide">
+          Showing Orders for: Delivery Date ({new Date().toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })})
+        </p>
       </header>
 
       {/* Rider Tabs */}

@@ -326,7 +326,16 @@ app.post('/api/orders', orderLimiter, async (req, res) => {
   
   const baseOrderId  = uuidv4().slice(0, 8).toUpperCase();
   const now          = new Date();
-  const date         = formatDate(now);
+  
+  // Compute Delivery Date based on 7 PM IST boundary
+  const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+  const istTime = new Date(utc + (3600000 * 5.5));
+  const deliveryTime = new Date(istTime);
+  if (istTime.getHours() >= 19) {
+    deliveryTime.setDate(deliveryTime.getDate() + 1);
+  }
+  const date = `${String(deliveryTime.getDate()).padStart(2, '0')}/${String(deliveryTime.getMonth() + 1).padStart(2, '0')}/${deliveryTime.getFullYear()}`;
+  
   const time         = formatTime(now);
 
   const lunchItems = validatedItems.filter(i => i.category !== 'Choviar');

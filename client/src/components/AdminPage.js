@@ -315,10 +315,10 @@ function MenuTab({ password, currentMenu, currentMetadata }) {
         {/* Farsan */}
         <div>
           <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide block mb-1">Farsan</label>
-          <div className="flex gap-2 items-center">
-            <input type="text" value={metadata.farsan || ''} onChange={e => updateMeta('farsan', e.target.value)} placeholder="e.g. Dhokla" className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
+          <div className="flex flex-wrap sm:flex-nowrap gap-2 items-center">
+            <input type="text" value={metadata.farsan || ''} onChange={e => updateMeta('farsan', e.target.value)} placeholder="e.g. Dhokla" className="flex-1 min-w-[120px] text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
             <input type="number" value={metadata.farsanPrice || ''} onChange={e => updateMeta('farsanPrice', e.target.value)} placeholder="₹" className="w-16 text-sm border border-gray-200 rounded-lg px-2 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
-            <label className="flex items-center gap-1 cursor-pointer text-xs font-bold text-gray-600 bg-gray-100 px-2 py-1.5 rounded-lg border border-gray-200">
+            <label className="flex items-center gap-1 cursor-pointer text-xs font-bold text-gray-600 bg-gray-100 px-2 py-1.5 rounded-lg border border-gray-200 whitespace-nowrap">
               <input type="checkbox" checked={metadata.farsanAvailable === 'Yes'} onChange={e => updateMeta('farsanAvailable', e.target.checked ? 'Yes' : 'No')} className="w-4 h-4 text-jts-red" />
               On
             </label>
@@ -328,10 +328,10 @@ function MenuTab({ password, currentMenu, currentMetadata }) {
         {/* Sweet */}
         <div>
           <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide block mb-1">Sweet</label>
-          <div className="flex gap-2 items-center">
-            <input type="text" value={metadata.sweet || ''} onChange={e => updateMeta('sweet', e.target.value)} placeholder="e.g. Aamras" className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
+          <div className="flex flex-wrap sm:flex-nowrap gap-2 items-center">
+            <input type="text" value={metadata.sweet || ''} onChange={e => updateMeta('sweet', e.target.value)} placeholder="e.g. Aamras" className="flex-1 min-w-[120px] text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
             <input type="number" value={metadata.sweetPrice || ''} onChange={e => updateMeta('sweetPrice', e.target.value)} placeholder="₹" className="w-16 text-sm border border-gray-200 rounded-lg px-2 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
-            <label className="flex items-center gap-1 cursor-pointer text-xs font-bold text-gray-600 bg-gray-100 px-2 py-1.5 rounded-lg border border-gray-200">
+            <label className="flex items-center gap-1 cursor-pointer text-xs font-bold text-gray-600 bg-gray-100 px-2 py-1.5 rounded-lg border border-gray-200 whitespace-nowrap">
               <input type="checkbox" checked={metadata.sweetAvailable === 'Yes'} onChange={e => updateMeta('sweetAvailable', e.target.checked ? 'Yes' : 'No')} className="w-4 h-4 text-jts-red" />
               On
             </label>
@@ -491,12 +491,21 @@ function MenuTab({ password, currentMenu, currentMetadata }) {
 function OrdersTab({ password }) {
   const now = new Date();
   const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  
+  const getDeliveryDate = () => {
+    const d = new Date();
+    if (d.getHours() >= 19) d.setDate(d.getDate() + 1);
+    const offset = d.getTimezoneOffset();
+    const local = new Date(d.getTime() - (offset * 60 * 1000));
+    return local.toISOString().split('T')[0];
+  };
+  const defaultDate = getDeliveryDate();
 
   const [orders, setOrders]       = useState([]);
   const [loading, setLoading]     = useState(false);
   const [error, setError]         = useState('');
-  const [filterMonth, setFilterMonth] = useState(defaultMonth);
-  const [filterDate, setFilterDate]   = useState('');
+  const [filterMonth, setFilterMonth] = useState('');
+  const [filterDate, setFilterDate]   = useState(defaultDate);
   const [modalOrder, setModalOrder]   = useState(null);
   const [assignments, setAssignments] = useState({});
   const [savingAssignments, setSavingAssignments] = useState(false);
@@ -595,27 +604,6 @@ function OrdersTab({ password }) {
         <StatCard label="Total Tiffins" value={totalTiffins} color="text-jts-red" />
       </div>
 
-      {/* Item breakdown */}
-      {Object.keys(itemCounts).length > 0 && (
-        <div className="bg-white rounded-xl border border-gray-100 p-3">
-          <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Tiffin Breakdown</p>
-          <div className="flex flex-wrap gap-2">
-            {Object.entries(itemCounts).map(([name, qty]) => (
-              <div key={name} className="flex items-center gap-1.5 bg-red-50 rounded-lg px-3 py-1">
-                <span className="text-xs font-semibold text-gray-700">{name}</span>
-                <span className="text-xs font-black text-jts-red">×{qty}</span>
-              </div>
-            ))}
-            {outsideCount > 0 && (
-              <div className="flex items-center gap-1.5 bg-amber-50 rounded-lg px-3 py-1">
-                <span className="text-xs font-semibold text-amber-700">🚚 Outside Borivali</span>
-                <span className="text-xs font-black text-amber-700">{outsideCount} orders</span>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
       {/* Filters */}
       <div className="bg-white rounded-xl border border-gray-100 p-3 flex flex-wrap gap-3">
         <div className="flex-1 min-w-[140px]">
@@ -627,7 +615,7 @@ function OrdersTab({ password }) {
           />
         </div>
         <div className="flex-1 min-w-[140px]">
-          <label className="text-xs font-medium text-gray-600 block mb-1">Filter by Date</label>
+          <label className="text-xs font-medium text-gray-600 block mb-1">Delivery Date</label>
           <input
             type="date" value={filterDate}
             onChange={e => { setFilterDate(e.target.value); setFilterMonth(''); }}
@@ -772,11 +760,14 @@ function OrdersTab({ password }) {
 
 // ─── Tab 3: Send to Kitchen ────────────────────────────────────────────────────
 function KitchenTab({ password }) {
-  // Default to today's date instead of tomorrow
-  const today = new Date();
-  const offset = today.getTimezoneOffset();
-  const todayLocal = new Date(today.getTime() - (offset * 60 * 1000));
-  const defaultDate = todayLocal.toISOString().split('T')[0];
+  const getDeliveryDate = () => {
+    const d = new Date();
+    if (d.getHours() >= 19) d.setDate(d.getDate() + 1);
+    const offset = d.getTimezoneOffset();
+    const local = new Date(d.getTime() - (offset * 60 * 1000));
+    return local.toISOString().split('T')[0];
+  };
+  const defaultDate = getDeliveryDate();
 
   const [kitchenDate, setKitchenDate] = useState(defaultDate);
   const [summary, setSummary]         = useState(null);
