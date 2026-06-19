@@ -288,14 +288,16 @@ app.post('/api/orders', orderLimiter, async (req, res) => {
 
   // ── Quantity caps (H-4) ───────────────────────────────────────────────────
   const MAX_QTY_PER_ITEM = 20;
+  const MAX_ROTI_QTY = 200;
   const MAX_ITEM_TYPES   = 6;
   if (items.length > MAX_ITEM_TYPES) {
     return res.status(400).json({ error: `Too many item types. Maximum ${MAX_ITEM_TYPES} allowed per order.` });
   }
   for (const item of items) {
     const qty = parseInt(item.quantity, 10);
-    if (!qty || qty < 1 || qty > MAX_QTY_PER_ITEM) {
-      return res.status(400).json({ error: `Invalid quantity for "${item.name}". Must be 1–${MAX_QTY_PER_ITEM}.` });
+    const limit = item.name === 'Roti' ? MAX_ROTI_QTY : MAX_QTY_PER_ITEM;
+    if (!qty || qty < 1 || qty > limit) {
+      return res.status(400).json({ error: `Invalid quantity for "${item.name}". Must be 1–${limit}.` });
     }
   }
 
@@ -978,10 +980,31 @@ if (process.env.NODE_ENV === 'production') {
   const staticLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 300, standardHeaders: true, legacyHeaders: false });
   const buildPath = path.join(__dirname, 'client', 'build');
 
+  // Cache static assets (JS, CSS, images) which have hashes for 1 year
   app.use('/static', express.static(path.join(buildPath, 'static'), { maxAge: '1y', immutable: true }));
-  app.use(express.static(buildPath, { maxAge: '1h' }));
+  
+  // Serve other files like manifest, favicon with a short cache
+  // Intercept index.html to apply strict no-cache headers
+  app.use(express.static(buildPath, { 
+    maxAge: '1h',
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith('index.html')) {
+        res.set({
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        });
+      }
+    }
+  }));
+
+  // Client-side routing catch-all
   app.get('*', staticLimiter, (req, res) => {
-    res.set({ 'Cache-Control': 'no-cache, no-store, must-revalidate', 'Pragma': 'no-cache', 'Expires': '0' });
+    res.set({
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0'
+    });
     res.sendFile(path.join(buildPath, 'index.html'));
   });
 }
