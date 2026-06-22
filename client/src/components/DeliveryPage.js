@@ -135,7 +135,9 @@ function DeliveryPage() {
   );
 
   const riders = [...new Set(orders.map(o => o.deliveryPerson))];
-  const activeOrders = orders.filter(o => o.deliveryPerson === activeTab);
+  const activeOrders = orders
+    .filter(o => o.deliveryPerson === activeTab)
+    .sort((a, b) => a.routeOrder - b.routeOrder);
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
@@ -202,7 +204,10 @@ function DeliveryPage() {
               <div>
                 <p className="text-sm text-gray-500 font-bold">नाम</p>
                 <div className="flex justify-between items-start gap-2">
-                  <p className="text-xl font-bold text-gray-900">{order.name}</p>
+                  <div>
+                    <p className="text-xl font-bold text-gray-900">{order.name}</p>
+                    <p className="text-sm font-semibold text-gray-600 mt-0.5">{order.phone}</p>
+                  </div>
                   {order.phone && (
                     <a 
                       href={`tel:${order.phone}`}

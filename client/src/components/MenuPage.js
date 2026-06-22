@@ -330,7 +330,7 @@ export default function MenuPage() {
       <header className="sticky top-0 z-40 bg-white shadow-sm">
         <div className="max-w-md mx-auto px-4 py-3 flex items-center gap-3">
           <JtsLogo className="w-12 h-12 flex-shrink-0" />
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0 cursor-pointer" onClick={() => window.scrollTo(0,0)}>
             <div className="flex items-baseline gap-0.5 leading-none">
               <span className="text-jts-red font-bold text-2xl" style={{ fontFamily: "'Oswald', Impact, sans-serif" }}>J</span>
               <span className="text-gray-900 font-bold text-lg" style={{ fontFamily: "'Oswald', Impact, sans-serif" }}>AIN TIFFIN</span>
@@ -340,6 +340,15 @@ export default function MenuPage() {
             </div>
             <div className="text-xs text-jts-navy font-semibold tracking-wide">BY KEYUR SHAH</div>
           </div>
+          <button 
+            onClick={() => navigate('/my-orders')}
+            className="flex flex-col items-center justify-center p-2 text-jts-navy hover:bg-gray-100 rounded-xl transition-colors"
+          >
+            <div className="w-8 h-8 bg-blue-50 rounded-full flex items-center justify-center mb-0.5">
+              <span className="text-lg">👤</span>
+            </div>
+            <span className="text-[10px] font-bold tracking-wider">LOGIN</span>
+          </button>
         </div>
       </header>
 
@@ -359,6 +368,22 @@ export default function MenuPage() {
           <span className="text-jts-navy/80 text-[10px] font-semibold tracking-wide mt-0.5">
             Lunch orders till 5am | Choviar till 11am
           </span>
+        </div>
+      </div>
+
+      {/* ── Recurring Orders Banner ── */}
+      <div className="bg-jts-navy px-4 py-3 cursor-pointer hover:bg-opacity-90 transition-colors" onClick={() => navigate('/recurring')}>
+        <div className="max-w-md mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-jts-gold rounded-full flex items-center justify-center text-xl shadow-inner">
+              📅
+            </div>
+            <div>
+              <p className="text-white font-bold text-sm tracking-wide">SUBSCRIBE & SAVE TIME</p>
+              <p className="text-gray-300 text-[11px] mt-0.5">Place recurring orders for multiple days</p>
+            </div>
+          </div>
+          <div className="text-jts-gold font-bold text-lg">›</div>
         </div>
       </div>
 
@@ -442,9 +467,19 @@ export default function MenuPage() {
             {/* ── Choviar Section ── */}
             {choviarMenu.length > 0 && (
               <div className="flex flex-col gap-4 mt-2">
-                <div className="flex items-center gap-2 mb-1">
-                  <h2 className="text-2xl font-bold text-gray-800 uppercase" style={{ fontFamily: "'Oswald', Impact, sans-serif" }}>Choviar</h2>
-                  <div className="flex-1 border-b-2 border-gray-300"></div>
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-2 flex-1">
+                    <h2 className="text-2xl font-bold text-gray-800 uppercase" style={{ fontFamily: "'Oswald', Impact, sans-serif" }}>Choviar</h2>
+                    <div className="flex-1 border-b-2 border-gray-300 mr-2"></div>
+                  </div>
+                  <button 
+                    onClick={() => {
+                      choviarMenu.forEach(item => updateQuantity(item.name, 1, item));
+                    }} 
+                    className="text-xs bg-jts-red text-white px-3 py-1.5 rounded-full shadow font-bold hover:bg-jts-crimson active:scale-95 transition-transform shrink-0"
+                  >
+                    + Full Choviar
+                  </button>
                 </div>
                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mt-1 px-4 py-1 flex flex-col">
                   {choviarMenu.map((item, idx) => (

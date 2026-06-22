@@ -942,6 +942,98 @@ function KitchenTab({ password }) {
 }
 
 // ─── AdminPage ─────────────────────────────────────────────────────────────────
+// ─── Manage Users View ────────────────────────────────────────────────────────
+function ManageUsersView({ adminPassword }) {
+  const [phone, setPhone] = useState('');
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const searchOrders = async (e) => {
+    e.preventDefault();
+    if (phone.length !== 10) return setError('Please enter a 10-digit mobile number');
+    
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/orders/manage?phone=${encodeURIComponent(phone)}`, {
+        headers: { 'x-admin-password': adminPassword }
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setOrders(data.orders || []);
+      if (data.orders?.length === 0) setError('No upcoming orders found for this number.');
+    } catch (err) {
+      setError(err.message || 'Failed to fetch orders');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCancel = async (orderId) => {
+    if (!window.confirm('Are you sure you want to cancel this order for the customer?')) return;
+    
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/orders/manage/${encodeURIComponent(orderId)}?phone=${encodeURIComponent(phone)}`, {
+        method: 'DELETE',
+        headers: { 'x-admin-password': adminPassword }
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setOrders(orders.filter(o => o.id !== orderId));
+    } catch (err) {
+      alert(err.message || 'Failed to cancel order');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto p-4 animate-fade-in">
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 mb-6">
+        <h2 className="text-lg font-bold text-gray-800 mb-4">Manage User Orders</h2>
+        <form onSubmit={searchOrders} className="flex gap-2">
+          <input
+            type="tel"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="10-digit Mobile Number"
+            maxLength="10"
+            className="flex-1 px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-jts-red focus:outline-none"
+          />
+          <button type="submit" disabled={loading} className="px-6 py-2 bg-jts-navy text-white font-bold rounded-xl hover:bg-opacity-90">
+            {loading ? '...' : 'Search'}
+          </button>
+        </form>
+        {error && <p className="text-sm text-red-600 mt-2 font-medium">{error}</p>}
+      </div>
+
+      <div className="space-y-3">
+        {orders.map(order => (
+          <div key={order.id} className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 flex justify-between items-center">
+            <div>
+              <p className="font-bold text-gray-800 text-sm mb-1">{order.date}</p>
+              <p className="text-xs text-gray-500 font-medium">Order: #{order.id}</p>
+              <p className="text-xs text-gray-600 mt-1">{order.itemsSummary}</p>
+            </div>
+            <div className="text-right flex flex-col items-end gap-2">
+              <p className="font-extrabold text-jts-red">₹{order.grandTotal}</p>
+              <button
+                onClick={() => handleCancel(order.id)}
+                disabled={loading}
+                className="px-3 py-1 bg-red-50 text-red-600 text-xs font-bold rounded-lg hover:bg-red-100"
+              >
+                Cancel Order
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function AdminPage() {
   const [adminPassword, setAdminPassword] = useState('');
   const [authenticated, setAuthenticated] = useState(false);
@@ -1005,6 +1097,9 @@ export default function AdminPage() {
         {activeTab === 'menu'    && <MenuTab    password={adminPassword} currentMenu={currentMenu} currentMetadata={currentMetadata} />}
         {activeTab === 'orders'  && <OrdersTab  password={adminPassword} />}
         {activeTab === 'kitchen' && <KitchenTab password={adminPassword} />}
+        {activeTab === 'manage' && (
+          <ManageUsersView adminPassword={adminPassword} />
+        )}
       </main>
     </div>
   );

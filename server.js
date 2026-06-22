@@ -126,7 +126,12 @@ function computeServerPrice(itemName, menuItems, metadata) {
 
   // Regular menu item (Lunch / Choviar)
   const item = menuItems.find(m => m.name === itemName);
-  return item ? { price: item.price, category: item.category || 'Lunch' } : null;
+  if (item) return { price: item.price, category: item.category || 'Lunch' };
+
+  // Fallbacks for recurring orders where standard packages might not be in today's menu
+  if (itemName === 'Full Choviar') return { price: 150, category: 'Choviar' }; // Estimated price
+  
+  return null;
 }
 
 /** Determine zone based on pincode */
@@ -598,6 +603,405 @@ app.post('/api/orders', orderLimiter, async (req, res) => {
   }
 });
 
+// ─── Recurring Orders route ───────────────────────────────────────────────────
+app.post('/api/orders/recurring', orderLimiter, express.json(), async (req, res) => {
+  const { customer, items, deliveryDates } = req.body;
+
+  if (!customer || !customer.phone || !customer.pincode) {
+    return res.status(400).json({ error: 'Missing required customer details.' });
+  }
+  if (!Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ error: 'No items in order' });
+  }
+  if (!Array.isArray(deliveryDates) || deliveryDates.length === 0) {
+    return res.status(400).json({ error: 'No delivery dates specified' });
+  }
+
+  // ── Quantity caps (H-4) ───────────────────────────────────────────────────
+  const MAX_QTY_PER_ITEM = 20;
+  const MAX_ROTI_QTY = 200;
+  const MAX_ITEM_TYPES   = 6;
+  if (items.length > MAX_ITEM_TYPES) {
+    return res.status(400).json({ error: `Too many item types. Maximum ${MAX_ITEM_TYPES} allowed per order.` });
+  }
+  for (const item of items) {
+    const qty = parseInt(item.quantity, 10);
+    const limit = item.name === 'Roti' ? MAX_ROTI_QTY : MAX_QTY_PER_ITEM;
+    if (!qty || qty < 1 || qty > limit) {
+      return res.status(400).json({ error: `Invalid quantity for "${item.name}". Must be 1–${limit}.` });
+    }
+  }
+
+  // ── Server-side price validation (C-2) ───────────────────────────────────
+  let menuItems, metadata;
+  try {
+    const sheetsForPricing = USE_MOCK ? null : getSheetsClient();
+    const result = await getMenuForPricing(sheetsForPricing);
+    menuItems = result.menuItems;
+    metadata = result.metadata;
+  } catch (err) {
+    console.error('[INTERNAL] Failed to fetch menu for pricing:', err.message);
+    return res.status(500).json({ error: 'Failed to validate order. Please try again.' });
+  }
+
+  const validatedItems = [];
+  for (const item of items) {
+    const serverData = computeServerPrice(item.name, menuItems, metadata);
+    if (!serverData) {
+      return res.status(400).json({ error: `Unknown or invalid item: "${item.name}"` });
+    }
+    validatedItems.push({ name: item.name, price: serverData.price, quantity: parseInt(item.quantity, 10), category: serverData.category });
+  }
+
+  const zone = getZone(customer.pincode.trim());
+
+  const globalLunchItems = validatedItems.filter(i => i.category !== 'Choviar');
+  const globalChoviarItems = validatedItems.filter(i => i.category === 'Choviar');
+
+  if (USE_MOCK) {
+    return res.json({ success: true, message: 'Mock recurring order placed', totalDays: deliveryDates.length });
+  }
+
+  // ── Real Google Sheets write ──────────────────────────────────────────────
+  try {
+    const sheets = getSheetsClient();
+    
+    const masterRows = [];
+    const dateSheetsMap = {}; // { 'Orders_DD-MM-YYYY': [rows] }
+    const billingSheetsMap = {}; // { 'Billing_MM-YYYY': [rows] }
+
+    const now = new Date();
+    const placementTime = formatTime(now);
+
+    for (const dItem of deliveryDates) {
+      const dateStr = typeof dItem === 'string' ? dItem : dItem.dateStr;
+      const skipLunch = typeof dItem === 'object' && dItem.skipLunch === true;
+      const skipChoviar = typeof dItem === 'object' && dItem.skipChoviar === true;
+      
+      const dailyLunchItems = skipLunch ? [] : globalLunchItems;
+      const dailyChoviarItems = skipChoviar ? [] : globalChoviarItems;
+
+      if (dailyLunchItems.length === 0 && dailyChoviarItems.length === 0) continue;
+
+      const dailyLunchSubtotal = dailyLunchItems.reduce((s, i) => s + i.price * i.quantity, 0);
+      const dailyChoviarSubtotal = dailyChoviarItems.reduce((s, i) => s + i.price * i.quantity, 0);
+      const dailySubtotal = dailyLunchSubtotal + dailyChoviarSubtotal;
+
+      let dailyLunchSurcharge = 0;
+      let dailyChoviarSurcharge = 0;
+
+      if (zone === 'outside') {
+        let lunchOutsideTiffins = dailyLunchItems.filter(i => i.name.includes('Lunch') || i.name.includes('Meal') || i.name.includes('Brunch')).reduce((s, i) => s + i.quantity, 0);
+        if (lunchOutsideTiffins === 0 && dailyLunchItems.length > 0) lunchOutsideTiffins = 1;
+        
+        let choviarOutsideTiffins = dailyChoviarItems.filter(i => i.name.includes('Choviar') || i.name.includes('Meal')).reduce((s, i) => s + i.quantity, 0);
+        if (choviarOutsideTiffins === 0 && dailyChoviarItems.length > 0) choviarOutsideTiffins = 1;
+
+        dailyLunchSurcharge = dailyLunchItems.length > 0 ? 40 * lunchOutsideTiffins : 0;
+        dailyChoviarSurcharge = dailyChoviarItems.length > 0 ? 40 * choviarOutsideTiffins : 0;
+      } else if (zone === 'borivali') {
+        if (dailyLunchItems.length > 0 && dailyLunchSubtotal < 250) dailyLunchSurcharge = 30;
+        if (dailyChoviarItems.length > 0 && dailyChoviarSubtotal < 250) dailyChoviarSurcharge = 30;
+      }
+
+      const dailyTotalSurcharge = dailyLunchSurcharge + dailyChoviarSurcharge;
+      const dailyExactTotal = dailySubtotal + dailyTotalSurcharge;
+      const dailyGrandTotalRounded = Math.round(dailyExactTotal / 5) * 5;
+      const dailyRoundOffAmount = dailyGrandTotalRounded - dailyExactTotal;
+
+      // d is 'DD/MM/YYYY'
+      const dateParts = dateStr.split('/');
+      const dObj = new Date(`${dateParts[2]}-${dateParts[1]}-${dateParts[0]}T00:00:00`);
+      const dateTitle = dateSheetTitle(dObj);
+      const billingTitle = billingSheetTitle(dObj);
+      
+      if (!dateSheetsMap[dateTitle]) dateSheetsMap[dateTitle] = [];
+      if (!billingSheetsMap[billingTitle]) billingSheetsMap[billingTitle] = [];
+
+      const baseOrderId = uuidv4().slice(0, 8).toUpperCase();
+
+      const subOrders = [];
+      let roundOffApplied = false;
+      
+      if (dailyLunchItems.length > 0) {
+        const isFirst = !roundOffApplied;
+        roundOffApplied = true;
+        subOrders.push({
+          orderId: dailyChoviarItems.length > 0 ? `${baseOrderId}-L` : baseOrderId,
+          items: dailyLunchItems,
+          subtotal: dailyLunchSubtotal,
+          surchargeTotal: dailyLunchSurcharge,
+          roundOffAmount: isFirst ? dailyRoundOffAmount : 0,
+          grandTotal: dailyLunchSubtotal + dailyLunchSurcharge + (isFirst ? dailyRoundOffAmount : 0),
+          category: 'Lunch'
+        });
+      }
+
+      if (dailyChoviarItems.length > 0) {
+        const isFirst = !roundOffApplied;
+        roundOffApplied = true;
+        subOrders.push({
+          orderId: dailyLunchItems.length > 0 ? `${baseOrderId}-C` : baseOrderId,
+          items: dailyChoviarItems,
+          subtotal: dailyChoviarSubtotal,
+          surchargeTotal: dailyChoviarSurcharge,
+          roundOffAmount: isFirst ? dailyRoundOffAmount : 0,
+          grandTotal: dailyChoviarSubtotal + dailyChoviarSurcharge + (isFirst ? dailyRoundOffAmount : 0),
+          category: 'Choviar'
+        });
+      }
+
+      for (const sub of subOrders) {
+        const itemsJson = JSON.stringify(sub.items);
+        const itemsSummary = sub.items.map(i => `${i.name}×${i.quantity}`).join(', ');
+
+        masterRows.push([
+          sub.orderId, dateStr, placementTime,
+          customer.name.trim(), customer.phone.trim(),
+          customer.address.trim(), customer.pincode.trim(), zone,
+          itemsSummary, itemsJson, sub.surchargeTotal, sub.grandTotal,
+          '', ''
+        ]);
+
+        for (const item of sub.items) {
+          dateSheetsMap[dateTitle].push([
+            sub.orderId, placementTime,
+            customer.name.trim(), customer.phone.trim(),
+            customer.address.trim(), customer.pincode.trim(), zone,
+            item.name, item.quantity, item.price,
+            0,
+            item.price * item.quantity,
+          ]);
+          billingSheetsMap[billingTitle].push([
+            dateStr, sub.orderId,
+            customer.name.trim(), customer.phone.trim(),
+            item.name, item.quantity, item.price,
+            0,
+            item.price * item.quantity,
+          ]);
+        }
+        
+        if (sub.surchargeTotal > 0) {
+          dateSheetsMap[dateTitle].push([
+            sub.orderId, placementTime,
+            customer.name.trim(), customer.phone.trim(),
+            customer.address.trim(), customer.pincode.trim(), zone,
+            'Delivery Charge', 1, sub.surchargeTotal,
+            0,
+            sub.surchargeTotal,
+          ]);
+          billingSheetsMap[billingTitle].push([
+            dateStr, sub.orderId,
+            customer.name.trim(), customer.phone.trim(),
+            'Delivery Charge', 1, sub.surchargeTotal,
+            0,
+            sub.surchargeTotal,
+          ]);
+        }
+
+        if (sub.roundOffAmount && sub.roundOffAmount !== 0) {
+          dateSheetsMap[dateTitle].push([
+            sub.orderId, placementTime,
+            customer.name.trim(), customer.phone.trim(),
+            customer.address.trim(), customer.pincode.trim(), zone,
+            'Round Off', 1, sub.roundOffAmount,
+            0,
+            sub.roundOffAmount,
+          ]);
+          billingSheetsMap[billingTitle].push([
+            dateStr, sub.orderId,
+            customer.name.trim(), customer.phone.trim(),
+            'Round Off', 1, sub.roundOffAmount,
+            0,
+            sub.roundOffAmount,
+          ]);
+        }
+      }
+    }
+
+    // Append to Orders master
+    await sheets.spreadsheets.values.append({
+      spreadsheetId: SPREADSHEET_ID,
+      range: 'Orders!A:N',
+      valueInputOption: 'USER_ENTERED',
+      resource: { values: masterRows },
+    });
+
+    // Append to datewise sheets
+    for (const [title, rows] of Object.entries(dateSheetsMap)) {
+      await ensureSheet(sheets, SPREADSHEET_ID, title, [
+        'Order ID', 'Time', 'Name', 'Phone', 'Address', 'Pincode', 'Zone',
+        'Item Name', 'Qty', 'Unit Price', 'Surcharge Per Item', 'Item Total',
+      ]);
+      await sheets.spreadsheets.values.append({
+        spreadsheetId: SPREADSHEET_ID,
+        range: `'${title}'!A:L`,
+        valueInputOption: 'USER_ENTERED',
+        resource: { values: rows },
+      });
+    }
+
+    // Append to billing sheets
+    for (const [title, rows] of Object.entries(billingSheetsMap)) {
+      await ensureSheet(sheets, SPREADSHEET_ID, title, [
+        'Date', 'Order ID', 'Name', 'Phone', 'Item', 'Qty', 'Unit Price', 'Surcharge', 'Total',
+      ]);
+      await sheets.spreadsheets.values.append({
+        spreadsheetId: SPREADSHEET_ID,
+        range: `'${title}'!A:I`,
+        valueInputOption: 'USER_ENTERED',
+        resource: { values: rows },
+      });
+    }
+
+    // Update CustomerData
+    const custResponse = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: 'CustomerData!A2:I',
+    });
+    const custRows = custResponse.data.values || [];
+    const custMatchIdx = custRows.findIndex(
+      row => (row[1] || '').trim() === customer.phone.trim() &&
+             (row[7] || '').trim() === customer.pincode.trim()
+    );
+    // Use the last delivery date as lastOrderDate
+    const lastDateObj = deliveryDates[deliveryDates.length - 1];
+    const lastDateStr = typeof lastDateObj === 'object' ? lastDateObj.dateStr : lastDateObj;
+    const newCustRow = [
+      customer.name.trim(), customer.phone.trim(),
+      customer.wingFlat.trim(), customer.building.trim(),
+      customer.street.trim(), (customer.landmark || '').trim(),
+      customer.locality.trim(), customer.pincode.trim(), lastDateStr,
+    ];
+    if (custMatchIdx >= 0) {
+      const sheetRow = custMatchIdx + 2;
+      await sheets.spreadsheets.values.update({
+        spreadsheetId: SPREADSHEET_ID,
+        range: `CustomerData!A${sheetRow}:I${sheetRow}`,
+        valueInputOption: 'USER_ENTERED',
+        resource: { values: [newCustRow] },
+      });
+    } else {
+      await sheets.spreadsheets.values.append({
+        spreadsheetId: SPREADSHEET_ID,
+        range: 'CustomerData!A:I',
+        valueInputOption: 'USER_ENTERED',
+        resource: { values: [newCustRow] },
+      });
+    }
+
+    res.json({ 
+      success: true, 
+      totalDays: deliveryDates.length
+    });
+  } catch (err) {
+    console.error('Error placing recurring order:', err.message);
+    res.status(500).json({ error: 'Failed to place recurring order. Please try again.' });
+  }
+});
+
+// ─── My Orders / Manage Orders routes ──────────────────────────────────────────
+
+app.get('/api/orders/manage', async (req, res) => {
+  const { phone } = req.query;
+  if (!phone || phone.length !== 10) {
+    return res.status(400).json({ error: 'Valid 10-digit phone number is required' });
+  }
+
+  try {
+    const sheets = getSheetsClient();
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: 'Orders!A2:N',
+    });
+
+    const rows = response.data.values || [];
+    const userOrders = [];
+
+    const now = new Date();
+    // Normalize today's date to midnight for comparison
+    const todayStr = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
+    const todayObj = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const rowPhone = (row[4] || '').trim();
+      const status = (row[13] || '').trim().toUpperCase(); // Route Order column is used for status/cancellations? Wait, let's use a new column or just mark row[13] as CANCELLED.
+      
+      if (rowPhone === phone && status !== 'CANCELLED') {
+        const orderDateStr = row[1]; // DD/MM/YYYY
+        if (!orderDateStr) continue;
+
+        const parts = orderDateStr.split('/');
+        if (parts.length === 3) {
+          const orderDateObj = new Date(parseInt(parts[2], 10), parseInt(parts[1], 10) - 1, parseInt(parts[0], 10));
+          
+          // Only show today or future orders
+          if (orderDateObj >= todayObj) {
+            userOrders.push({
+              id: row[0], // Order ID
+              date: orderDateStr,
+              itemsSummary: row[8],
+              grandTotal: row[11],
+              rowNumber: i + 2, // Excel row number (1-indexed + header)
+              canCancel: orderDateObj > todayObj // Cannot cancel today's order
+            });
+          }
+        }
+      }
+    }
+
+    res.json({ success: true, orders: userOrders });
+  } catch (err) {
+    console.error('Error fetching orders:', err);
+    res.status(500).json({ error: 'Failed to fetch orders' });
+  }
+});
+
+app.delete('/api/orders/manage/:orderId', async (req, res) => {
+  const { orderId } = req.params;
+  const { phone } = req.query;
+
+  if (!orderId || !phone) {
+    return res.status(400).json({ error: 'Order ID and Phone are required' });
+  }
+
+  try {
+    const sheets = getSheetsClient();
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: 'Orders!A2:N',
+    });
+
+    const rows = response.data.values || [];
+    let targetRowIdx = -1;
+
+    for (let i = 0; i < rows.length; i++) {
+      if (rows[i][0] === orderId && (rows[i][4] || '').trim() === phone) {
+        targetRowIdx = i + 2;
+        break;
+      }
+    }
+
+    if (targetRowIdx === -1) {
+      return res.status(404).json({ error: 'Order not found or unauthorized' });
+    }
+
+    // Cancel by writing 'CANCELLED' to column N (Route Order)
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `Orders!N${targetRowIdx}`,
+      valueInputOption: 'USER_ENTERED',
+      resource: { values: [['CANCELLED']] }
+    });
+
+    res.json({ success: true, message: 'Order cancelled successfully' });
+  } catch (err) {
+    console.error('Error cancelling order:', err);
+    res.status(500).json({ error: 'Failed to cancel order' });
+  }
+});
+
 // ─── Admin routes ─────────────────────────────────────────────────────────────
 
 function requireAdmin(req, res, next) {
@@ -642,7 +1046,7 @@ app.get('/api/admin/orders', adminLimiter, requireAdmin, async (req, res) => {
       grandTotal:     parseFloat(row[11]) || 0,
       deliveryPerson: row[12] || '',
       routeOrder:     row[13] || '',
-    }));
+    })).filter(o => o.routeOrder !== 'CANCELLED');
 
     if (date)  orders = orders.filter(o => o.date === date);
     if (month) orders = orders.filter(o => (o.date || '').endsWith(month));
@@ -825,7 +1229,7 @@ app.get('/api/admin/kitchen', adminLimiter, requireAdmin, async (req, res) => {
         spreadsheetId: SPREADSHEET_ID,
         range: 'Orders!A2:N',
       });
-      const rows = (response.data.values || []).filter(row => (row[1] || '') === date);
+      const rows = (response.data.values || []).filter(row => (row[1] || '') === date && (row[13] || '') !== 'CANCELLED');
       orders = rows.map(row => ({
         orderId: row[0],
         name: row[3] || '',
@@ -918,9 +1322,10 @@ app.get('/api/delivery/orders', publicLimiter, async (req, res) => {
       const row = rows[i];
       const date = row[1] || '';
       const deliveryPerson = row[12] || '';
-      const routeOrder = parseInt(row[13], 10) || 999;
+      const routeOrderVal = row[13] || '';
+      const routeOrder = parseInt(routeOrderVal, 10) || 999;
       
-      if (date === today && deliveryPerson.trim().length > 0) {
+      if (date === today && deliveryPerson.trim().length > 0 && routeOrderVal !== 'CANCELLED') {
         const nameEn = row[3] || '';
         const phone = row[4] || '';
         const addressEn = row[5] || '';

@@ -6,6 +6,9 @@ import ConfirmationPage from './components/ConfirmationPage';
 import AdminPage from './components/AdminPage';
 import DeliveryPage from './components/DeliveryPage';
 
+import RecurringPage from './components/RecurringPage';
+import MyOrdersPage from './components/MyOrdersPage';
+
 // ─── Cart Context ─────────────────────────────────────────────────────────────
 export const CartContext = createContext(null);
 
@@ -134,6 +137,8 @@ export default function App() {
           <Route path="/confirmation" element={<ConfirmationPage />} />
           <Route path="/admin"        element={<AdminPage />} />
           <Route path="/delivery"     element={<DeliveryPage />} />
+          <Route path="/recurring"    element={<RecurringPage />} />
+          <Route path="/my-orders"    element={<MyOrdersPage />} />
         </Routes>
       </Router>
     </CartContext.Provider>
