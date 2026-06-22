@@ -1343,7 +1343,8 @@ app.get('/api/delivery/orders', publicLimiter, async (req, res) => {
           deliveryPerson: deliveryPerson,
           routeOrder: routeOrder,
           paymentReceived: (row[14] || '').toLowerCase() === 'yes',
-          paymentMethod: row[15] || 'Cash'
+          paymentMethod: row[15] || 'Cash',
+          amountReceived: row[16] || ''
         });
       }
     }
@@ -1358,7 +1359,7 @@ app.get('/api/delivery/orders', publicLimiter, async (req, res) => {
 
 // PUT /api/delivery/orders/payment
 app.put('/api/delivery/orders/payment', publicLimiter, express.json(), async (req, res) => {
-  const { rowIndex, paymentReceived, paymentMethod } = req.body;
+  const { rowIndex, paymentReceived, paymentMethod, amountReceived } = req.body;
   if (!rowIndex) return res.status(400).json({ error: 'rowIndex required' });
 
   try {
@@ -1366,10 +1367,10 @@ app.put('/api/delivery/orders/payment', publicLimiter, express.json(), async (re
       const sheets = getSheetsClient();
       await sheets.spreadsheets.values.update({
         spreadsheetId: SPREADSHEET_ID,
-        range: `Orders!O${rowIndex}:P${rowIndex}`,
+        range: `Orders!O${rowIndex}:Q${rowIndex}`,
         valueInputOption: 'USER_ENTERED',
         resource: {
-          values: [[paymentReceived ? 'Yes' : 'No', paymentMethod || 'Cash']]
+          values: [[paymentReceived ? 'Yes' : 'No', paymentMethod || 'Cash', amountReceived !== undefined ? String(amountReceived) : '']]
         }
       });
     }

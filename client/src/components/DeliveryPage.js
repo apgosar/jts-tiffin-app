@@ -1,67 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
-
-function SwipeButton({ isCompleted, onComplete }) {
-  const [sliderPos, setSliderPos] = useState(4);
-  const containerRef = useRef(null);
-
-  const handleTouchMove = (e) => {
-    if (isCompleted) return;
-    const container = containerRef.current;
-    if (!container) return;
-    
-    const touch = e.touches[0];
-    const rect = container.getBoundingClientRect();
-    let newPos = touch.clientX - rect.left - 24;
-    
-    const maxPos = rect.width - 52;
-    if (newPos < 4) newPos = 4;
-    if (newPos > maxPos) newPos = maxPos;
-    
-    setSliderPos(newPos);
-  };
-
-  const handleTouchEnd = () => {
-    if (isCompleted) return;
-    const container = containerRef.current;
-    if (!container) return;
-    
-    const maxPos = container.getBoundingClientRect().width - 52;
-    if (sliderPos > maxPos * 0.7) {
-      setSliderPos(maxPos);
-      onComplete();
-    } else {
-      setSliderPos(4);
-    }
-  };
-
-  useEffect(() => {
-    if (!isCompleted) setSliderPos(4);
-  }, [isCompleted]);
-
-  return (
-    <div 
-      ref={containerRef}
-      className={`relative h-14 rounded-full overflow-hidden flex items-center transition-colors shadow-inner ${
-        isCompleted ? 'bg-green-500' : 'bg-gray-200'
-      }`}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
-    >
-      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-        <span className={`font-extrabold text-base ${isCompleted ? 'text-white' : 'text-gray-500'} ml-6`}>
-          {isCompleted ? 'पेमेंट प्राप्त (Received)' : 'Swipe to Complete ➔'}
-        </span>
-      </div>
-      
-      <div 
-        className={`absolute top-1 bottom-1 w-12 rounded-full shadow-md flex items-center justify-center transition-all ${isCompleted ? 'bg-white text-green-500' : 'bg-white text-gray-400 duration-150 ease-out'}`}
-        style={{ left: isCompleted ? 'calc(100% - 52px)' : sliderPos + 'px' }}
-      >
-        <span className="text-xl font-bold">{isCompleted ? '✓' : '➔'}</span>
-      </div>
-    </div>
-  );
-}
+import React, { useState, useEffect } from 'react';
 
 function DeliveryPage() {
   const [orders, setOrders] = useState([]);
@@ -81,7 +18,6 @@ function DeliveryPage() {
       const data = await res.json();
       setOrders(data.orders || []);
       
-      // Group to find distinct riders
       const riders = [...new Set((data.orders || []).map(o => o.deliveryPerson))];
       if (riders.length > 0) {
         setActiveTab(riders[0]);
@@ -94,13 +30,13 @@ function DeliveryPage() {
     }
   };
 
-  const handlePaymentChange = async (rowIndex, orderId, paymentReceived, paymentMethod) => {
+  const handlePaymentChange = async (rowIndex, orderId, paymentReceived, paymentMethod, amountReceived) => {
     setSavingOrderId(orderId);
     
     // Optimistic update
     setOrders(prev => prev.map(o => 
       o.rowIndex === rowIndex 
-        ? { ...o, paymentReceived, paymentMethod }
+        ? { ...o, paymentReceived, paymentMethod, amountReceived }
         : o
     ));
 
@@ -108,18 +44,46 @@ function DeliveryPage() {
       const res = await fetch('/api/delivery/orders/payment', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rowIndex, paymentReceived, paymentMethod })
+        body: JSON.stringify({ rowIndex, paymentReceived, paymentMethod, amountReceived })
       });
       if (!res.ok) throw new Error('Failed to save');
     } catch (err) {
       alert('सेव करने में त्रुटि (Error saving). कृपया पुनः प्रयास करें।');
-      // Revert if error
       fetchOrders();
     } finally {
       setTimeout(() => {
         setSavingOrderId(null);
-      }, 1000); // Keep 'Saving...' / 'Saved' visible briefly
+      }, 1000);
     }
+  };
+
+  const handleLocalAmountChange = (orderId, newAmount) => {
+    // Only whole numbers or empty
+    if (newAmount && !/^\d+$/.test(newAmount)) return;
+    
+    setOrders(prev => prev.map(o => 
+      o.orderId === orderId 
+        ? { ...o, amountReceived: newAmount }
+        : o
+    ));
+  };
+
+  const handleAmountBlur = (order) => {
+    // Save amount when input loses focus
+    handlePaymentChange(order.rowIndex, order.orderId, order.paymentReceived, order.paymentMethod, order.amountReceived);
+  };
+
+  const handleCheckboxToggle = (order) => {
+    const isNowChecked = !order.paymentReceived;
+    // Default amountReceived to receivable amount if checking, unless it's already set
+    let newAmountReceived = order.amountReceived;
+    if (isNowChecked && (!newAmountReceived || newAmountReceived === '')) {
+      newAmountReceived = order.amount.toString();
+    } else if (!isNowChecked) {
+      // Clear amount if unchecking
+      newAmountReceived = '';
+    }
+    handlePaymentChange(order.rowIndex, order.orderId, isNowChecked, order.paymentMethod, newAmountReceived);
   };
 
   if (loading) return (
@@ -139,26 +103,33 @@ function DeliveryPage() {
     .filter(o => o.deliveryPerson === activeTab)
     .sort((a, b) => a.routeOrder - b.routeOrder);
 
+  const todayStr = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  
+  const totalCash = activeOrders.reduce((sum, order) => {
+    if (order.paymentReceived && order.paymentMethod === 'Cash' && order.amountReceived) {
+      return sum + parseInt(order.amountReceived, 10);
+    }
+    return sum;
+  }, 0);
+
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
-      {/* Header */}
       <header className="bg-jts-red text-white p-4 sticky top-0 z-10 shadow-md">
         <h1 className="text-2xl font-bold text-center" style={{ fontFamily: "'Oswald', sans-serif" }}>
           JTS Delivery Portal
         </h1>
         <p className="text-center text-red-200 text-xs mt-1 font-medium tracking-wide">
-          Showing Orders for: Delivery Date ({new Date().toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })})
+          Delivery Date: {todayStr}
         </p>
       </header>
 
-      {/* Rider Tabs */}
-      {riders.length > 0 ? (
-        <div className="flex overflow-x-auto bg-white shadow-sm hide-scrollbar sticky top-16 z-10">
+      {riders.length > 0 && (
+        <div className="flex overflow-x-auto bg-white shadow-sm hide-scrollbar sticky top-[68px] z-10">
           {riders.map(rider => (
             <button
               key={rider}
               onClick={() => setActiveTab(rider)}
-              className={`flex-1 min-w-[120px] py-4 text-center font-bold text-lg border-b-4 transition-colors ${
+              className={`flex-1 min-w-[120px] py-3 text-center font-bold text-lg border-b-4 transition-colors ${
                 activeTab === rider 
                   ? 'border-jts-red text-jts-red bg-red-50' 
                   : 'border-transparent text-gray-500 hover:bg-gray-50'
@@ -168,112 +139,118 @@ function DeliveryPage() {
             </button>
           ))}
         </div>
-      ) : (
+      )}
+
+      {riders.length > 0 && (
+        <div className="bg-green-100 text-green-900 px-4 py-3 text-center font-bold text-lg shadow-sm border-b border-green-200 sticky top-[118px] z-10">
+          Total Cash Received : ₹{totalCash}
+        </div>
+      )}
+
+      {riders.length === 0 && (
         <div className="p-8 text-center text-gray-500 font-bold text-lg">
           आज के लिए कोई ऑर्डर असाइन नहीं किया गया है।
         </div>
       )}
 
-      {/* Orders List */}
-      <div className="p-4 space-y-4 max-w-lg mx-auto">
-        {activeOrders.map((order, idx) => (
-          <div 
-            key={order.orderId} 
-            className={`bg-white rounded-2xl shadow-sm border-2 overflow-hidden transition-all ${
-              order.paymentReceived ? 'border-green-400 bg-green-50/30' : 'border-gray-200'
-            }`}
-          >
-            {/* Header (Route Order & Status) */}
-            <div className={`px-4 py-2 flex justify-between items-center ${order.paymentReceived ? 'bg-green-100' : 'bg-gray-100'}`}>
-              <span className="font-extrabold text-gray-800 text-lg">
-                # {order.routeOrder}
-              </span>
-              <span className="text-sm font-bold">
-                {savingOrderId === order.orderId ? (
-                  <span className="text-blue-600 animate-pulse">Saving...</span>
-                ) : order.paymentReceived ? (
-                  <span className="text-green-700 flex items-center gap-1">✅ Saved</span>
-                ) : (
-                  <span className="text-gray-500">Pending</span>
-                )}
-              </span>
-            </div>
-
-            <div className="p-4 space-y-3">
-              {/* Hindi Details */}
-              <div>
-                <p className="text-sm text-gray-500 font-bold">नाम</p>
-                <div className="flex justify-between items-start gap-2">
-                  <div>
-                    <p className="text-xl font-bold text-gray-900">{order.name}</p>
-                    <p className="text-sm font-semibold text-gray-600 mt-0.5">{order.phone}</p>
-                  </div>
-                  {order.phone && (
-                    <a 
-                      href={`tel:${order.phone}`}
-                      className="bg-jts-red text-white text-xs font-bold px-3 py-1.5 rounded-lg whitespace-nowrap shadow-sm active:scale-95 transition-transform"
-                    >
-                      📞 कॉल करें (Call)
-                    </a>
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <p className="text-sm text-gray-500 font-bold">पता</p>
-                <p className="text-lg font-medium text-gray-800 leading-tight">{order.address}</p>
-              </div>
-
-              <div>
-                <p className="text-sm text-gray-500 font-bold">रकम (Amount)</p>
-                <p className="text-2xl font-extrabold text-jts-red">₹{order.amount}/-</p>
-              </div>
-
-              <hr className="border-gray-200 my-3" />
-
-              {/* Payment Actions */}
-              <div className="space-y-4">
-                <div className="flex gap-4 items-center bg-gray-50 p-3 rounded-xl border border-gray-100">
-                  <label className="flex items-center gap-2 cursor-pointer font-bold text-lg text-gray-700">
-                    <input 
-                      type="radio" 
-                      name={`payment-method-${order.orderId}`} 
-                      checked={order.paymentMethod === 'Cash'}
-                      onChange={() => handlePaymentChange(order.rowIndex, order.orderId, order.paymentReceived, 'Cash')}
-                      className="w-5 h-5 text-jts-red focus:ring-jts-red"
-                    />
-                    Cash
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer font-bold text-lg text-gray-700">
-                    <input 
-                      type="radio" 
-                      name={`payment-method-${order.orderId}`} 
-                      checked={order.paymentMethod === 'GPay'}
-                      onChange={() => handlePaymentChange(order.rowIndex, order.orderId, order.paymentReceived, 'GPay')}
-                      className="w-5 h-5 text-jts-red focus:ring-jts-red"
-                    />
-                    GPay
-                  </label>
-                </div>
-
-                <SwipeButton 
-                  isCompleted={order.paymentReceived} 
-                  onComplete={() => handlePaymentChange(order.rowIndex, order.orderId, true, order.paymentMethod)} 
-                />
-                
-                {order.paymentReceived && (
-                  <button 
-                    onClick={() => handlePaymentChange(order.rowIndex, order.orderId, false, order.paymentMethod)}
-                    className="w-full py-2 text-center text-sm font-bold text-gray-400 hover:text-gray-600 underline mt-2"
-                  >
-                    Undo (गलती से हो गया?)
-                  </button>
-                )}
-              </div>
-
-            </div>
+      <div className="p-2 mx-auto max-w-4xl mt-2">
+        {activeOrders.length > 0 && (
+          <div className="overflow-x-auto bg-white rounded-xl shadow-sm border border-gray-300">
+            <table className="w-full text-xs text-left border-collapse">
+              <thead className="bg-gray-100 border-b border-gray-300 text-gray-800 uppercase tracking-wider">
+                <tr>
+                  <th className="border-r border-gray-300 px-1 py-2 text-center w-8">#</th>
+                  <th className="border-r border-gray-300 px-2 py-2 w-1/3">Details</th>
+                  <th className="border-r border-gray-300 px-1 py-2 text-center w-12">Amt</th>
+                  <th className="px-1 py-2 text-center">Collection</th>
+                </tr>
+              </thead>
+              <tbody>
+                {activeOrders.map(order => (
+                  <tr key={order.orderId} className={`border-b border-gray-300 transition ${order.paymentReceived ? 'bg-green-50/50' : 'hover:bg-gray-50'}`}>
+                    <td className="border-r border-gray-300 px-1 py-2 text-center align-middle font-bold text-gray-700">
+                      {order.routeOrder}
+                    </td>
+                    <td className="border-r border-gray-300 px-2 py-2 align-middle">
+                      <div className="flex justify-between items-start gap-1 mb-1">
+                        <div className="font-bold text-gray-900 text-sm">{order.name}</div>
+                        {order.phone && (
+                          <a 
+                            href={`tel:${order.phone}`}
+                            className="bg-jts-red text-white text-[10px] font-bold px-2 py-1 rounded shadow-sm whitespace-nowrap"
+                          >
+                            📞 Call
+                          </a>
+                        )}
+                      </div>
+                      <div className="text-xs text-gray-700 leading-snug break-words">
+                        {order.address}
+                      </div>
+                    </td>
+                    <td className="border-r border-gray-300 px-2 py-2 text-center align-middle font-black text-jts-red text-base">
+                      ₹{order.amount}
+                    </td>
+                    <td className="px-2 py-2 align-middle">
+                      {savingOrderId === order.orderId && <div className="text-[10px] text-blue-600 font-bold mb-1 animate-pulse text-right">Saving...</div>}
+                      <div className="flex flex-col gap-2">
+                        {/* Status Checkbox */}
+                        <label className="flex items-center gap-2 cursor-pointer bg-white border border-gray-200 rounded p-1.5 hover:border-gray-300 shadow-sm">
+                          <input 
+                            type="checkbox" 
+                            checked={order.paymentReceived}
+                            onChange={() => handleCheckboxToggle(order)}
+                            className="w-5 h-5 text-green-600 rounded border-gray-300 focus:ring-green-500"
+                          />
+                          <span className={`font-bold ${order.paymentReceived ? 'text-green-700' : 'text-gray-600'}`}>
+                            {order.paymentReceived ? 'Received ✅' : 'Pending'}
+                          </span>
+                        </label>
+                        
+                        {/* Method & Amount Input */}
+                        <div className="flex flex-wrap items-center gap-2 mt-1">
+                          <div className="flex items-center gap-3 bg-gray-50 px-2 py-1 rounded border border-gray-200">
+                            <label className="flex items-center gap-1 cursor-pointer">
+                              <input 
+                                type="radio" 
+                                name={`method-${order.orderId}`} 
+                                checked={order.paymentMethod === 'Cash'}
+                                onChange={() => handlePaymentChange(order.rowIndex, order.orderId, order.paymentReceived, 'Cash', order.amountReceived)}
+                                className="w-3.5 h-3.5 text-jts-red focus:ring-jts-red"
+                              />
+                              <span className="text-[11px] font-bold text-gray-700">Cash</span>
+                            </label>
+                            <label className="flex items-center gap-1 cursor-pointer">
+                              <input 
+                                type="radio" 
+                                name={`method-${order.orderId}`} 
+                                checked={order.paymentMethod === 'GPay'}
+                                onChange={() => handlePaymentChange(order.rowIndex, order.orderId, order.paymentReceived, 'GPay', order.amountReceived)}
+                                className="w-3.5 h-3.5 text-jts-red focus:ring-jts-red"
+                              />
+                              <span className="text-[11px] font-bold text-gray-700">GPay</span>
+                            </label>
+                          </div>
+                          
+                          <div className="flex items-center gap-1 ml-auto">
+                            <span className="text-[10px] font-bold text-gray-500 uppercase">Amt</span>
+                            <input 
+                              type="text"
+                              value={order.amountReceived || ''}
+                              onChange={(e) => handleLocalAmountChange(order.orderId, e.target.value)}
+                              onBlur={() => handleAmountBlur(order)}
+                              placeholder="₹"
+                              className="w-16 px-1.5 py-1 text-sm font-bold text-center border border-gray-300 rounded focus:outline-none focus:border-jts-red"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        ))}
+        )}
       </div>
     </div>
   );
