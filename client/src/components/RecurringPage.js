@@ -17,7 +17,7 @@ export default function RecurringPage() {
     building: '',
     street: '',
     landmark: '',
-    locality: 'Borivali',
+    locality: '',
     pincode: ''
   });
 
@@ -95,7 +95,7 @@ export default function RecurringPage() {
         building: p.building || '',
         street: p.street || '',
         landmark: p.landmark || '',
-        locality: p.locality || 'Borivali',
+        locality: p.locality || '',
         pincode: p.pincode || ''
       }));
     } else {
@@ -133,7 +133,7 @@ export default function RecurringPage() {
   const handleNext = () => {
     setError(null);
     if (step === 1) {
-      if (!form.name || !form.phone || !form.wingFlat || !form.building || !form.street || !form.pincode) {
+      if (!form.name || !form.phone || !form.wingFlat || !form.building || !form.street || !form.locality || !form.pincode) {
         return setError('Please fill all required fields');
       }
       if (form.phone.length !== 10) return setError('Please enter a valid 10-digit mobile number');
@@ -181,6 +181,10 @@ export default function RecurringPage() {
       items.push({ name: 'Full Lunch', quantity: 1 });
     } else if (selectedItems.lunch === 'Family Meal') {
       items.push({ name: 'Family Meal', quantity: 1 });
+    } else if (selectedItems.lunch === 'Mini Lunch') {
+      items.push({ name: 'Mini Lunch', quantity: 1 });
+    } else if (selectedItems.lunch === 'Brunch') {
+      items.push({ name: 'Brunch', quantity: 1 });
     }
     
     if (selectedItems.choviar) {
@@ -382,15 +386,19 @@ export default function RecurringPage() {
                       <label className="block text-xs font-bold text-gray-500 mb-1">Street / Area *</label>
                       <input type="text" value={form.street} onChange={handleFormChange('street')} placeholder="Street name" className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-jts-red focus:outline-none" />
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-2 gap-3 mb-3">
                       <div>
                         <label className="block text-xs font-bold text-gray-500 mb-1">Landmark</label>
                         <input type="text" value={form.landmark} onChange={handleFormChange('landmark')} placeholder="Optional" className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-jts-red focus:outline-none" />
                       </div>
                       <div>
-                        <label className="block text-xs font-bold text-gray-500 mb-1">Pincode *</label>
-                        <input type="text" value={form.pincode} onChange={handleFormChange('pincode')} placeholder="e.g. 400092" maxLength="6" className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-jts-red focus:outline-none" />
+                        <label className="block text-xs font-bold text-gray-500 mb-1">Locality *</label>
+                        <input type="text" value={form.locality} onChange={handleFormChange('locality')} placeholder="e.g. Borivali West" className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-jts-red focus:outline-none" />
                       </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-gray-500 mb-1">Pincode *</label>
+                      <input type="text" value={form.pincode} onChange={handleFormChange('pincode')} placeholder="e.g. 400092" maxLength="6" className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-jts-red focus:outline-none" />
                     </div>
                   </div>
                 </>
@@ -445,6 +453,8 @@ export default function RecurringPage() {
                 </div>
                 <div className="p-2 space-y-2">
                   {[
+                    { id: 'Mini Lunch', name: 'Mini Lunch', desc: '3 Roti, Sabji, Dal, Rice, Salad/Sweet/Farsan' },
+                    { id: 'Brunch', name: 'Brunch', desc: '6 Roti, Sabji, 1/2 Dal, 1/2 Rice, Salad/Sweet/Farsan' },
                     { id: 'Full Lunch', name: 'Full Lunch', desc: '6 Roti, Sabji, Dal, Rice, Salad/Sweet/Farsan' },
                     { id: 'Family Meal', name: 'Family Meal', desc: '9 Roti, Sabji, Dal, Rice, Salad/Sweet/Farsan' }
                   ].map(opt => (

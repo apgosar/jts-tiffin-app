@@ -44,7 +44,7 @@ function DeliveryPage() {
       const res = await fetch('/api/delivery/orders/payment', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rowIndex, paymentReceived, paymentMethod, amountReceived })
+        body: JSON.stringify({ rowIndex, orderId, paymentReceived, paymentMethod, amountReceived })
       });
       if (!res.ok) throw new Error('Failed to save');
     } catch (err) {
