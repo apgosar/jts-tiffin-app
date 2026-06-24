@@ -128,18 +128,18 @@ function OrderModal({ order, onClose }) {
 
 // ─── Tab 1: Tomorrow's Menu ────────────────────────────────────────────────────
 const TIFFIN_DEFAULTS = [
-  { name: 'Mini Lunch',   description: '3 Roti, Sabji, Dal, Rice, Salad / Sweet / Namkeen / Farsan', price: 140, available: true, category: 'Lunch' },
+  { name: 'Mini Lunch',   description: '3 Roti, 1/2 Sabji, 1/2 Dal, 1/2 Rice, Salad / Sweet / Namkeen / Farsan', price: 140, available: true, category: 'Lunch' },
   { name: 'Brunch',       description: '6 Roti, Sabji, 1/2 Dal, 1/2 Rice, Salad / Sweet / Namkeen / Farsan', price: 180, available: true, category: 'Lunch' },
   { name: 'Full Lunch',   description: '6 Roti, Sabji, Dal, Rice, Salad / Sweet / Namkeen / Farsan', price: 220, available: true, category: 'Lunch' },
-  { name: 'Family Meal',  description: '9 Roti, 1.5 Sabji, 1.5 Dal, Rice, Salad / Sweet / Namkeen / Farsan', price: 320, available: true, category: 'Lunch' },
+  { name: 'Family Meal',  description: '9 Roti, 1.5 Sabji, 1.5 Dal, 1.5 Rice, Salad / Sweet / Namkeen / Farsan', price: 320, available: true, category: 'Lunch' },
   { name: 'Choviar Special', description: 'Ragdo, 4 Kelawada, Dal Khichdi', price: 160, available: true, category: 'Choviar' },
 ];
 
 function MenuTab({ password, currentMenu, currentMetadata }) {
   const [items, setItems]       = useState(currentMenu.length > 0 ? currentMenu : TIFFIN_DEFAULTS);
   const [metadata, setMetadata] = useState({
-    sabji: '', sweet: '', dal: '', farsan: '',
-    rotiPrice: '8', ricePrice: '30',
+    sabji: '', sweet: '', dal: '', farsan: '', rice: '',
+    rotiPrice: '8', riceHalfPrice: '15', riceFullPrice: '30',
     sabjiHalfPrice: '25', sabjiFullPrice: '50',
     dalHalfPrice: '25', dalFullPrice: '50',
     farsanPrice: '0', farsanAvailable: 'No',
@@ -155,10 +155,10 @@ function MenuTab({ password, currentMenu, currentMetadata }) {
       setItems(currentMenu);
     } else {
       setItems([
-        { name: 'Mini Lunch',  description: '3 Roti, Sabji, Dal, Rice, Salad / Sweet / Namkeen / Farsan', price: 140, available: true, category: 'Lunch' },
+        { name: 'Mini Lunch',  description: '3 Roti, 1/2 Sabji, 1/2 Dal, 1/2 Rice, Salad / Sweet / Namkeen / Farsan', price: 140, available: true, category: 'Lunch' },
         { name: 'Brunch',      description: '6 Roti, Sabji, 1/2 Dal, 1/2 Rice, Salad / Sweet / Namkeen / Farsan', price: 180, available: true, category: 'Lunch' },
         { name: 'Full Lunch',  description: '6 Roti, Sabji, Dal, Rice, Salad / Sweet / Namkeen / Farsan', price: 220, available: true, category: 'Lunch' },
-        { name: 'Family Meal', description: '9 Roti, 1.5 Sabji, 1.5 Dal, Rice, Salad / Sweet / Namkeen / Farsan', price: 320, available: true, category: 'Lunch' },
+        { name: 'Family Meal', description: '9 Roti, 1.5 Sabji, 1.5 Dal, 1.5 Rice, Salad / Sweet / Namkeen / Farsan', price: 320, available: true, category: 'Lunch' },
         { name: 'Choviar Special', description: 'Ragdo, 4 Kelawada, Dal Khichdi', price: 160, available: true, category: 'Choviar' },
       ]);
     }
@@ -183,10 +183,10 @@ function MenuTab({ password, currentMenu, currentMetadata }) {
       if (item.category !== 'Lunch') return item;
       
       let base = '';
-      if (item.name === 'Mini Lunch') base = '3 Roti, Sabji, Dal, Rice';
+      if (item.name === 'Mini Lunch') base = '3 Roti, 1/2 Sabji, 1/2 Dal, 1/2 Rice';
       else if (item.name === 'Brunch') base = '6 Roti, Sabji, 1/2 Dal, 1/2 Rice';
       else if (item.name === 'Full Lunch') base = '6 Roti, Sabji, Dal, Rice';
-      else if (item.name === 'Family Meal') base = '9 Roti, 1.5 Sabji, 1.5 Dal, Rice';
+      else if (item.name === 'Family Meal') base = '9 Roti, 1.5 Sabji, 1.5 Dal, 1.5 Rice';
       else return item;
       
       return { ...item, description: base + suffix };
@@ -212,10 +212,10 @@ function MenuTab({ password, currentMenu, currentMetadata }) {
     const suffix = addons.length > 0 ? ', ' + addons.join(' / ') : '';
 
     setItems([
-      { name: 'Mini Lunch',  description: `3 Roti, Sabji, Dal, Rice${suffix}`, price: 140, available: true, category: 'Lunch' },
+      { name: 'Mini Lunch',  description: `3 Roti, 1/2 Sabji, 1/2 Dal, 1/2 Rice${suffix}`, price: 140, available: true, category: 'Lunch' },
       { name: 'Brunch',      description: `6 Roti, Sabji, 1/2 Dal, 1/2 Rice${suffix}`, price: 180, available: true, category: 'Lunch' },
       { name: 'Full Lunch',  description: `6 Roti, Sabji, Dal, Rice${suffix}`, price: 220, available: true, category: 'Lunch' },
-      { name: 'Family Meal', description: `9 Roti, 1.5 Sabji, 1.5 Dal, Rice${suffix}`, price: 320, available: true, category: 'Lunch' },
+      { name: 'Family Meal', description: `9 Roti, 1.5 Sabji, 1.5 Dal, 1.5 Rice${suffix}`, price: 320, available: true, category: 'Lunch' },
       { name: 'Choviar Special', description: 'Ragdo, 4 Kelawada, Dal Khichdi', price: 160, available: true, category: 'Choviar' },
     ]);
   };
@@ -268,15 +268,25 @@ function MenuTab({ password, currentMenu, currentMetadata }) {
       <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm flex flex-col gap-4">
         <h3 className="text-sm font-bold text-gray-800 border-b pb-2">Custom Order & Lunch Details</h3>
         
-        {/* Roti & Rice */}
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Roti Price</label>
-            <input type="number" value={metadata.rotiPrice || ''} onChange={e => updateMeta('rotiPrice', e.target.value)} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
-          </div>
-          <div>
-            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Rice Price (Standard)</label>
-            <input type="number" value={metadata.ricePrice || ''} onChange={e => updateMeta('ricePrice', e.target.value)} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
+        {/* Roti */}
+        <div>
+          <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Roti Price</label>
+          <input type="number" value={metadata.rotiPrice || ''} onChange={e => updateMeta('rotiPrice', e.target.value)} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
+        </div>
+
+        {/* Rice */}
+        <div>
+          <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide block mb-1">Rice Name</label>
+          <input type="text" value={metadata.rice || ''} onChange={e => updateMeta('rice', e.target.value)} placeholder="e.g. Jeera Rice" className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
+          <div className="grid grid-cols-2 gap-3 mt-2">
+            <div>
+              <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Half Price</label>
+              <input type="number" value={metadata.riceHalfPrice || ''} onChange={e => updateMeta('riceHalfPrice', e.target.value)} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
+            </div>
+            <div>
+              <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Full Price</label>
+              <input type="number" value={metadata.riceFullPrice || ''} onChange={e => updateMeta('riceFullPrice', e.target.value)} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
+            </div>
           </div>
         </div>
 
@@ -860,7 +870,7 @@ function KitchenTab({ password }) {
           <div className="bg-white rounded-xl border border-gray-100 p-4">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-bold text-gray-800 text-sm">
-                🍱 {convertDate(kitchenDate)} – {summary.orderCount} order{summary.orderCount !== 1 ? 's' : ''}
+                🍱 {convertDate(kitchenDate)}
               </h3>
               <button
                 onClick={() => window.print()}
@@ -870,11 +880,16 @@ function KitchenTab({ password }) {
               </button>
             </div>
 
-            {summary.orderCount === 0 ? (
+            {summary.orderCount === 0 && (!summary.choviarOrderCount) ? (
               <p className="text-sm text-gray-400 text-center py-4">No orders for this date</p>
             ) : (
-              <>
+              <div className="flex flex-col gap-10">
+                {/* LUNCH SECTION */}
+                {summary.orderCount > 0 && (
+                  <div>
+                    <h3 className="text-lg font-black text-gray-800 border-b-2 border-gray-200 pb-2 mb-4">🍽️ LUNCH ({summary.orderCount})</h3>
                 {/* Grand Totals Grid */}
+                <h4 className="text-sm font-bold text-gray-800 border-b pb-2 mb-3">🔢 Grand Totals (Bulk Quantities)</h4>
                 <div className="grid grid-cols-3 gap-3 mb-6">
                   {[
                     { label: 'Roti', val: summary.grandTotals?.Roti },
@@ -891,42 +906,165 @@ function KitchenTab({ password }) {
                   ))}
                 </div>
 
+                {/* Packet Summary */}
+                {summary.packetSummary && (
+                  <div className="mb-6">
+                    <h4 className="text-sm font-bold text-gray-800 border-b pb-2 mb-4">📦 Packet Breakdown</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {/* Dal/Rice/Sabji Table */}
+                      <div>
+                        <table className="w-full text-center text-sm border-collapse border border-gray-200 bg-white">
+                          <thead>
+                            <tr className="bg-gray-100 text-gray-700">
+                              <th className="border border-gray-200 p-2"></th>
+                              <th className="border border-gray-200 p-2">Dal</th>
+                              <th className="border border-gray-200 p-2">Rice</th>
+                              <th className="border border-gray-200 p-2">Sabji</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr>
+                              <td className="border border-gray-200 font-bold bg-gray-50 p-2 text-left">Half</td>
+                              <td className="border border-gray-200 p-2">{summary.packetSummary.Dal?.Half || 0}</td>
+                              <td className="border border-gray-200 p-2">{summary.packetSummary.Rice?.Half || 0}</td>
+                              <td className="border border-gray-200 p-2">{summary.packetSummary.Sabji?.Half || 0}</td>
+                            </tr>
+                            <tr>
+                              <td className="border border-gray-200 font-bold bg-gray-50 p-2 text-left">Full</td>
+                              <td className="border border-gray-200 p-2">{summary.packetSummary.Dal?.Full || 0}</td>
+                              <td className="border border-gray-200 p-2">{summary.packetSummary.Rice?.Full || 0}</td>
+                              <td className="border border-gray-200 p-2">{summary.packetSummary.Sabji?.Full || 0}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* Roti Table */}
+                      <div>
+                        <table className="w-full text-center text-sm border-collapse border border-gray-200 bg-white max-w-[250px]">
+                          <thead>
+                            <tr className="bg-gray-100 text-gray-700">
+                              <th className="border border-gray-200 p-2">Roti</th>
+                              <th className="border border-gray-200 p-2">Pkt</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {Object.entries(summary.packetSummary.Roti || {})
+                              .sort((a, b) => Number(a[0]) - Number(b[0]))
+                              .map(([rotiCount, pktCount], i) => (
+                                <tr key={rotiCount} className={i % 2 === 1 ? "bg-red-50/50" : ""}>
+                                  <td className="border border-gray-200 p-2 text-gray-800">{rotiCount}</td>
+                                  <td className="border border-gray-200 p-2 font-bold">{pktCount}</td>
+                                </tr>
+                              ))
+                            }
+                            {Object.keys(summary.packetSummary.Roti || {}).length === 0 && (
+                              <tr>
+                                <td colSpan={2} className="border border-gray-200 p-4 text-gray-400 italic">No rotis</td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Orders Table */}
                 {summary.kitchenOrders && summary.kitchenOrders.length > 0 && (
-                  <div className="overflow-x-auto -mx-4 px-4">
-                    <table className="w-full text-left text-sm whitespace-nowrap">
+                  <div className="w-full">
+                    <table className="w-full text-left text-xs leading-tight">
                       <thead>
-                        <tr className="bg-gray-50 text-gray-500 text-[10px] uppercase tracking-wider">
-                          <th className="py-2 px-3 rounded-l-lg font-bold">Seq No</th>
-                          <th className="py-2 px-3 font-bold">Driver</th>
-                          <th className="py-2 px-3 font-bold">Name</th>
-                          <th className="py-2 px-3 text-center font-bold">Roti</th>
-                          <th className="py-2 px-3 text-center font-bold">Sabji</th>
-                          <th className="py-2 px-3 text-center font-bold">Dal</th>
-                          <th className="py-2 px-3 text-center font-bold">Rice</th>
-                          <th className="py-2 px-3 text-center font-bold">Sweet</th>
-                          <th className="py-2 px-3 rounded-r-lg text-center font-bold">Farsan</th>
+                        <tr className="bg-gray-50 text-gray-500 text-[9px] uppercase tracking-tighter">
+                          <th className="py-1.5 px-1 rounded-l-lg font-bold">Seq</th>
+                          <th className="py-1.5 px-1 font-bold">Driver</th>
+                          <th className="py-1.5 px-1 font-bold">Name</th>
+                          <th className="py-1.5 px-1 font-bold">Locality</th>
+                          <th className="py-1.5 px-1 text-center font-bold">Roti</th>
+                          <th className="py-1.5 px-1 text-center font-bold">Sabji</th>
+                          <th className="py-1.5 px-1 text-center font-bold">Dal</th>
+                          <th className="py-1.5 px-1 text-center font-bold">Rice</th>
+                          <th className="py-1.5 px-1 text-center font-bold">Sweet</th>
+                          <th className="py-1.5 px-1 rounded-r-lg text-center font-bold">Farsan</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100">
                         {summary.kitchenOrders.map((order, i) => (
-                          <tr key={order.orderId || i} className="hover:bg-gray-50 transition">
-                            <td className="py-3 px-3 font-bold text-gray-800">#{order.routeOrder === 9999 ? '-' : order.routeOrder}</td>
-                            <td className="py-3 px-3 text-gray-600 font-medium">{order.deliveryPerson}</td>
-                            <td className="py-3 px-3 text-gray-800 font-semibold">{order.name}</td>
-                            <td className="py-3 px-3 text-center text-gray-700 font-bold">{order.Roti || '-'}</td>
-                            <td className="py-3 px-3 text-center text-gray-700 font-bold">{order.Sabji || '-'}</td>
-                            <td className="py-3 px-3 text-center text-gray-700 font-bold">{order.Dal || '-'}</td>
-                            <td className="py-3 px-3 text-center text-gray-700 font-bold">{order.Rice || '-'}</td>
-                            <td className="py-3 px-3 text-center text-gray-700 font-bold">{order.Sweet || '-'}</td>
-                            <td className="py-3 px-3 text-center text-gray-700 font-bold">{order.Farsan || '-'}</td>
+                          <tr key={order.orderId || i} className={`hover:bg-gray-50 transition ${order.zone === 'outside' ? 'bg-orange-50/50' : ''}`}>
+                            <td className="py-2 px-1 font-bold text-gray-800">#{order.routeOrder === 9999 ? '-' : order.routeOrder}</td>
+                            <td className="py-2 px-1 text-gray-600 font-medium truncate max-w-[60px]">{order.deliveryPerson}</td>
+                            <td className="py-2 px-1 text-gray-800 font-bold whitespace-normal min-w-[100px] leading-snug">
+                              {order.name}
+                              {order.zone === 'outside' && <span className="ml-1 inline-block px-1 py-0.5 bg-orange-200 text-orange-900 text-[9px] font-black rounded">O</span>}
+                            </td>
+                            <td className="py-2 px-1 text-gray-600 text-[10px] whitespace-normal min-w-[80px] leading-snug">{order.locality || '-'}</td>
+                            <td className="py-2 px-1 text-center text-gray-800 font-bold">{order.Roti || '-'}</td>
+                            <td className="py-2 px-1 text-center text-gray-800 font-bold">{order.Sabji || '-'}</td>
+                            <td className="py-2 px-1 text-center text-gray-800 font-bold">{order.Dal || '-'}</td>
+                            <td className="py-2 px-1 text-center text-gray-800 font-bold">{order.Rice || '-'}</td>
+                            <td className="py-2 px-1 text-center text-gray-800 font-bold">{order.Sweet || '-'}</td>
+                            <td className="py-2 px-1 text-center text-gray-800 font-bold">{order.Farsan || '-'}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
                 )}
-              </>
+                  </div>
+                )}
+
+                {/* CHOVIAR SECTION */}
+                {summary.choviarOrderCount > 0 && (
+                  <div>
+                    <h3 className="text-lg font-black text-jts-red border-b-2 border-jts-red/20 pb-2 mb-4">🌙 CHOVIAR ({summary.choviarOrderCount})</h3>
+                    
+                    {/* Choviar Grand Totals Grid */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+                      {Object.entries(summary.choviarGrandTotals || {}).map(([itemName, count]) => (
+                        <div key={itemName} className="bg-orange-50 rounded-lg p-3 text-center border border-orange-100">
+                          <p className="text-xs font-bold text-gray-600 uppercase tracking-tight truncate px-1">{itemName}</p>
+                          <p className="text-2xl font-black text-jts-red mt-1">{count}</p>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Choviar Orders Table */}
+                    {summary.choviarKitchenOrders && summary.choviarKitchenOrders.length > 0 && (
+                      <div className="w-full">
+                        <table className="w-full text-left text-xs leading-tight">
+                          <thead>
+                            <tr className="bg-orange-50/50 text-gray-600 text-[9px] uppercase tracking-tighter">
+                              <th className="py-1.5 px-1 rounded-l-lg font-bold">Seq</th>
+                              <th className="py-1.5 px-1 font-bold">Driver</th>
+                              <th className="py-1.5 px-1 font-bold">Name</th>
+                              <th className="py-1.5 px-1 font-bold">Locality</th>
+                              {Object.keys(summary.choviarGrandTotals || {}).map(item => (
+                                <th key={item} className="py-1.5 px-1 text-center font-bold">{item}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100">
+                            {summary.choviarKitchenOrders.map((order, i) => (
+                              <tr key={order.orderId || i} className={`hover:bg-gray-50 transition ${order.zone === 'outside' ? 'bg-orange-50/50' : ''}`}>
+                                <td className="py-2 px-1 font-bold text-gray-800">#{order.routeOrder === 9999 ? '-' : order.routeOrder}</td>
+                                <td className="py-2 px-1 text-gray-600 font-medium truncate max-w-[60px]">{order.deliveryPerson}</td>
+                                <td className="py-2 px-1 text-gray-800 font-bold whitespace-normal min-w-[100px] leading-snug">
+                                  {order.name}
+                                  {order.zone === 'outside' && <span className="ml-1 inline-block px-1 py-0.5 bg-orange-200 text-orange-900 text-[9px] font-black rounded">O</span>}
+                                </td>
+                                <td className="py-2 px-1 text-gray-600 text-[10px] whitespace-normal min-w-[80px] leading-snug">{order.locality || '-'}</td>
+                                {Object.keys(summary.choviarGrandTotals || {}).map(item => (
+                                  <td key={item} className="py-2 px-1 text-center text-gray-800 font-bold">{order[item] || '-'}</td>
+                                ))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             )}
           </div>
 

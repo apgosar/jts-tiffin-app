@@ -79,7 +79,18 @@ async function getMenuForPricing() {
   if (USE_MOCK) return { menuItems: MOCK_MENU, metadata: MOCK_METADATA };
   
   const menuSnap = await db.collection('menu').get();
-  const menuItems = menuSnap.docs.map(doc => doc.data());
+  let menuItems = menuSnap.docs.map(doc => doc.data());
+  
+  // Sort menu items in specific order
+  const orderList = ['Mini Lunch', 'Brunch', 'Full Lunch', 'Family Meal'];
+  menuItems.sort((a, b) => {
+    const idxA = orderList.indexOf(a.name);
+    const idxB = orderList.indexOf(b.name);
+    if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+    if (idxA !== -1) return -1;
+    if (idxB !== -1) return 1;
+    return a.name.localeCompare(b.name);
+  });
   
   const metaDoc = await db.collection('metadata').doc('global').get();
   const metadata = metaDoc.exists ? metaDoc.data() : {};
@@ -92,13 +103,24 @@ function computeServerPrice(itemName, menuItems, metadata) {
   if (itemName === 'Roti') return { price: parseFloat(metadata.rotiPrice) || 8, category: 'Individual' };
   
   // Custom Order Items
-  if (itemName === `Sabji (Half) - ${metadata.sabji || 'Sabji'}`) return { price: parseFloat(metadata.sabjiHalfPrice) || 0, category: 'Individual' };
-  if (itemName === `Sabji (Full) - ${metadata.sabji || 'Sabji'}`) return { price: parseFloat(metadata.sabjiFullPrice) || 0, category: 'Individual' };
-  if (itemName === `Dal (Half) - ${metadata.dal || 'Dal'}`) return { price: parseFloat(metadata.dalHalfPrice) || 0, category: 'Individual' };
-  if (itemName === `Dal (Full) - ${metadata.dal || 'Dal'}`) return { price: parseFloat(metadata.dalFullPrice) || 0, category: 'Individual' };
+  const sabjiNameHalf = metadata.sabji ? `Sabji (Half) - ${metadata.sabji}` : 'Sabji (Half)';
+  const sabjiNameFull = metadata.sabji ? `Sabji (Full) - ${metadata.sabji}` : 'Sabji (Full)';
+  const dalNameHalf = metadata.dal ? `Dal (Half) - ${metadata.dal}` : 'Dal (Half)';
+  const dalNameFull = metadata.dal ? `Dal (Full) - ${metadata.dal}` : 'Dal (Full)';
+  const riceNameHalf = metadata.rice ? `Rice (Half) - ${metadata.rice}` : 'Rice (Half)';
+  const riceNameFull = metadata.rice ? `Rice (Full) - ${metadata.rice}` : 'Rice (Full)';
+  const farsanName = metadata.farsan ? `Farsan - ${metadata.farsan}` : 'Farsan';
+  const sweetName = metadata.sweet ? `Sweet - ${metadata.sweet}` : 'Sweet';
+
+  if (itemName === sabjiNameHalf) return { price: parseFloat(metadata.sabjiHalfPrice) || 0, category: 'Individual' };
+  if (itemName === sabjiNameFull) return { price: parseFloat(metadata.sabjiFullPrice) || 0, category: 'Individual' };
+  if (itemName === dalNameHalf) return { price: parseFloat(metadata.dalHalfPrice) || 0, category: 'Individual' };
+  if (itemName === dalNameFull) return { price: parseFloat(metadata.dalFullPrice) || 0, category: 'Individual' };
+  if (itemName === riceNameHalf || itemName === `Rice (Half)`) return { price: parseFloat(metadata.riceHalfPrice) || 0, category: 'Individual' };
+  if (itemName === riceNameFull || itemName === `Rice (Full)`) return { price: parseFloat(metadata.riceFullPrice) || 0, category: 'Individual' };
   if (itemName === `Rice`) return { price: parseFloat(metadata.ricePrice) || 0, category: 'Individual' };
-  if (itemName === `Farsan - ${metadata.farsan || 'Farsan'}`) return { price: parseFloat(metadata.farsanPrice) || 0, category: 'Individual' };
-  if (itemName === `Sweet - ${metadata.sweet || 'Sweet'}`) return { price: parseFloat(metadata.sweetPrice) || 0, category: 'Individual' };
+  if (itemName === farsanName) return { price: parseFloat(metadata.farsanPrice) || 0, category: 'Individual' };
+  if (itemName === sweetName) return { price: parseFloat(metadata.sweetPrice) || 0, category: 'Individual' };
 
   // Regular menu item (Lunch / Choviar)
   const item = menuItems.find(m => m.name === itemName);
@@ -657,32 +679,34 @@ function getRawComponents(items) {
   const comp = { Roti: 0, Sabji: 0, Dal: 0, Rice: 0, Sweet: 0, Farsan: 0 };
   
   (items || []).forEach(item => {
-    const n = (item.name || '').toLowerCase();
+    const n = (item.name || '').trim();
     const q = item.quantity || 0;
     
-    if (n.includes('mini lunch')) {
-      comp.Roti += 3 * q; comp.Sabji += 1 * q; comp.Dal += 1 * q; comp.Rice += 1 * q; comp.Sweet += 1 * q; comp.Farsan += 1 * q;
-    } else if (n.includes('brunch')) {
+    if (n === 'Mini Lunch') {
+      comp.Roti += 3 * q; comp.Sabji += 0.5 * q; comp.Dal += 0.5 * q; comp.Rice += 0.5 * q; comp.Sweet += 1 * q; comp.Farsan += 1 * q;
+    } else if (n.toLowerCase().includes('brunch')) {
       comp.Roti += 6 * q; comp.Sabji += 1 * q; comp.Dal += 0.5 * q; comp.Rice += 0.5 * q; comp.Sweet += 1 * q; comp.Farsan += 1 * q;
-    } else if (n.includes('full lunch')) {
+    } else if (n.toLowerCase().includes('full lunch')) {
       comp.Roti += 6 * q; comp.Sabji += 1 * q; comp.Dal += 1 * q; comp.Rice += 1 * q; comp.Sweet += 1 * q; comp.Farsan += 1 * q;
-    } else if (n.includes('family meal')) {
-      comp.Roti += 9 * q; comp.Sabji += 1.5 * q; comp.Dal += 1.5 * q; comp.Rice += 1 * q; comp.Sweet += 1 * q; comp.Farsan += 1 * q;
-    } else if (n === 'roti') {
+    } else if (n === 'Family Meal') {
+      comp.Roti += 9 * q; comp.Sabji += 1.5 * q; comp.Dal += 1.5 * q; comp.Rice += 1.5 * q; comp.Sweet += 1 * q; comp.Farsan += 1 * q;
+    } else if (n.toLowerCase() === 'roti') {
       comp.Roti += 1 * q;
-    } else if (n.includes('sabji (half)')) {
+    } else if (n.toLowerCase().includes('sabji (half)')) {
       comp.Sabji += 0.5 * q;
-    } else if (n.includes('sabji (full)')) {
+    } else if (n.toLowerCase().includes('sabji (full)')) {
       comp.Sabji += 1 * q;
-    } else if (n.includes('dal (half)')) {
+    } else if (n.toLowerCase().includes('dal (half)')) {
       comp.Dal += 0.5 * q;
-    } else if (n.includes('dal (full)')) {
+    } else if (n.toLowerCase().includes('dal (full)')) {
       comp.Dal += 1 * q;
-    } else if (n === 'rice') {
+    } else if (n === 'Rice (Half)') {
+      comp.Rice += 0.5 * q;
+    } else if (n === 'Rice (Full)' || n === 'Rice') {
       comp.Rice += 1 * q;
-    } else if (n.includes('sweet')) {
+    } else if (n.toLowerCase().includes('sweet')) {
       comp.Sweet += 1 * q;
-    } else if (n.includes('farsan')) {
+    } else if (n.toLowerCase().includes('farsan')) {
       comp.Farsan += 1 * q;
     }
   });
@@ -711,12 +735,32 @@ app.get('/api/admin/kitchen', adminLimiter, requireAdmin, async (req, res) => {
 
   const grandTotals = { Roti: 0, Sabji: 0, Dal: 0, Rice: 0, Sweet: 0, Farsan: 0 };
   const kitchenOrders = [];
+  
+  const choviarGrandTotals = {};
+  const choviarKitchenOrders = [];
+
+  const packetSummary = {
+    Dal: { Half: 0, Full: 0 },
+    Rice: { Half: 0, Full: 0 },
+    Sabji: { Half: 0, Full: 0 },
+    Roti: {}
+  };
+  const outsideOrders = [];
 
   orders.forEach(order => {
-    // Only process lunch orders for kitchen breakdown (ignore Choviar-only orders)
-    const isChoviarOnly = order.items && order.items.length > 0 && order.items.every(i => i.category === 'Choviar');
-    if (!isChoviarOnly) {
-      const comp = getRawComponents(order.items);
+    if (order.zone === 'outside' && order.status !== 'CANCELLED') {
+      outsideOrders.push({
+        name: order.name,
+        locality: order.locality || '',
+        itemsSummary: order.itemsSummary || ''
+      });
+    }
+
+    const lunchItems = (order.items || []).filter(i => i.category !== 'Choviar');
+    const choviarItems = (order.items || []).filter(i => i.category === 'Choviar');
+
+    if (lunchItems.length > 0) {
+      const comp = getRawComponents(lunchItems);
       grandTotals.Roti += comp.Roti;
       grandTotals.Sabji += comp.Sabji;
       grandTotals.Dal += comp.Dal;
@@ -729,14 +773,82 @@ app.get('/api/admin/kitchen', adminLimiter, requireAdmin, async (req, res) => {
         name: order.name,
         deliveryPerson: order.deliveryPerson,
         routeOrder: order.routeOrder,
+        zone: order.zone || 'borivali',
+        locality: order.locality || '',
+        ...comp
+      });
+      
+      lunchItems.forEach(item => {
+        const n = (item.name || '').trim();
+        const q = item.quantity || 0;
+        if (q <= 0) return;
+
+        if (n === 'Mini Lunch') {
+          packetSummary.Roti['3'] = (packetSummary.Roti['3'] || 0) + q;
+          packetSummary.Dal.Half += q; packetSummary.Rice.Half += q; packetSummary.Sabji.Half += q;
+        } else if (n.toLowerCase().includes('brunch')) {
+          packetSummary.Roti['6'] = (packetSummary.Roti['6'] || 0) + q;
+          packetSummary.Dal.Half += q; packetSummary.Rice.Half += q; packetSummary.Sabji.Full += q;
+        } else if (n.toLowerCase().includes('full lunch')) {
+          packetSummary.Roti['6'] = (packetSummary.Roti['6'] || 0) + q;
+          packetSummary.Dal.Full += q; packetSummary.Rice.Full += q; packetSummary.Sabji.Full += q;
+        } else if (n === 'Family Meal') {
+          packetSummary.Roti['9'] = (packetSummary.Roti['9'] || 0) + q;
+          packetSummary.Dal.Full += q; packetSummary.Dal.Half += q;
+          packetSummary.Rice.Full += q; packetSummary.Rice.Half += q;
+          packetSummary.Sabji.Full += q; packetSummary.Sabji.Half += q;
+        } else if (n.toLowerCase() === 'roti') {
+          packetSummary.Roti[q] = (packetSummary.Roti[q] || 0) + 1;
+        } else if (n.startsWith('Sabji')) {
+          if (n.includes('(Half)')) packetSummary.Sabji.Half += q;
+          else packetSummary.Sabji.Full += q;
+        } else if (n.startsWith('Dal')) {
+          if (n.includes('(Half)')) packetSummary.Dal.Half += q;
+          else packetSummary.Dal.Full += q;
+        } else if (n.startsWith('Rice')) {
+          if (n.includes('(Half)')) packetSummary.Rice.Half += q;
+          else packetSummary.Rice.Full += q;
+        }
+      });
+    }
+
+    if (choviarItems.length > 0) {
+      const comp = {};
+      choviarItems.forEach(item => {
+        const n = (item.name || '').trim();
+        const q = item.quantity || 0;
+        if (q <= 0) return;
+        
+        comp[n] = (comp[n] || 0) + q;
+        choviarGrandTotals[n] = (choviarGrandTotals[n] || 0) + q;
+      });
+
+      choviarKitchenOrders.push({
+        orderId: order.orderId,
+        name: order.name,
+        deliveryPerson: order.deliveryPerson,
+        routeOrder: order.routeOrder,
+        zone: order.zone || 'borivali',
+        locality: order.locality || '',
         ...comp
       });
     }
   });
 
   kitchenOrders.sort((a, b) => a.routeOrder - b.routeOrder);
+  choviarKitchenOrders.sort((a, b) => a.routeOrder - b.routeOrder);
 
-  res.json({ date, orderCount: kitchenOrders.length, grandTotals, kitchenOrders });
+  res.json({ 
+    date, 
+    orderCount: kitchenOrders.length, 
+    grandTotals, 
+    kitchenOrders, 
+    packetSummary, 
+    outsideOrders,
+    choviarOrderCount: choviarKitchenOrders.length,
+    choviarGrandTotals,
+    choviarKitchenOrders
+  });
 });
 
 // ─── Delivery Portal ─────────────────────────────────────────────────────────

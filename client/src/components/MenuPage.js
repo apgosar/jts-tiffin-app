@@ -150,7 +150,7 @@ function StepperItem({ title, name, price, subtitle, cart, updateQuantity, categ
 const VariantItem = ({ title, subtitle, namePrefix, halfPrice, fullPrice, cart, updateQuantity }) => {
   const [variant, setVariant] = useState('Full'); // 'Half' or 'Full'
   
-  const currentName = `${namePrefix} (${variant}) - ${subtitle}`;
+  const currentName = subtitle ? `${namePrefix} (${variant}) - ${subtitle}` : `${namePrefix} (${variant})`;
   const currentPrice = variant === 'Half' ? halfPrice : fullPrice;
   const quantity = cart[currentName]?.quantity || 0;
   
@@ -163,7 +163,9 @@ const VariantItem = ({ title, subtitle, namePrefix, halfPrice, fullPrice, cart, 
     <div className="py-3 border-b border-gray-100 last:border-0">
       <div className="flex items-center justify-between">
         <div>
-          <p className="font-bold text-gray-800 text-sm">{title} <span className="italic font-normal text-xs text-gray-500">({subtitle})</span></p>
+          <p className="font-bold text-gray-800 text-sm">
+            {title} {subtitle && <span className="italic font-normal text-xs text-gray-500">({subtitle})</span>}
+          </p>
         </div>
         <QuantityStepper quantity={quantity} onIncrement={handleInc} onDecrement={handleDec} />
       </div>
@@ -221,31 +223,35 @@ function CustomOrderSection({ cart, updateQuantity, metadata }) {
       <div className="px-4 py-1 flex flex-col">
         <RotiItem metadata={metadata} cart={cart} updateQuantity={updateQuantity} />
         
-        {metadata?.sabji && (
-          <VariantItem 
-            title="Sabji" 
-            subtitle={metadata.sabji} 
-            namePrefix="Sabji" 
-            halfPrice={metadata.sabjiHalfPrice} 
-            fullPrice={metadata.sabjiFullPrice} 
-            cart={cart}
-            updateQuantity={updateQuantity}
-          />
-        )}
+        <VariantItem 
+          title="Sabji" 
+          subtitle={metadata?.sabji} 
+          namePrefix="Sabji" 
+          halfPrice={metadata?.sabjiHalfPrice} 
+          fullPrice={metadata?.sabjiFullPrice} 
+          cart={cart}
+          updateQuantity={updateQuantity}
+        />
         
-        {metadata?.dal && (
-          <VariantItem 
-            title="Dal" 
-            subtitle={metadata.dal} 
-            namePrefix="Dal" 
-            halfPrice={metadata.dalHalfPrice} 
-            fullPrice={metadata.dalFullPrice} 
-            cart={cart}
-            updateQuantity={updateQuantity}
-          />
-        )}
+        <VariantItem 
+          title="Dal" 
+          subtitle={metadata?.dal} 
+          namePrefix="Dal" 
+          halfPrice={metadata?.dalHalfPrice} 
+          fullPrice={metadata?.dalFullPrice} 
+          cart={cart}
+          updateQuantity={updateQuantity}
+        />
         
-        <StepperItem title="Rice" name="Rice" price={metadata?.ricePrice} cart={cart} updateQuantity={updateQuantity} />
+        <VariantItem 
+          title="Rice" 
+          subtitle={metadata?.rice}
+          namePrefix="Rice" 
+          halfPrice={metadata?.riceHalfPrice} 
+          fullPrice={metadata?.riceFullPrice} 
+          cart={cart} 
+          updateQuantity={updateQuantity} 
+        />
         
         {metadata?.farsanAvailable === 'Yes' && metadata?.farsan && (
           <StepperItem title="Farsan" subtitle={metadata.farsan} name={`Farsan - ${metadata.farsan}`} price={metadata.farsanPrice} cart={cart} updateQuantity={updateQuantity} />
@@ -433,7 +439,7 @@ export default function MenuPage() {
                 ) : (
                   <>
                     {/* Metadata Banner */}
-                    {metadata && (metadata.sabji || (metadata.sweetAvailable === 'Yes' && metadata.sweet) || metadata.dal || (metadata.farsanAvailable === 'Yes' && metadata.farsan)) && (
+                    {metadata && (metadata.sabji || (metadata.sweetAvailable === 'Yes' && metadata.sweet) || metadata.dal || (metadata.farsanAvailable === 'Yes' && metadata.farsan) || metadata.rice) && (
                       <div className="bg-white border-2 border-jts-gold rounded-xl p-3 shadow-sm relative overflow-hidden">
                         <div className="absolute top-0 right-0 bg-jts-gold text-jts-navy text-[10px] font-bold px-2 py-1 rounded-bl-lg">TODAY'S SPECIAL</div>
                         <div className="grid grid-cols-2 gap-y-2 gap-x-4 mt-1">
@@ -441,6 +447,7 @@ export default function MenuPage() {
                           {metadata.sweetAvailable === 'Yes' && metadata.sweet && <div><span className="text-[10px] text-gray-500 font-bold uppercase tracking-wide block">Sweet</span><span className="text-sm font-semibold text-gray-800">{metadata.sweet}</span></div>}
                           {metadata.dal && <div><span className="text-[10px] text-gray-500 font-bold uppercase tracking-wide block">Dal</span><span className="text-sm font-semibold text-gray-800">{metadata.dal}</span></div>}
                           {metadata.farsanAvailable === 'Yes' && metadata.farsan && <div><span className="text-[10px] text-gray-500 font-bold uppercase tracking-wide block">Farsan</span><span className="text-sm font-semibold text-gray-800">{metadata.farsan}</span></div>}
+                          {metadata.rice && <div><span className="text-[10px] text-gray-500 font-bold uppercase tracking-wide block">Rice</span><span className="text-sm font-semibold text-gray-800">{metadata.rice}</span></div>}
                         </div>
                       </div>
                     )}
