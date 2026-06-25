@@ -28,7 +28,8 @@ if (ADMIN_PASSWORD === 'changeme') {
 }
 const SURCHARGE_AMOUNT = parseInt(process.env.OUTSIDE_DELIVERY_SURCHARGE || '40', 10);
 
-// Borivali pincodes: comma or space-separated list. Empty = no surcharge for anyone.
+// Borivali pincodes: comma or space-separated list.
+// Fail-safe: managed strictly via environment variables.
 const BORIVALI_PINCODES = new Set(
   (process.env.BORIVALI_PINCODES || '')
     .split(/[,| \t]+/)
@@ -138,7 +139,8 @@ function computeServerPrice(itemName, menuItems, metadata) {
 }
 
 function getZone(pincode) {
-  if (BORIVALI_PINCODES.size === 0) return 'borivali';
+  // Fail-secure: If for some reason the set is empty, default to 'outside' to prevent loss.
+  if (BORIVALI_PINCODES.size === 0) return 'outside';
   return BORIVALI_PINCODES.has(String(pincode).trim()) ? 'borivali' : 'outside';
 }
 
