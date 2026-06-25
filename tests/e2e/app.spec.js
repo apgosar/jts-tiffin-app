@@ -7,8 +7,8 @@ test.describe('JTS Tiffin App End-to-End', () => {
     // Verify title or brand
     await expect(page.locator('text=AIN TIFFIN').first()).toBeVisible();
     
-    // Verify Menu text
-    await expect(page.locator('button:has-text("Add to Cart")').first()).toBeVisible();
+    // Verify Menu text by looking for the quantity stepper's Increase button
+    await expect(page.locator('button[aria-label="Increase quantity"]').first()).toBeVisible();
   });
 
   test('should allow admin login with correct password', async ({ page }) => {
@@ -30,34 +30,40 @@ test.describe('JTS Tiffin App End-to-End', () => {
     await page.goto('/');
     
     // Wait for menu to load
-    await expect(page.locator('button:has-text("Add to Cart")').first()).toBeVisible();
+    await expect(page.locator('button[aria-label="Increase quantity"]').first()).toBeVisible();
 
-    // Click on Add to Cart for the first item
-    await page.click('button:has-text("Add to Cart") >> nth=0');
+    // Click on Add to Cart (the + button) for the first item
+    await page.click('button[aria-label="Increase quantity"] >> nth=0');
 
-    // Click on Checkout
-    await page.click('button:has-text("Checkout")');
+    // Wait for the floating cart bar to bounce up and click View Order
+    await expect(page.locator('button:has-text("View Order")')).toBeVisible();
+    await page.click('button:has-text("View Order")');
 
     // Expect to be on Checkout page
-    await expect(page.locator('text=Complete Your Order')).toBeVisible();
+    await expect(page.locator('h1:has-text("Checkout")')).toBeVisible();
 
     // Fill the checkout form
-    await page.fill('input[name="name"]', 'Playwright Tester');
-    await page.fill('input[name="phone"]', '9999999999');
-    await page.fill('input[name="wingFlat"]', 'A1');
-    await page.fill('input[name="building"]', 'Test Bldg');
-    await page.fill('input[name="street"]', 'Test Street');
-    await page.fill('input[name="locality"]', 'Test Locality');
-    await page.fill('input[name="pincode"]', '400092');
+    // Note: Phone must be filled first to trigger the lookup and reveal the rest of the form
+    await page.fill('#phone', '9876543210');
+    
+    // Wait for customer lookup / form expansion
+    await page.waitForSelector('#name');
+
+    await page.fill('#name', 'Playwright Tester');
+    await page.fill('#wingFlat', 'A1');
+    await page.fill('#building', 'Test Bldg');
+    await page.fill('#street', 'Test Street');
+    await page.fill('#locality', 'Test Locality');
+    await page.fill('#pincode', '400092');
 
     // Wait for debounce on pincode and verify if delivery fee is displayed correctly (inside Borivali = 0)
     await page.waitForTimeout(1000); 
 
     // Click Place Order
-    await page.click('button:has-text("Place Order")');
+    await page.click('button[type="submit"]');
 
     // Wait for the success page
     await expect(page.locator('text=Order Placed Successfully!')).toBeVisible();
-    await expect(page.locator('text=We have received your order')).toBeVisible();
+    await expect(page.locator('text=Your tiffin order has been received')).toBeVisible();
   });
 });
