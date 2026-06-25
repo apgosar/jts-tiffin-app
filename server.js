@@ -37,17 +37,22 @@ const BORIVALI_PINCODES = new Set(
 );
 
 // ─── Firebase Initialization ─────────────────────────────────────────────────
-if (!USE_MOCK && !process.env.FIREBASE_CREDENTIALS_PATH) {
+if (!USE_MOCK && !process.env.FIREBASE_CREDENTIALS_PATH && process.env.NODE_ENV !== 'production') {
   console.error('ERROR: FIREBASE_CREDENTIALS_PATH not set in .env');
   process.exit(1);
 }
 
 let db = null;
 if (!USE_MOCK) {
-  const serviceAccount = require(path.resolve(process.env.FIREBASE_CREDENTIALS_PATH));
-  initializeApp({
-    credential: cert(serviceAccount)
-  });
+  if (process.env.FIREBASE_CREDENTIALS_PATH) {
+    const serviceAccount = require(path.resolve(process.env.FIREBASE_CREDENTIALS_PATH));
+    initializeApp({
+      credential: cert(serviceAccount)
+    });
+  } else {
+    // In Google Cloud Run (production), initialize without arguments to use Application Default Credentials
+    initializeApp();
+  }
   db = getFirestore();
 }
 
@@ -518,7 +523,100 @@ app.post('/api/orders/recurring', orderLimiter, async (req, res) => {
   }
 });
 
-// ─── ADMIN & AUTH ─────────────────────────────────────────────────────────────
+// 📱 CUSTOMER PORTAL 📱
+// GET /api/orders/manage?phone=XXXXXXXXXX
+app.get('/api/orders/manage', publicLimiter, async (req, res) => {
+  const { phone } = req.query;
+  if (!phone || !/^[6-9]\d{9}$/.test(phone.trim())) {
+    return res.status(400).json({ error: 'Invalid phone number' });
+  }
+
+  const queryPhone = phone.trim();
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  // Helper to parse DD/MM/YYYY
+  const parseDate = (dStr) => {
+    const [day, month, year] = dStr.split('/');
+    return new Date(year, month - 1, day);
+  };
+
+  if (USE_MOCK) {
+    const orders = MOCK_ORDERS.filter(o => o.phone === queryPhone && o.status !== 'CANCELLED');
+    const futureOrders = orders.filter(o => parseDate(o.date) > today);
+    return res.json({ success: true, orders: futureOrders });
+  }
+
+  try {
+    const snapshot = await db.collection('orders')
+      .where('phone', '==', queryPhone)
+      .where('status', '!=', 'CANCELLED')
+      .get();
+      
+    const allOrders = snapshot.docs.map(doc => doc.data());
+    // Only return future orders (after today)
+    const futureOrders = allOrders.filter(o => parseDate(o.date) > today);
+    
+    // Sort by date ascending
+    futureOrders.sort((a, b) => parseDate(a.date) - parseDate(b.date));
+    
+    res.json({ success: true, orders: futureOrders });
+  } catch (err) {
+    console.error('Error fetching customer orders:', err.message);
+    res.status(500).json({ error: 'Failed to fetch your orders.' });
+  }
+});
+
+// PUT /api/orders/manage/:orderId?phone=XXXXXXXXXX
+app.put('/api/orders/manage/:orderId', publicLimiter, async (req, res) => {
+  const { phone } = req.query;
+  const { orderId } = req.params;
+  
+  if (!phone || !orderId) {
+    return res.status(400).json({ error: 'Phone number and Order ID required' });
+  }
+
+  const queryPhone = phone.trim();
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const parseDate = (dStr) => {
+    const [day, month, year] = dStr.split('/');
+    return new Date(year, month - 1, day);
+  };
+
+  if (USE_MOCK) {
+    const order = MOCK_ORDERS.find(o => o.orderId === orderId && o.phone === queryPhone);
+    if (!order) return res.status(404).json({ error: 'Order not found or unauthorized' });
+    if (parseDate(order.date) <= today) {
+      return res.status(400).json({ error: 'Cannot cancel orders for today or past dates' });
+    }
+    order.status = 'CANCELLED';
+    return res.json({ success: true, message: 'Order cancelled successfully' });
+  }
+
+  try {
+    const orderRef = db.collection('orders').doc(orderId);
+    const doc = await orderRef.get();
+    
+    if (!doc.exists) return res.status(404).json({ error: 'Order not found' });
+    
+    const orderData = doc.data();
+    if (orderData.phone !== queryPhone) return res.status(403).json({ error: 'Unauthorized to cancel this order' });
+    
+    if (parseDate(orderData.date) <= today) {
+      return res.status(400).json({ error: 'Cannot cancel orders for today or past dates' });
+    }
+
+    await orderRef.update({ status: 'CANCELLED' });
+    res.json({ success: true, message: 'Order cancelled successfully' });
+  } catch (err) {
+    console.error('Error cancelling order:', err.message);
+    res.status(500).json({ error: 'Failed to cancel order.' });
+  }
+});
+
+// 🛡️ ADMIN & AUTH 🛡️─────────────────────────────────────────────────────────────
 const requireAdmin = (req, res, next) => {
   const auth = req.headers['x-admin-password'];
   if (!auth || auth !== ADMIN_PASSWORD) {
@@ -997,14 +1095,24 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`\nJTS Tiffin App server running on port ${PORT} [mock=${USE_MOCK}]`);
-  if (USE_MOCK) {
-    console.log('Using mock data – no Firestore connection required.');
-  }
-  if (BORIVALI_PINCODES.size > 0) {
-    console.log(`Borivali pincodes: ${[...BORIVALI_PINCODES].join(', ')}`);
-  } else {
-    console.log('No Borivali pincodes configured – all orders treated as Borivali (no surcharge).');
-  }
-});
+
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`\nJTS Tiffin App server running on port ${PORT} [mock=${USE_MOCK}]`);
+    if (USE_MOCK) {
+      console.log('Using mock data - no Firestore connection required.');
+    }
+    if (BORIVALI_PINCODES.size > 0) {
+      console.log(`Borivali pincodes: ${[...BORIVALI_PINCODES].join(', ')}`);
+    } else {
+      console.log('No Borivali pincodes configured – all orders treated as Borivali (no surcharge).');
+    }
+  });
+}
+
+module.exports = app;
+if (USE_MOCK) {
+  module.exports.MOCK_ORDERS = MOCK_ORDERS;
+}
+
+app.get('/debug-mock', (req,res) => res.json(MOCK_ORDERS));

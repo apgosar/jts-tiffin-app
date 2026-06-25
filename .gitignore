@@ -41,3 +41,12 @@ scripts/diagnose-*.js
 
 # ── Deployment script output / gcloud temp files ──────────────────────────────
 .gcloudignore
+
+# ── Generated quotation documents ─────────────────────────────────────────────
+Quotation.md
+quotation.pdf
+
+# ── Test and coverage output ──────────────────────────────────────────────────
+coverage/
+playwright-report/
+test-results/

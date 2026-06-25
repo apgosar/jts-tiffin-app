@@ -10,7 +10,10 @@
     "gcp-build": "cd client && npm install && npm run build",
     "postinstall": "cd client && npm install",
     "install-all": "npm install && cd client && npm install",
-    "sheet:init": "node scripts/init-google-sheet.js"
+    "sheet:init": "node scripts/init-google-sheet.js",
+    "test:api": "cross-env USE_MOCK_DATA=true ADMIN_PASSWORD=changeme jest tests/api --detectOpenHandles --forceExit",
+    "test:coverage": "cross-env USE_MOCK_DATA=true ADMIN_PASSWORD=changeme jest tests/api --coverage --detectOpenHandles --forceExit",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "cors": "^2.8.5",
@@ -22,7 +25,12 @@
     "uuid": "^9.0.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "concurrently": "^8.2.2",
-    "nodemon": "^3.1.0"
+    "cross-env": "^10.1.0",
+    "jest": "^30.4.2",
+    "nodemon": "^3.1.0",
+    "playwright": "^1.61.1",
+    "supertest": "^7.2.2"
   }
 }
