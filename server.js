@@ -557,7 +557,7 @@ app.get('/api/orders/manage', publicLimiter, async (req, res) => {
 
   if (USE_MOCK) {
     const orders = MOCK_ORDERS.filter(o => o.phone === queryPhone && o.status !== 'CANCELLED');
-    const futureOrders = orders.filter(o => parseDate(o.date) > today);
+    const futureOrders = orders.filter(o => parseDate(o.date) > today).map(o => ({ ...o, canCancel: true }));
     return res.json({ success: true, orders: futureOrders });
   }
 
@@ -573,15 +573,18 @@ app.get('/api/orders/manage', publicLimiter, async (req, res) => {
     // Sort by date ascending
     futureOrders.sort((a, b) => parseDate(a.date) - parseDate(b.date));
     
-    res.json({ success: true, orders: futureOrders });
+    // Add canCancel flag for frontend UI
+    const mappedOrders = futureOrders.map(o => ({ ...o, canCancel: true }));
+    
+    res.json({ success: true, orders: mappedOrders });
   } catch (err) {
     console.error('Error fetching customer orders:', err.message);
     res.status(500).json({ error: 'Failed to fetch your orders.' });
   }
 });
 
-// PUT /api/orders/manage/:orderId?phone=XXXXXXXXXX
-app.put('/api/orders/manage/:orderId', publicLimiter, async (req, res) => {
+// DELETE /api/orders/manage/:orderId?phone=XXXXXXXXXX
+app.delete('/api/orders/manage/:orderId', publicLimiter, async (req, res) => {
   const { phone } = req.query;
   const { orderId } = req.params;
   

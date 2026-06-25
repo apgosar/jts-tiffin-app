@@ -34,14 +34,14 @@ describe('Customer Portal Endpoints', () => {
     });
   });
 
-  describe('PUT /api/orders/manage/:orderId', () => {
+  describe('DELETE /api/orders/manage/:orderId', () => {
     it('should return 400 if phone is missing', async () => {
-      const res = await request(app).put('/api/orders/manage/O-1234');
+      const res = await request(app).delete('/api/orders/manage/O-1234');
       expect(res.statusCode).toEqual(400);
     });
 
     it('should return 404 for non-existent order', async () => {
-      const res = await request(app).put(`/api/orders/manage/NON_EXISTENT?phone=${phone}`);
+      const res = await request(app).delete(`/api/orders/manage/NON_EXISTENT?phone=${phone}`);
       expect(res.statusCode).toEqual(404);
     });
 
@@ -52,7 +52,7 @@ describe('Customer Portal Endpoints', () => {
       
       expect(orderToCancel).toBeDefined();
 
-      const res = await request(app).put(`/api/orders/manage/${orderToCancel.orderId}?phone=${phone}`);
+      const res = await request(app).delete(`/api/orders/manage/${orderToCancel.orderId}?phone=${phone}`);
       expect(res.statusCode).toEqual(200);
       expect(res.body.success).toBe(true);
       expect(res.body.message).toBe('Order cancelled successfully');
