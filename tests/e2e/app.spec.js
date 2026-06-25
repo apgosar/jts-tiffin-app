@@ -23,7 +23,8 @@ test.describe('JTS Tiffin App End-to-End', () => {
     await page.click('button:has-text("Login")');
     
     // Verify successful login by checking for Admin Dashboard elements
-    await expect(page.locator('text=Orders').first()).toBeVisible();
+    await expect(page.locator('text=Admin Access')).not.toBeVisible();
+    await expect(page.locator('button:has-text("Orders")').first()).toBeVisible();
   });
 
   test('should complete the checkout flow successfully', async ({ page }) => {
