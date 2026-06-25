@@ -322,7 +322,7 @@ export default function MenuPage() {
       })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [setMenu]);
+  }, [setMenu, setMetadata]);
 
   const lunchMenu = menu.filter(m => m.category === 'Lunch' || !m.category).map(m => {
     if (status === 'LUNCH_CLOSED') return { ...m, available: false };

@@ -82,6 +82,7 @@ export default function RecurringPage() {
       }
     };
     fetchCustomer();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.phone]);
 
   const selectProfile = (idx, profiles = savedProfiles) => {

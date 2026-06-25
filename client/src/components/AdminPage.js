@@ -572,7 +572,6 @@ function OrdersTab({ password }) {
   // Analytics
   const totalRevenue     = orders.reduce((s, o) => s + o.grandTotal, 0);
   const totalTiffins     = orders.reduce((s, o) => s + o.items.reduce((a, i) => a + i.quantity, 0), 0);
-  const outsideCount     = orders.filter(o => o.zone === 'outside').length;
 
   // Per-item breakdown
   const itemCounts = {};

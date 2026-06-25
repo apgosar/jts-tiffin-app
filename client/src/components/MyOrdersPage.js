@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronLeft, LogIn, Calendar, CheckCircle, XCircle, Search } from 'lucide-react';
+import { ChevronLeft, LogIn, Calendar, XCircle, Search } from 'lucide-react';
 import LoadingSpinner from './LoadingSpinner';
 
 export default function MyOrdersPage() {
