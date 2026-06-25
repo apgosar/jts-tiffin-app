@@ -46,7 +46,12 @@ if (!USE_MOCK && !process.env.FIREBASE_CREDENTIALS_PATH && process.env.NODE_ENV 
 
 let db = null;
 if (!USE_MOCK) {
-  if (process.env.FIREBASE_CREDENTIALS_PATH) {
+  if (process.env.FIREBASE_CREDENTIALS_JSON) {
+    const serviceAccount = JSON.parse(process.env.FIREBASE_CREDENTIALS_JSON);
+    initializeApp({
+      credential: cert(serviceAccount)
+    });
+  } else if (process.env.FIREBASE_CREDENTIALS_PATH) {
     const credPath = path.resolve(process.env.FIREBASE_CREDENTIALS_PATH);
     if (fs.existsSync(credPath)) {
       const serviceAccount = require(credPath);
@@ -559,10 +564,9 @@ app.get('/api/orders/manage', publicLimiter, async (req, res) => {
   try {
     const snapshot = await db.collection('orders')
       .where('phone', '==', queryPhone)
-      .where('status', '!=', 'CANCELLED')
       .get();
       
-    const allOrders = snapshot.docs.map(doc => doc.data());
+    const allOrders = snapshot.docs.map(doc => doc.data()).filter(o => o.status !== 'CANCELLED');
     // Only return future orders (after today)
     const futureOrders = allOrders.filter(o => parseDate(o.date) > today);
     
