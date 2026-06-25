@@ -557,7 +557,7 @@ app.get('/api/orders/manage', publicLimiter, async (req, res) => {
 
   if (USE_MOCK) {
     const orders = MOCK_ORDERS.filter(o => o.phone === queryPhone && o.status !== 'CANCELLED');
-    const futureOrders = orders.filter(o => parseDate(o.date) > today).map(o => ({ ...o, canCancel: true }));
+    const futureOrders = orders.filter(o => parseDate(o.date) > today).map(o => ({ ...o, id: o.orderId, canCancel: true }));
     return res.json({ success: true, orders: futureOrders });
   }
 
@@ -573,8 +573,8 @@ app.get('/api/orders/manage', publicLimiter, async (req, res) => {
     // Sort by date ascending
     futureOrders.sort((a, b) => parseDate(a.date) - parseDate(b.date));
     
-    // Add canCancel flag for frontend UI
-    const mappedOrders = futureOrders.map(o => ({ ...o, canCancel: true }));
+    // Add canCancel flag and map orderId to id for frontend UI
+    const mappedOrders = futureOrders.map(o => ({ ...o, id: o.orderId, canCancel: true }));
     
     res.json({ success: true, orders: mappedOrders });
   } catch (err) {
