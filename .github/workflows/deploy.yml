@@ -71,9 +71,8 @@ jobs:
           service: jts-tiffin-app
           region: asia-south1
           source: ./
-          env_vars:
-            NODE_ENV: "production"
-            ADMIN_PASSWORD: "${{ secrets.ADMIN_PASSWORD }}"
-            BORIVALI_PINCODES: "${{ vars.BORIVALI_PINCODES }}"
-            OUTSIDE_DELIVERY_SURCHARGE: "${{ vars.OUTSIDE_DELIVERY_SURCHARGE }}"
-            FIREBASE_CREDENTIALS_JSON: "${{ secrets.FIREBASE_CREDENTIALS }}"
+          env_vars: |-
+            NODE_ENV=production
+            ADMIN_PASSWORD=${{ secrets.ADMIN_PASSWORD }}
+            BORIVALI_PINCODES=${{ vars.BORIVALI_PINCODES }}
+            OUTSIDE_DELIVERY_SURCHARGE=${{ vars.OUTSIDE_DELIVERY_SURCHARGE }}
