@@ -3,6 +3,7 @@ const express      = require('express');
 const cors         = require('cors');
 const helmet       = require('helmet');
 const path         = require('path');
+const fs           = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const rateLimit    = require('express-rate-limit');
 const { initializeApp, cert } = require('firebase-admin/app');
@@ -46,10 +47,16 @@ if (!USE_MOCK && !process.env.FIREBASE_CREDENTIALS_PATH && process.env.NODE_ENV 
 let db = null;
 if (!USE_MOCK) {
   if (process.env.FIREBASE_CREDENTIALS_PATH) {
-    const serviceAccount = require(path.resolve(process.env.FIREBASE_CREDENTIALS_PATH));
-    initializeApp({
-      credential: cert(serviceAccount)
-    });
+    const credPath = path.resolve(process.env.FIREBASE_CREDENTIALS_PATH);
+    if (fs.existsSync(credPath)) {
+      const serviceAccount = require(credPath);
+      initializeApp({
+        credential: cert(serviceAccount)
+      });
+    } else {
+      console.warn(`WARNING: FIREBASE_CREDENTIALS_PATH is set to ${credPath} but the file does not exist. Falling back to Application Default Credentials.`);
+      initializeApp();
+    }
   } else {
     // In Google Cloud Run (production), initialize without arguments to use Application Default Credentials
     initializeApp();
