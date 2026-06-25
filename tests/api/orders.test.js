@@ -145,6 +145,38 @@ describe('Order Endpoints', () => {
       expect(res.body.surchargeTotal).toBe(120);
     });
 
+    it('should apply 30 delivery charge for Borivali order under 250', async () => {
+      const payload = {
+        customer: { ...baseCustomer, pincode: '400092' }, // within borivali
+        items: [
+          { name: 'Mini Lunch', quantity: 1, price: 140 } // under 250
+        ],
+        paymentMode: 'Cash'
+      };
+      const res = await request(app).post('/api/orders').send(payload);
+      expect(res.statusCode).toEqual(200);
+      // Lunch subtotal = 140, Surcharge = 30
+      // Exact total = 170
+      expect(res.body.grandTotal).toBe(170);
+      expect(res.body.surchargeTotal).toBe(30);
+    });
+
+    it('should apply 40 surcharge for Outside Borivali order under 250 (and no additional 30 charge)', async () => {
+      const payload = {
+        customer: { ...baseCustomer, pincode: '400001' }, // outside
+        items: [
+          { name: 'Mini Lunch', quantity: 1, price: 140 } // under 250
+        ],
+        paymentMode: 'Cash'
+      };
+      const res = await request(app).post('/api/orders').send(payload);
+      expect(res.statusCode).toEqual(200);
+      // Lunch subtotal = 140, Surcharge = 40 (because outside borivali is 40 per tiffin, and it bypasses the < 250 rule)
+      // Exact total = 180
+      expect(res.body.grandTotal).toBe(180);
+      expect(res.body.surchargeTotal).toBe(40);
+    });
+
     it('should reject unknown custom items', async () => {
       const payload = {
         customer: { ...baseCustomer, pincode: '400092' },
