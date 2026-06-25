@@ -1098,8 +1098,8 @@ if (process.env.NODE_ENV === 'production') {
 
 const PORT = process.env.PORT || 5000;
 
-if (require.main === module) {
-  app.listen(PORT, () => {
+if (process.env.NODE_ENV !== 'test') {
+  app.listen(PORT, '0.0.0.0', () => {
     console.log(`\nJTS Tiffin App server running on port ${PORT} [mock=${USE_MOCK}]`);
     if (USE_MOCK) {
       console.log('Using mock data - no Firestore connection required.');
