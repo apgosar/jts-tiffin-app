@@ -675,21 +675,32 @@ app.put('/api/admin/menu', adminLimiter, requireAdmin, async (req, res) => {
   }
 });
 
-function getRawComponents(items) {
+function getRawComponents(items, metadata = { sweetAvailable: 'Yes', farsanAvailable: 'Yes' }) {
   const comp = { Roti: 0, Sabji: 0, Dal: 0, Rice: 0, Sweet: 0, Farsan: 0 };
+  
+  const sweetOn = metadata.sweetAvailable === 'Yes';
+  const farsanOn = metadata.farsanAvailable === 'Yes';
   
   (items || []).forEach(item => {
     const n = (item.name || '').trim();
     const q = item.quantity || 0;
     
     if (n === 'Mini Lunch') {
-      comp.Roti += 3 * q; comp.Sabji += 0.5 * q; comp.Dal += 0.5 * q; comp.Rice += 0.5 * q; comp.Sweet += 1 * q; comp.Farsan += 1 * q;
+      comp.Roti += 3 * q; comp.Sabji += 0.5 * q; comp.Dal += 0.5 * q; comp.Rice += 0.5 * q; 
+      if (sweetOn) comp.Sweet += 1 * q; 
+      if (farsanOn) comp.Farsan += 1 * q;
     } else if (n.toLowerCase().includes('brunch')) {
-      comp.Roti += 6 * q; comp.Sabji += 1 * q; comp.Dal += 0.5 * q; comp.Rice += 0.5 * q; comp.Sweet += 1 * q; comp.Farsan += 1 * q;
+      comp.Roti += 6 * q; comp.Sabji += 1 * q; comp.Dal += 0.5 * q; comp.Rice += 0.5 * q; 
+      if (sweetOn) comp.Sweet += 1 * q; 
+      if (farsanOn) comp.Farsan += 1 * q;
     } else if (n.toLowerCase().includes('full lunch')) {
-      comp.Roti += 6 * q; comp.Sabji += 1 * q; comp.Dal += 1 * q; comp.Rice += 1 * q; comp.Sweet += 1 * q; comp.Farsan += 1 * q;
+      comp.Roti += 6 * q; comp.Sabji += 1 * q; comp.Dal += 1 * q; comp.Rice += 1 * q; 
+      if (sweetOn) comp.Sweet += 1 * q; 
+      if (farsanOn) comp.Farsan += 1 * q;
     } else if (n === 'Family Meal') {
-      comp.Roti += 9 * q; comp.Sabji += 1.5 * q; comp.Dal += 1.5 * q; comp.Rice += 1.5 * q; comp.Sweet += 1 * q; comp.Farsan += 1 * q;
+      comp.Roti += 9 * q; comp.Sabji += 1.5 * q; comp.Dal += 1.5 * q; comp.Rice += 1.5 * q; 
+      if (sweetOn) comp.Sweet += 1 * q; 
+      if (farsanOn) comp.Farsan += 1 * q;
     } else if (n.toLowerCase() === 'roti') {
       comp.Roti += 1 * q;
     } else if (n.toLowerCase().includes('sabji (half)')) {
@@ -718,6 +729,7 @@ app.get('/api/admin/kitchen', adminLimiter, requireAdmin, async (req, res) => {
   if (!date) return res.status(400).json({ error: 'date parameter required (DD/MM/YYYY)' });
 
   let orders = [];
+  let metadata = MOCK_METADATA;
 
   if (USE_MOCK) {
     orders = MOCK_ORDERS.filter(o => o.date === date && o.status !== 'CANCELLED');
@@ -727,6 +739,11 @@ app.get('/api/admin/kitchen', adminLimiter, requireAdmin, async (req, res) => {
         .where('date', '==', date)
         .get();
       orders = snapshot.docs.map(doc => doc.data()).filter(o => o.status !== 'CANCELLED');
+      
+      const metaSnap = await db.collection('admin').doc('metadata').get();
+      if (metaSnap.exists) {
+        metadata = metaSnap.data();
+      }
     } catch (err) {
       console.error('Error fetching kitchen summary:', err.message);
       return res.status(500).json({ error: 'Failed to fetch kitchen summary.' });
@@ -760,7 +777,7 @@ app.get('/api/admin/kitchen', adminLimiter, requireAdmin, async (req, res) => {
     const choviarItems = (order.items || []).filter(i => i.category === 'Choviar');
 
     if (lunchItems.length > 0) {
-      const comp = getRawComponents(lunchItems);
+      const comp = getRawComponents(lunchItems, metadata);
       grandTotals.Roti += comp.Roti;
       grandTotals.Sabji += comp.Sabji;
       grandTotals.Dal += comp.Dal;

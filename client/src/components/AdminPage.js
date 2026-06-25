@@ -898,7 +898,7 @@ function KitchenTab({ password }) {
                     { label: 'Rice', val: summary.grandTotals?.Rice },
                     { label: 'Sweet', val: summary.grandTotals?.Sweet },
                     { label: 'Farsan', val: summary.grandTotals?.Farsan },
-                  ].map(stat => (
+                  ].filter(stat => (stat.label !== 'Sweet' && stat.label !== 'Farsan') || stat.val > 0).map(stat => (
                     <div key={stat.label} className="bg-red-50 rounded-lg p-3 text-center border border-red-100">
                       <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">{stat.label}</p>
                       <p className="text-2xl font-black text-jts-red mt-1">{stat.val || 0}</p>
@@ -984,8 +984,8 @@ function KitchenTab({ password }) {
                           <th className="py-1.5 px-1 text-center font-bold">Sabji</th>
                           <th className="py-1.5 px-1 text-center font-bold">Dal</th>
                           <th className="py-1.5 px-1 text-center font-bold">Rice</th>
-                          <th className="py-1.5 px-1 text-center font-bold">Sweet</th>
-                          <th className="py-1.5 px-1 rounded-r-lg text-center font-bold">Farsan</th>
+                          {summary.grandTotals?.Sweet > 0 && <th className="py-1.5 px-1 text-center font-bold">Sweet</th>}
+                          {summary.grandTotals?.Farsan > 0 && <th className="py-1.5 px-1 rounded-r-lg text-center font-bold">Farsan</th>}
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100">
@@ -1002,8 +1002,8 @@ function KitchenTab({ password }) {
                             <td className="py-2 px-1 text-center text-gray-800 font-bold">{order.Sabji || '-'}</td>
                             <td className="py-2 px-1 text-center text-gray-800 font-bold">{order.Dal || '-'}</td>
                             <td className="py-2 px-1 text-center text-gray-800 font-bold">{order.Rice || '-'}</td>
-                            <td className="py-2 px-1 text-center text-gray-800 font-bold">{order.Sweet || '-'}</td>
-                            <td className="py-2 px-1 text-center text-gray-800 font-bold">{order.Farsan || '-'}</td>
+                            {summary.grandTotals?.Sweet > 0 && <td className="py-2 px-1 text-center text-gray-800 font-bold">{order.Sweet || '-'}</td>}
+                            {summary.grandTotals?.Farsan > 0 && <td className="py-2 px-1 text-center text-gray-800 font-bold">{order.Farsan || '-'}</td>}
                           </tr>
                         ))}
                       </tbody>
