@@ -39,7 +39,7 @@ const BORIVALI_PINCODES = new Set(
 );
 
 // ─── Firebase Initialization ─────────────────────────────────────────────────
-if (!USE_MOCK && !process.env.FIREBASE_CREDENTIALS_PATH && process.env.NODE_ENV !== 'production') {
+if (!USE_MOCK && !process.env.FIREBASE_CREDENTIALS_PATH && process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'test') {
   console.error('ERROR: FIREBASE_CREDENTIALS_PATH not set in .env');
   process.exit(1);
 }

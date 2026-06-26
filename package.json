@@ -12,7 +12,7 @@
     "install-all": "npm install && cd client && npm install",
     "sheet:init": "node scripts/init-google-sheet.js",
     "test:api": "cross-env NODE_ENV=test USE_MOCK_DATA=true ADMIN_PASSWORD=changeme BORIVALI_PINCODES=400066,400067,400068,400091,400092 jest tests/api --detectOpenHandles --forceExit",
-    "test:coverage": "cross-env USE_MOCK_DATA=true ADMIN_PASSWORD=changeme BORIVALI_PINCODES=400066,400067,400068,400091,400092 jest tests/api --coverage --detectOpenHandles --forceExit",
+    "test:coverage": "cross-env NODE_ENV=test USE_MOCK_DATA=true ADMIN_PASSWORD=changeme BORIVALI_PINCODES=400066,400067,400068,400091,400092 jest tests/api --coverage --detectOpenHandles --forceExit",
     "test:e2e": "playwright test"
   },
   "dependencies": {
