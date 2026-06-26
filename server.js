@@ -70,10 +70,12 @@ if (!USE_MOCK) {
 }
 
 // ─── Rate limiting ────────────────────────────────────────────────────────────
-const orderLimiter    = rateLimit({ windowMs: 15 * 60 * 1000, max: 20,  standardHeaders: true, legacyHeaders: false });
-const adminLimiter    = rateLimit({ windowMs: 15 * 60 * 1000, max: 100, standardHeaders: true, legacyHeaders: false });
-const publicLimiter   = rateLimit({ windowMs: 15 * 60 * 1000, max: 200, standardHeaders: true, legacyHeaders: false });
-const lookupLimiter   = rateLimit({ windowMs: 15 * 60 * 1000, max: 10,  standardHeaders: true, legacyHeaders: false }); // phone lookup: 10/15min
+// Disable rate limiting in test mode to prevent 429s from rapid test calls
+const noopMiddleware = (_req, _res, next) => next();
+const orderLimiter    = process.env.NODE_ENV === 'test' ? noopMiddleware : rateLimit({ windowMs: 15 * 60 * 1000, max: 20,  standardHeaders: true, legacyHeaders: false });
+const adminLimiter    = process.env.NODE_ENV === 'test' ? noopMiddleware : rateLimit({ windowMs: 15 * 60 * 1000, max: 100, standardHeaders: true, legacyHeaders: false });
+const publicLimiter   = process.env.NODE_ENV === 'test' ? noopMiddleware : rateLimit({ windowMs: 15 * 60 * 1000, max: 200, standardHeaders: true, legacyHeaders: false });
+const lookupLimiter   = process.env.NODE_ENV === 'test' ? noopMiddleware : rateLimit({ windowMs: 15 * 60 * 1000, max: 10,  standardHeaders: true, legacyHeaders: false }); // phone lookup: 10/15min
 
 // ─── Mock data ────────────────────────────────────────────────────────────────
 let MOCK_MENU = [

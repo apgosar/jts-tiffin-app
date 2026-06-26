@@ -52,10 +52,81 @@ describe('Public Endpoints', () => {
     });
 
     it('should return empty if phone does not exist', async () => {
-      const res = await request(app).get('/api/customer/lookup?phone=9999999999');
+      const res = await request(app).get('/api/customer/lookup?phone=6000000000');
       expect(res.statusCode).toEqual(200);
       expect(res.body.found).toBe(false);
       expect(res.body.profiles.length).toEqual(0);
+    });
+
+    it('should find a customer after they place an order', async () => {
+      const uniquePhone = '7111111111';
+
+      // Place an order to register the customer in mock
+      await request(app).post('/api/orders').send({
+        customer: {
+          name: 'Lookup Test Customer',
+          phone: uniquePhone,
+          pincode: '400092',
+          address: '5, Lookup Block, Test St, Borivali',
+          locality: 'Borivali West',
+          wingFlat: 'L1',
+          building: 'Lookup Block',
+          street: 'Test St',
+        },
+        items: [{ name: 'Mini Lunch', quantity: 1, price: 140 }],
+        paymentMode: 'Cash',
+      });
+
+      // Now look them up
+      const res = await request(app).get(`/api/customer/lookup?phone=${uniquePhone}`);
+      expect(res.statusCode).toEqual(200);
+      expect(res.body.found).toBe(true);
+      expect(res.body.profiles[0].name).toBe('Lookup Test Customer');
+      expect(res.body.profiles[0].phone).toBe(uniquePhone);
+    });
+  });
+
+  describe('GET /api/check-pincode — Zone & Surcharge Details', () => {
+    it('should return zone borivali for a Borivali pincode', async () => {
+      const res = await request(app).get('/api/check-pincode?pincode=400092');
+      expect(res.statusCode).toEqual(200);
+      expect(res.body.zone).toBe('borivali');
+    });
+
+    it('should return zone outside for a non-Borivali pincode', async () => {
+      const res = await request(app).get('/api/check-pincode?pincode=400001');
+      expect(res.statusCode).toEqual(200);
+      expect(res.body.zone).toBe('outside');
+    });
+
+    it('should return surchargePerTiffin of 40 (the configured outside surcharge)', async () => {
+      const res = await request(app).get('/api/check-pincode?pincode=400001');
+      expect(res.statusCode).toEqual(200);
+      expect(res.body.surchargePerTiffin).toBe(40);
+    });
+  });
+
+  describe('GET /api/menu — Menu Item Field Checks', () => {
+    it('should return menu items each with name, price, and category fields', async () => {
+      const res = await request(app).get('/api/menu');
+      expect(res.statusCode).toEqual(200);
+      expect(res.body.menu.length).toBeGreaterThan(0);
+      res.body.menu.forEach(item => {
+        expect(item).toHaveProperty('name');
+        expect(item).toHaveProperty('price');
+        expect(item).toHaveProperty('category');
+        expect(typeof item.price).toBe('number');
+        expect(item.price).toBeGreaterThan(0);
+      });
+    });
+
+    it('should return metadata object with expected fields', async () => {
+      const res = await request(app).get('/api/menu');
+      expect(res.statusCode).toEqual(200);
+      expect(typeof res.body.metadata).toBe('object');
+      // Mock metadata has sabji and sweet fields
+      expect(res.body.metadata).toHaveProperty('sabji');
+      expect(res.body.metadata).toHaveProperty('sweet');
     });
   });
 });

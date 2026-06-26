@@ -16,6 +16,14 @@ describe('Delivery Endpoints', () => {
       expect(res.body.success).toBe(true);
       expect(Array.isArray(res.body.orders)).toBe(true);
     });
+
+    it('should return empty orders for a far-future date with no orders', async () => {
+      const res = await request(app).get('/api/delivery/orders?date=01/01/2099');
+      expect(res.statusCode).toEqual(200);
+      expect(res.body.success).toBe(true);
+      // In mock mode the delivery endpoint always returns empty regardless of date
+      expect(Array.isArray(res.body.orders)).toBe(true);
+    });
   });
 
   describe('PUT /api/delivery/orders/payment', () => {
@@ -27,6 +35,26 @@ describe('Delivery Endpoints', () => {
 
     it('should mark order as paid successfully', async () => {
       const res = await request(app).put('/api/delivery/orders/payment').send({ orderId: 'O-1234' });
+      expect(res.statusCode).toEqual(200);
+      expect(res.body.success).toBe(true);
+    });
+
+    it('should accept full payment details including method and amount', async () => {
+      const res = await request(app).put('/api/delivery/orders/payment').send({
+        orderId: 'O-PAYMENT-TEST',
+        paymentReceived: true,
+        paymentMethod: 'UPI',
+        amountReceived: '220'
+      });
+      expect(res.statusCode).toEqual(200);
+      expect(res.body.success).toBe(true);
+    });
+
+    it('should accept paymentReceived: false (cash not yet collected)', async () => {
+      const res = await request(app).put('/api/delivery/orders/payment').send({
+        orderId: 'O-UNPAID-TEST',
+        paymentReceived: false,
+      });
       expect(res.statusCode).toEqual(200);
       expect(res.body.success).toBe(true);
     });

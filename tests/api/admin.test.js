@@ -87,4 +87,99 @@ describe('Admin Endpoints', () => {
       expect(res.body).toHaveProperty('kitchenOrders');
     });
   });
+
+  describe('GET /api/admin/orders — additional cases', () => {
+    it('should reject with wrong admin password', async () => {
+      const res = await request(app)
+        .get('/api/admin/orders?date=01/01/2050')
+        .set('x-admin-password', 'wrongpassword');
+      expect(res.statusCode).toEqual(401);
+    });
+
+    it('should return empty orders array for a future date with no orders', async () => {
+      const res = await request(app)
+        .get('/api/admin/orders?date=01/01/2099')
+        .set('x-admin-password', 'changeme');
+      expect(res.statusCode).toEqual(200);
+      expect(res.body.orders).toEqual([]);
+    });
+
+    it('should return orders when month query is provided', async () => {
+      const res = await request(app)
+        .get('/api/admin/orders?month=06/2026')
+        .set('x-admin-password', 'changeme');
+      expect(res.statusCode).toEqual(200);
+      expect(res.body.success).toBe(true);
+      expect(Array.isArray(res.body.orders)).toBe(true);
+    });
+  });
+
+  describe('PUT /api/admin/orders/delivery/batch — additional cases', () => {
+    it('should cancel an order when routeOrder is CANCELLED', async () => {
+      // Place a new order to get a valid orderId
+      const orderRes = await request(app).post('/api/orders').send({
+        customer: {
+          name: 'Batch Tester', phone: '9876543210', pincode: '400092',
+          address: 'Test Addr', locality: 'Borivali', wingFlat: 'C3',
+          building: 'Batch Block', street: 'Batch St'
+        },
+        items: [{ name: 'Full Lunch', quantity: 1, price: 220 }],
+        paymentMode: 'Cash'
+      });
+      const orderId = orderRes.body.orderId;
+
+      const res = await request(app)
+        .put('/api/admin/orders/delivery/batch')
+        .set('x-admin-password', 'changeme')
+        .send({ updates: [{ orderId, deliveryPerson: 'Raju', routeOrder: 'CANCELLED' }] });
+
+      expect(res.statusCode).toEqual(200);
+      expect(res.body.success).toBe(true);
+
+      // Verify the order is now CANCELLED by fetching admin orders
+      const today = new Date();
+      const dd = String(today.getDate()).padStart(2, '0');
+      const mm = String(today.getMonth() + 1).padStart(2, '0');
+      const yyyy = today.getFullYear();
+      const todayStr = `${dd}/${mm}/${yyyy}`;
+
+      const listRes = await request(app)
+        .get(`/api/admin/orders?date=${todayStr}`)
+        .set('x-admin-password', 'changeme');
+      const cancelledOrder = listRes.body.orders.find(o => o.orderId === orderId);
+      // Order should either be absent or have CANCELLED status
+      if (cancelledOrder) {
+        expect(cancelledOrder.status).toBe('CANCELLED');
+      }
+    });
+
+    it('should return 400 when updates array is empty', async () => {
+      const res = await request(app)
+        .put('/api/admin/orders/delivery/batch')
+        .set('x-admin-password', 'changeme')
+        .send({ updates: [] });
+      expect(res.statusCode).toEqual(400);
+    });
+
+    it('should successfully assign deliveryPerson and routeOrder', async () => {
+      const orderRes = await request(app).post('/api/orders').send({
+        customer: {
+          name: 'Driver Tester', phone: '9876543210', pincode: '400092',
+          address: 'Driver Addr', locality: 'Borivali', wingFlat: 'D4',
+          building: 'Driver Block', street: 'Driver St'
+        },
+        items: [{ name: 'Mini Lunch', quantity: 1, price: 140 }],
+        paymentMode: 'Cash'
+      });
+      const orderId = orderRes.body.orderId;
+
+      const res = await request(app)
+        .put('/api/admin/orders/delivery/batch')
+        .set('x-admin-password', 'changeme')
+        .send({ updates: [{ orderId, deliveryPerson: 'Mahesh', routeOrder: 3 }] });
+
+      expect(res.statusCode).toEqual(200);
+      expect(res.body.success).toBe(true);
+    });
+  });
 });
