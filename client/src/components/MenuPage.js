@@ -511,7 +511,6 @@ export default function MenuPage() {
           <div className="mt-8 bg-jts-navy rounded-2xl p-4 text-center">
             <p className="text-white font-bold text-base" style={{ fontFamily: "'Oswald', sans-serif" }}>Keyur Shah</p>
             <a href="tel:+918779084488" className="text-jts-gold font-semibold text-lg tracking-wide hover:underline">📞 87790 84488</a>
-            <p className="text-white text-xs mt-2 opacity-75">Borivali delivery only</p>
             <p className="text-jts-gold text-xs mt-1 font-medium">₹40 extra per tiffin for delivery outside Borivali</p>
           </div>
         )}
