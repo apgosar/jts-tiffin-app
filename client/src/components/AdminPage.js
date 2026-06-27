@@ -158,7 +158,7 @@ const TIFFIN_DEFAULTS = [
   { name: 'Choviar Special', description: 'Ragdo, 4 Kelawada, Dal Khichdi', price: 160, available: true, category: 'Choviar', qty: 4 },
 ];
 
-function MenuTab({ password, currentMenu, currentMetadata }) {
+function MenuTab({ password, currentMenu, currentMetadata, onMenuSaved }) {
   const [items, setItems]       = useState(currentMenu.length > 0 ? currentMenu : TIFFIN_DEFAULTS);
   const [metadata, setMetadata] = useState({
     sabji: '', sweet: '', dal: '', farsan: '', rice: '',
@@ -261,6 +261,8 @@ function MenuTab({ password, currentMenu, currentMetadata }) {
     try {
       await updateAdminMenu({ items, metadata }, password);
       setMsg('✅ Menu saved successfully! Customers will see the updated menu immediately.');
+      // Notify parent so currentMenu stays in sync — prevents qty/fields resetting on tab switch
+      if (onMenuSaved) onMenuSaved(items, metadata);
     } catch (err) {
       setMsg('❌ ' + (err.response?.data?.error || 'Failed to save menu.'));
     } finally {
@@ -1279,7 +1281,7 @@ export default function AdminPage() {
 
       {/* Tab content */}
       <main className="max-w-2xl mx-auto px-4 py-3">
-        {activeTab === 'menu'    && <MenuTab    password={adminPassword} currentMenu={currentMenu} currentMetadata={currentMetadata} />}
+        {activeTab === 'menu'    && <MenuTab    password={adminPassword} currentMenu={currentMenu} currentMetadata={currentMetadata} onMenuSaved={(savedItems, savedMeta) => { setCurrentMenu(savedItems); setCurrentMetadata(savedMeta); }} />}
         {activeTab === 'orders'  && <OrdersTab  password={adminPassword} />}
         {activeTab === 'kitchen' && <KitchenTab password={adminPassword} />}
         {activeTab === 'manage' && (
