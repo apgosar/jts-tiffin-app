@@ -26,6 +26,23 @@ async function placeOrder(items, overrideCustomer = {}) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Helper: get current order target date (matching server.js 19:00 IST logic)
+// ─────────────────────────────────────────────────────────────────────────────
+function getTargetDateStr() {
+  const now = new Date();
+  const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+  const istTime = new Date(utc + (3600000 * 5.5));
+  const deliveryTime = new Date(istTime);
+  if (istTime.getHours() >= 19) {
+    deliveryTime.setDate(deliveryTime.getDate() + 1);
+  }
+  const dd = String(deliveryTime.getDate()).padStart(2, '0');
+  const mm = String(deliveryTime.getMonth() + 1).padStart(2, '0');
+  const yyyy = deliveryTime.getFullYear();
+  return `${dd}/${mm}/${yyyy}`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GET /api/admin/kitchen — Validation
 // ─────────────────────────────────────────────────────────────────────────────
 describe('GET /api/admin/kitchen', () => {
@@ -61,12 +78,7 @@ describe('GET /api/admin/kitchen', () => {
     });
 
     it('should count the Lunch orderCount correctly', async () => {
-      const today = new Date();
-      // Format date as DD/MM/YYYY in IST (server does the same thing)
-      const dd = String(today.getDate()).padStart(2, '0');
-      const mm = String(today.getMonth() + 1).padStart(2, '0');
-      const yyyy = today.getFullYear();
-      const todayStr = `${dd}/${mm}/${yyyy}`;
+      const todayStr = getTargetDateStr();
 
       const res = await request(app)
         .get(`/api/admin/kitchen?date=${todayStr}`)
@@ -86,11 +98,7 @@ describe('GET /api/admin/kitchen', () => {
 
   describe('Kitchen summary with Choviar orders', () => {
     it('should report choviarOrderCount correctly', async () => {
-      const today = new Date();
-      const dd = String(today.getDate()).padStart(2, '0');
-      const mm = String(today.getMonth() + 1).padStart(2, '0');
-      const yyyy = today.getFullYear();
-      const todayStr = `${dd}/${mm}/${yyyy}`;
+      const todayStr = getTargetDateStr();
 
       // Place a Choviar-only order
       await placeOrder([
@@ -108,11 +116,7 @@ describe('GET /api/admin/kitchen', () => {
 
   describe('CANCELLED orders are excluded from kitchen summary', () => {
     it('should not count CANCELLED orders in the kitchen summary', async () => {
-      const today = new Date();
-      const dd = String(today.getDate()).padStart(2, '0');
-      const mm = String(today.getMonth() + 1).padStart(2, '0');
-      const yyyy = today.getFullYear();
-      const todayStr = `${dd}/${mm}/${yyyy}`;
+      const todayStr = getTargetDateStr();
 
       // Get kitchen count before placing
       const before = await request(app)
@@ -146,11 +150,7 @@ describe('GET /api/admin/kitchen', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 describe('Kitchen component counts via GET /api/admin/kitchen', () => {
   it('should correctly sum Roti for Mini Lunch (3 rotis per tiffin)', async () => {
-    const today = new Date();
-    const dd = String(today.getDate()).padStart(2, '0');
-    const mm = String(today.getMonth() + 1).padStart(2, '0');
-    const yyyy = today.getFullYear();
-    const todayStr = `${dd}/${mm}/${yyyy}`;
+    const todayStr = getTargetDateStr();
 
     // Get current count first
     const before = await request(app)
@@ -169,11 +169,7 @@ describe('Kitchen component counts via GET /api/admin/kitchen', () => {
   });
 
   it('should correctly sum Roti for Family Meal (9 rotis per tiffin)', async () => {
-    const today = new Date();
-    const dd = String(today.getDate()).padStart(2, '0');
-    const mm = String(today.getMonth() + 1).padStart(2, '0');
-    const yyyy = today.getFullYear();
-    const todayStr = `${dd}/${mm}/${yyyy}`;
+    const todayStr = getTargetDateStr();
 
     const before = await request(app)
       .get(`/api/admin/kitchen?date=${todayStr}`)
