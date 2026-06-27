@@ -5,6 +5,7 @@ import { getAdminOrders, updateAdminMenu, getKitchenSummary, updateAdminDelivery
 // ─── Login ────────────────────────────────────────────────────────────────────
 function LoginScreen({ onLogin, authError }) {
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [localError, setLocalError] = useState('');
   const displayError = localError || authError || '';
 
@@ -26,13 +27,35 @@ function LoginScreen({ onLogin, authError }) {
           <p className="text-gray-500 text-sm mt-1">Enter the admin password to continue</p>
         </div>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <input
-            type="password"
-            value={password}
-            onChange={e => { setPassword(e.target.value); setLocalError(''); }}
-            placeholder="Admin password"
-            className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-jts-red transition"
-          />
+          <div className="relative">
+            <input
+              type={showPassword ? 'text' : 'password'}
+              value={password}
+              onChange={e => { setPassword(e.target.value); setLocalError(''); }}
+              placeholder="Admin password"
+              className="w-full px-4 py-3 pr-11 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-jts-red transition"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(v => !v)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition"
+              tabIndex={-1}
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+            >
+              {showPassword ? (
+                // Eye-off icon
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                </svg>
+              ) : (
+                // Eye icon
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                </svg>
+              )}
+            </button>
+          </div>
           {displayError && <p className="text-xs text-red-600 -mt-2">{displayError}</p>}
           <button type="submit" className="w-full py-3 bg-jts-red hover:bg-jts-crimson text-white font-bold rounded-xl transition">
             Login
@@ -535,7 +558,7 @@ function OrdersTab({ password }) {
       setOrders(dataOrders);
       const initial = {};
       dataOrders.forEach(o => {
-        initial[o.orderId] = { deliveryPerson: o.deliveryPerson || '', routeOrder: o.routeOrder || '' };
+        initial[o.orderId] = { deliveryPerson: o.deliveryPerson || '', routeOrder: (o.routeOrder && o.routeOrder !== 9999) ? o.routeOrder : '' };
       });
       setAssignments(initial);
     } catch (err) {
@@ -677,11 +700,24 @@ function OrdersTab({ password }) {
         const sortByRoute = (a, b) => {
           const rA = parseInt(assignments[a.orderId]?.routeOrder, 10) || 9999;
           const rB = parseInt(assignments[b.orderId]?.routeOrder, 10) || 9999;
-          return rA - rB;
+          if (rA !== rB) return rA - rB;
+          // At equal sequence, show outside orders first
+          const aOut = a.zone === 'outside' ? 0 : 1;
+          const bOut = b.zone === 'outside' ? 0 : 1;
+          return aOut - bOut;
         };
 
-        const sortedLunch = [...lunchOrders].sort(sortByRoute);
-        const sortedChoviar = [...choviarOrders].sort(sortByRoute);
+        // Sort each group: outside orders first (among those with no seq), then by routeOrder
+        const sortGroupWithOutsideFirst = (list) => {
+          const assigned = list.filter(o => assignments[o.orderId]?.routeOrder && assignments[o.orderId]?.routeOrder !== 9999);
+          const unassigned = list.filter(o => !assignments[o.orderId]?.routeOrder || assignments[o.orderId]?.routeOrder === 9999);
+          const outsideUnassigned = unassigned.filter(o => o.zone === 'outside');
+          const borivaliUnassigned = unassigned.filter(o => o.zone !== 'outside');
+          return [...assigned.sort(sortByRoute), ...outsideUnassigned, ...borivaliUnassigned];
+        };
+
+        const sortedLunch = sortGroupWithOutsideFirst(lunchOrders);
+        const sortedChoviar = sortGroupWithOutsideFirst(choviarOrders);
 
         const renderGroup = (title, groupOrders) => {
           if (groupOrders.length === 0) return null;
