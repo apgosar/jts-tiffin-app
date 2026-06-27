@@ -83,7 +83,7 @@ let MOCK_MENU = [
   { name: 'Brunch',      description: '6 Roti, Sabji, 1/2 Dal, 1/2 Rice, Salad / Sweet / Namkeen / Farsan', price: 180, available: true, category: 'Lunch' },
   { name: 'Full Lunch',  description: '6 Roti, Sabji, Dal, Rice, Salad / Sweet / Namkeen / Farsan', price: 220, available: true, category: 'Lunch' },
   { name: 'Family Meal', description: '9 Roti, Sabji, Dal, Rice, Salad / Sweet / Namkeen / Farsan', price: 320, available: true, category: 'Lunch' },
-  { name: 'Choviar Special', description: 'Ragdo, 4 Kelawada, Dal Khichdi', price: 160, available: true, category: 'Choviar' },
+  { name: 'Choviar Special', description: 'Ragdo, 4 Kelawada, Dal Khichdi', price: 160, available: true, category: 'Choviar', qty: 4 },
 ];
 let MOCK_METADATA = { sabji: 'Bhindi', sweet: 'Aamras', dal: 'Gujarati Dal', farsan: 'Dhokla', betaTesting: 'Yes' };
 
@@ -846,6 +846,7 @@ app.get('/api/admin/kitchen', adminLimiter, requireAdmin, async (req, res) => {
 
   let orders = [];
   let metadata = MOCK_METADATA;
+  let menuItems = MOCK_MENU;
 
   if (USE_MOCK) {
     orders = MOCK_ORDERS.filter(o => o.date === date && o.status !== 'CANCELLED');
@@ -860,11 +861,23 @@ app.get('/api/admin/kitchen', adminLimiter, requireAdmin, async (req, res) => {
       if (metaSnap.exists) {
         metadata = metaSnap.data();
       }
+
+      const menuSnap = await db.collection('menu').get();
+      menuItems = menuSnap.docs.map(doc => doc.data());
     } catch (err) {
       console.error('Error fetching kitchen summary:', err.message);
       return res.status(500).json({ error: 'Failed to fetch kitchen summary.' });
     }
   }
+
+  // Build a map of Choviar item name → qty-per-order from the menu definition
+  // e.g. { 'Choviar Special': 4 } means each order unit = 4 pieces in the kitchen
+  const choviarMenuQtyMap = {};
+  (menuItems || []).forEach(m => {
+    if (m.category === 'Choviar' && m.qty && Number(m.qty) > 0) {
+      choviarMenuQtyMap[m.name] = Number(m.qty);
+    }
+  });
 
   const grandTotals = { Roti: 0, Sabji: 0, Dal: 0, Rice: 0, Sweet: 0, Farsan: 0 };
   const kitchenOrders = [];
@@ -949,11 +962,15 @@ app.get('/api/admin/kitchen', adminLimiter, requireAdmin, async (req, res) => {
       const comp = {};
       choviarItems.forEach(item => {
         const n = (item.name || '').trim();
-        const q = item.quantity || 0;
-        if (q <= 0) return;
-        
-        comp[n] = (comp[n] || 0) + q;
-        choviarGrandTotals[n] = (choviarGrandTotals[n] || 0) + q;
+        const orderQty = item.quantity || 0;
+        if (orderQty <= 0) return;
+
+        // If the menu defines a per-order qty for this item, multiply it
+        const multiplier = choviarMenuQtyMap[n] || 1;
+        const kitchenQty = orderQty * multiplier;
+
+        comp[n] = (comp[n] || 0) + kitchenQty;
+        choviarGrandTotals[n] = (choviarGrandTotals[n] || 0) + kitchenQty;
       });
 
       choviarKitchenOrders.push({

@@ -155,7 +155,7 @@ const TIFFIN_DEFAULTS = [
   { name: 'Brunch',       description: '6 Roti, Sabji, 1/2 Dal, 1/2 Rice, Salad / Sweet / Namkeen / Farsan', price: 180, available: true, category: 'Lunch' },
   { name: 'Full Lunch',   description: '6 Roti, Sabji, Dal, Rice, Salad / Sweet / Namkeen / Farsan', price: 220, available: true, category: 'Lunch' },
   { name: 'Family Meal',  description: '9 Roti, 1.5 Sabji, 1.5 Dal, 1.5 Rice, Salad / Sweet / Namkeen / Farsan', price: 320, available: true, category: 'Lunch' },
-  { name: 'Choviar Special', description: 'Ragdo, 4 Kelawada, Dal Khichdi', price: 160, available: true, category: 'Choviar' },
+  { name: 'Choviar Special', description: 'Ragdo, 4 Kelawada, Dal Khichdi', price: 160, available: true, category: 'Choviar', qty: 4 },
 ];
 
 function MenuTab({ password, currentMenu, currentMetadata }) {
@@ -182,7 +182,7 @@ function MenuTab({ password, currentMenu, currentMetadata }) {
         { name: 'Brunch',      description: '6 Roti, Sabji, 1/2 Dal, 1/2 Rice, Salad / Sweet / Namkeen / Farsan', price: 180, available: true, category: 'Lunch' },
         { name: 'Full Lunch',  description: '6 Roti, Sabji, Dal, Rice, Salad / Sweet / Namkeen / Farsan', price: 220, available: true, category: 'Lunch' },
         { name: 'Family Meal', description: '9 Roti, 1.5 Sabji, 1.5 Dal, 1.5 Rice, Salad / Sweet / Namkeen / Farsan', price: 320, available: true, category: 'Lunch' },
-        { name: 'Choviar Special', description: 'Ragdo, 4 Kelawada, Dal Khichdi', price: 160, available: true, category: 'Choviar' },
+        { name: 'Choviar Special', description: 'Ragdo, 4 Kelawada, Dal Khichdi', price: 160, available: true, category: 'Choviar', qty: 4 },
       ]);
     }
     if (currentMetadata && Object.keys(currentMetadata).length > 0) {
@@ -248,7 +248,7 @@ function MenuTab({ password, currentMenu, currentMetadata }) {
   };
 
   const addChoviarItem = () => {
-    setItems(prev => [...prev, { name: '', description: '', price: 0, available: true, category: 'Choviar' }]);
+    setItems(prev => [...prev, { name: '', description: '', price: 0, available: true, category: 'Choviar', qty: '' }]);
   };
 
   const removeItem = (idx) => {
@@ -407,8 +407,9 @@ function MenuTab({ password, currentMenu, currentMetadata }) {
         
         {items.filter(i => i.category === 'Choviar').length > 0 ? (
           <div className="flex flex-col gap-2">
-            <div className="grid grid-cols-[1fr_80px_40px_30px] gap-2 text-[10px] font-bold text-gray-500 uppercase tracking-wide px-1">
+            <div className="grid grid-cols-[1fr_60px_80px_40px_30px] gap-2 text-[10px] font-bold text-gray-500 uppercase tracking-wide px-1">
               <span>Item Name</span>
+              <span className="text-center">Qty/Order</span>
               <span>Price (₹)</span>
               <span>Avail</span>
               <span></span>
@@ -416,8 +417,16 @@ function MenuTab({ password, currentMenu, currentMetadata }) {
             {items.map((item, idx) => {
               if (item.category !== 'Choviar') return null;
               return (
-                <div key={idx} className="grid grid-cols-[1fr_80px_40px_30px] gap-2 items-center bg-gray-50 p-2 rounded-lg border border-gray-100">
+                <div key={idx} className="grid grid-cols-[1fr_60px_80px_40px_30px] gap-2 items-center bg-gray-50 p-2 rounded-lg border border-gray-100">
                   <input type="text" value={item.name} onChange={e => updateItem(idx, 'name', e.target.value)} className="w-full text-sm border border-gray-200 rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-jts-red bg-white" placeholder="Name" />
+                  <input
+                    type="number"
+                    min="1"
+                    value={item.qty || ''}
+                    onChange={e => updateItem(idx, 'qty', e.target.value === '' ? '' : parseInt(e.target.value, 10))}
+                    className="w-full text-sm text-center border border-gray-200 rounded-md px-1 py-1.5 focus:outline-none focus:ring-1 focus:ring-jts-red bg-white"
+                    placeholder="—"
+                  />
                   <input type="number" value={item.price} onChange={e => updateItem(idx, 'price', e.target.value)} className="w-full text-sm border border-gray-200 rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-jts-red bg-white" placeholder="₹" />
                   <input type="checkbox" checked={item.available} onChange={e => updateItem(idx, 'available', e.target.checked)} className="w-4 h-4 text-jts-red mx-auto" />
                   <button onClick={() => removeItem(idx)} className="text-red-500 hover:text-red-700 font-bold flex items-center justify-center">✕</button>
