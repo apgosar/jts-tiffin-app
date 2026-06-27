@@ -128,7 +128,7 @@ function TiffinCard({ item, cart, updateQuantity, animDelay }) {
 }
 
 // ─── Stepper Item for Custom / Individual Orders ──────────────────────────────
-function StepperItem({ title, name, price, subtitle, cart, updateQuantity, category = 'Lunch' }) {
+function StepperItem({ title, name, price, subtitle, qty, cart, updateQuantity, category = 'Lunch' }) {
   const quantity = cart[name]?.quantity || 0;
   const handleInc = () => updateQuantity(name, 1, { name, price: Number(price), available: true, category });
   const handleDec = () => updateQuantity(name, -1);
@@ -138,7 +138,14 @@ function StepperItem({ title, name, price, subtitle, cart, updateQuantity, categ
   return (
     <div className="flex items-center justify-between py-3 border-b border-gray-100 last:border-0">
       <div>
-        <p className="font-bold text-gray-800 text-sm">{title}</p>
+        <div className="flex items-center gap-2">
+          <p className="font-bold text-gray-800 text-sm">{title}</p>
+          {qty && Number(qty) > 0 && (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-orange-100 text-orange-700 border border-orange-200">
+              {qty} pcs/order
+            </span>
+          )}
+        </div>
         <p className="text-xs text-gray-500">₹{price}/- {subtitle && <span className="italic">({subtitle})</span>}</p>
       </div>
       <QuantityStepper quantity={quantity} onIncrement={handleInc} onDecrement={handleDec} />
@@ -490,7 +497,7 @@ export default function MenuPage() {
                 </div>
                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mt-1 px-4 py-1 flex flex-col">
                   {choviarMenu.map((item, idx) => (
-                    <StepperItem key={item.name} title={item.name} name={item.name} price={item.price} cart={cart} updateQuantity={updateQuantity} category="Choviar" />
+                    <StepperItem key={item.name} title={item.name} name={item.name} price={item.price} qty={item.qty} cart={cart} updateQuantity={updateQuantity} category="Choviar" />
                   ))}
                 </div>
               </div>

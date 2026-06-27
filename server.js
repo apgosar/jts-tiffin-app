@@ -751,6 +751,7 @@ app.put('/api/admin/menu', adminLimiter, requireAdmin, async (req, res) => {
       price:       parseFloat(item.price) || 0,
       available:   item.available !== false,
       category:    String(item.category || 'Lunch').trim(),
+      qty:         item.qty ? parseInt(item.qty, 10) : null,
     }));
     if (metadata) MOCK_METADATA = { ...metadata };
     return res.json({ success: true });
@@ -768,13 +769,18 @@ app.put('/api/admin/menu', adminLimiter, requireAdmin, async (req, res) => {
     // Add new menu docs
     items.forEach(item => {
       const docRef = db.collection('menu').doc();
-      batch.set(docRef, {
+      const docData = {
         name:        String(item.name || '').trim(),
         description: String(item.description || '').trim(),
         price:       parseFloat(item.price) || 0,
         available:   item.available !== false,
         category:    String(item.category || 'Lunch').trim(),
-      });
+      };
+      // Only persist qty when it is a positive integer (Choviar qty-per-order)
+      if (item.qty && parseInt(item.qty, 10) > 0) {
+        docData.qty = parseInt(item.qty, 10);
+      }
+      batch.set(docRef, docData);
     });
 
     // Update metadata
