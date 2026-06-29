@@ -26,7 +26,7 @@ export default function ConfirmationPage() {
     );
   }
 
-  const { orderId, items, subtotal, surchargeTotal, grandTotal, zone, customer, roundOffAmount, date } = lastOrder;
+  const { orderId, items, grandTotal, zone, customer, roundOffAmount, date } = lastOrder;
 
   const lunchItems = items.filter(i => i.category === 'Lunch' || !i.category);
   const choviarItems = items.filter(i => i.category === 'Choviar');

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import JtsLogo from './JtsLogo';
 import { getAdminOrders, updateAdminMenu, getKitchenSummary, updateAdminDeliveryBatch } from '../services/api';
 import { toBlob } from 'html-to-image';
@@ -1238,49 +1238,49 @@ function BillingTab({ password }) {
   const [selectedCustomer, setSelectedCustomer] = useState(null);
 
   useEffect(() => {
-    fetchBilling();
-  }, [monthPickerValue]);
-
-  const fetchBilling = async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const [year, month] = monthPickerValue.split('-');
-      const apiMonth = `${month}/${year}`;
-      const res = await getAdminOrders({ month: apiMonth }, password);
-      
-      const orders = res.data.orders || [];
-      
-      // Aggregate unpaid orders
-      const groups = {};
-      
-      for (const order of orders) {
-        if (order.status === 'CANCELLED') continue;
-        if (order.paymentReceived) continue;
+    const fetchBilling = async () => {
+      setLoading(true);
+      setError('');
+      try {
+        const [year, month] = monthPickerValue.split('-');
+        const apiMonth = `${month}/${year}`;
+        const res = await getAdminOrders({ month: apiMonth }, password);
         
-        const phone = order.phone || 'Unknown';
-        if (!groups[phone]) {
-          groups[phone] = {
-            name: order.name || 'Unknown',
-            phone: phone,
-            address: order.address || '',
-            totalPending: 0,
-            unpaidOrders: []
-          };
+        const orders = res.data.orders || [];
+        
+        // Aggregate unpaid orders
+        const groups = {};
+        
+        for (const order of orders) {
+          if (order.status === 'CANCELLED') continue;
+          if (order.paymentReceived) continue;
+          
+          const phone = order.phone || 'Unknown';
+          if (!groups[phone]) {
+            groups[phone] = {
+              name: order.name || 'Unknown',
+              phone: phone,
+              address: order.address || '',
+              totalPending: 0,
+              unpaidOrders: []
+            };
+          }
+          
+          groups[phone].totalPending += order.grandTotal;
+          groups[phone].unpaidOrders.push(order);
         }
         
-        groups[phone].totalPending += order.grandTotal;
-        groups[phone].unpaidOrders.push(order);
+        const customerList = Object.values(groups).sort((a, b) => a.name.localeCompare(b.name));
+        setCustomers(customerList);
+      } catch (err) {
+        setError(err.response?.data?.error || 'Failed to fetch billing data.');
+      } finally {
+        setLoading(false);
       }
-      
-      const customerList = Object.values(groups).sort((a, b) => a.name.localeCompare(b.name));
-      setCustomers(customerList);
-    } catch (err) {
-      setError(err.response?.data?.error || 'Failed to fetch billing data.');
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
+
+    fetchBilling();
+  }, [monthPickerValue, password]);
 
   const handleShare = async (customer) => {
     setShareData(customer);
