@@ -128,7 +128,7 @@ function TiffinCard({ item, cart, updateQuantity, animDelay }) {
 }
 
 // ─── Stepper Item for Custom / Individual Orders ──────────────────────────────
-function StepperItem({ title, name, price, subtitle, qty, cart, updateQuantity, category = 'Lunch' }) {
+function StepperItem({ title, name, price, subtitle, description, qty, cart, updateQuantity, category = 'Lunch' }) {
   const quantity = cart[name]?.quantity || 0;
   const handleInc = () => updateQuantity(name, 1, { name, price: Number(price), available: true, category });
   const handleDec = () => updateQuantity(name, -1);
@@ -146,7 +146,8 @@ function StepperItem({ title, name, price, subtitle, qty, cart, updateQuantity, 
             </span>
           )}
         </div>
-        <p className="text-xs text-gray-500">₹{price}/- {subtitle && <span className="italic">({subtitle})</span>}</p>
+        {description && <p className="text-xs text-gray-500 mt-0.5 leading-tight">{description}</p>}
+        <p className="text-xs text-gray-500 mt-0.5">₹{price}/- {subtitle && <span className="italic">({subtitle})</span>}</p>
       </div>
       <QuantityStepper quantity={quantity} onIncrement={handleInc} onDecrement={handleDec} />
     </div>
@@ -335,8 +336,14 @@ export default function MenuPage() {
     if (status === 'LUNCH_CLOSED') return { ...m, available: false };
     return m;
   });
-  const choviarMenu = menu.filter(m => m.category === 'Choviar');
-
+  const baseChoviarMenu = menu.filter(m => m.category === 'Choviar' && m.name !== 'Full Choviar');
+  const fullChoviarPrice = baseChoviarMenu.reduce((sum, item) => sum + (Number(item.price) || 0), 0);
+  const fullChoviarDesc = baseChoviarMenu.map(item => item.qty && Number(item.qty) > 0 ? `${item.name} (${item.qty})` : item.name).join(', ');
+  
+  const choviarMenu = baseChoviarMenu.length > 0 ? [
+    { name: 'Full Choviar', description: fullChoviarDesc, price: fullChoviarPrice, category: 'Choviar', available: true },
+    ...baseChoviarMenu
+  ] : [];
   return (
     <div className="min-h-screen bg-jts-lcream" style={{ paddingBottom: cartCount > 0 ? '96px' : '24px' }}>
       {/* ── Sticky Header ── */}
@@ -486,18 +493,10 @@ export default function MenuPage() {
                     <h2 className="text-2xl font-bold text-gray-800 uppercase" style={{ fontFamily: "'Oswald', Impact, sans-serif" }}>Choviar</h2>
                     <div className="flex-1 border-b-2 border-gray-300 mr-2"></div>
                   </div>
-                  <button 
-                    onClick={() => {
-                      choviarMenu.forEach(item => updateQuantity(item.name, 1, item));
-                    }} 
-                    className="text-xs bg-jts-red text-white px-3 py-1.5 rounded-full shadow font-bold hover:bg-jts-crimson active:scale-95 transition-transform shrink-0"
-                  >
-                    + Full Choviar
-                  </button>
                 </div>
                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mt-1 px-4 py-1 flex flex-col">
                   {choviarMenu.map((item, idx) => (
-                    <StepperItem key={item.name} title={item.name} name={item.name} price={item.price} qty={item.qty} cart={cart} updateQuantity={updateQuantity} category="Choviar" />
+                    <StepperItem key={item.name} title={item.name} name={item.name} price={item.price} description={item.description} qty={item.qty} cart={cart} updateQuantity={updateQuantity} category="Choviar" />
                   ))}
                 </div>
               </div>
