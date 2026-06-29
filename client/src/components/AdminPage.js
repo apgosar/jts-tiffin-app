@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import JtsLogo from './JtsLogo';
 import { getAdminOrders, updateAdminMenu, getKitchenSummary, updateAdminDeliveryBatch } from '../services/api';
+import { toBlob } from 'html-to-image';
 
 // ─── Login ────────────────────────────────────────────────────────────────────
 function LoginScreen({ onLogin, authError }) {
@@ -1221,6 +1222,252 @@ function ManageUsersView({ adminPassword }) {
   );
 }
 
+// ─── Billing Tab ──────────────────────────────────────────────────────────────
+function BillingTab({ password }) {
+  const [monthPickerValue, setMonthPickerValue] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  });
+  
+  const [customers, setCustomers] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  // Hidden references for the shareable bill
+  const [shareData, setShareData] = useState(null);
+  const [selectedCustomer, setSelectedCustomer] = useState(null);
+
+  useEffect(() => {
+    fetchBilling();
+  }, [monthPickerValue]);
+
+  const fetchBilling = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const [year, month] = monthPickerValue.split('-');
+      const apiMonth = `${month}/${year}`;
+      const res = await getAdminOrders({ month: apiMonth }, password);
+      
+      const orders = res.data.orders || [];
+      
+      // Aggregate unpaid orders
+      const groups = {};
+      
+      for (const order of orders) {
+        if (order.status === 'CANCELLED') continue;
+        if (order.paymentReceived) continue;
+        
+        const phone = order.phone || 'Unknown';
+        if (!groups[phone]) {
+          groups[phone] = {
+            name: order.name || 'Unknown',
+            phone: phone,
+            address: order.address || '',
+            totalPending: 0,
+            unpaidOrders: []
+          };
+        }
+        
+        groups[phone].totalPending += order.grandTotal;
+        groups[phone].unpaidOrders.push(order);
+      }
+      
+      const customerList = Object.values(groups).sort((a, b) => a.name.localeCompare(b.name));
+      setCustomers(customerList);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to fetch billing data.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleShare = async (customer) => {
+    setShareData(customer);
+    // Wait for state to update and component to render
+    setTimeout(async () => {
+      const nodes = document.querySelectorAll('.bill-capture-node');
+      if (nodes.length > 0) {
+        try {
+          const files = [];
+          for (let i = 0; i < nodes.length; i++) {
+            const blob = await toBlob(nodes[i], { backgroundColor: '#ffffff', pixelRatio: 2 });
+            if (!blob) throw new Error('Failed to create image blob');
+            files.push(new File([blob], `Bill_${customer.name}_${monthPickerValue}_Part${i+1}.png`, { type: 'image/png' }));
+          }
+          
+          if (navigator.share && navigator.canShare && navigator.canShare({ files })) {
+            await navigator.share({
+              files,
+              title: `Tiffin Bill - ${customer.name}`,
+              text: `Here is your tiffin bill for ${monthPickerValue}. Total pending: ₹${customer.totalPending}/-`,
+            });
+          } else {
+            // Fallback for browsers that don't support file sharing (e.g. desktop)
+            files.forEach(f => {
+              const url = URL.createObjectURL(f);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = f.name;
+              a.click();
+              URL.revokeObjectURL(url);
+            });
+            alert('Your device does not support direct image sharing. The bill has been downloaded instead.');
+          }
+        } catch (err) {
+          console.error('Error sharing bill:', err);
+          alert('Failed to generate or share the bill image.');
+        }
+      }
+      setShareData(null);
+    }, 100);
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Month Filter */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Select Month</label>
+        <input 
+          type="month" 
+          value={monthPickerValue}
+          onChange={(e) => setMonthPickerValue(e.target.value)}
+          className="w-full sm:w-auto px-4 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-jts-red transition"
+        />
+      </div>
+
+      {loading ? (
+        <div className="text-center text-sm text-gray-500 py-6 animate-pulse">Loading billing data...</div>
+      ) : error ? (
+        <div className="bg-red-50 text-red-600 p-4 rounded-xl text-sm font-medium">{error}</div>
+      ) : customers.length === 0 ? (
+        <div className="text-center text-sm text-gray-500 py-6">No pending payments for this month! 🎉</div>
+      ) : (
+        <div className="space-y-3">
+          {customers.map((cust) => (
+            <div 
+              key={cust.phone} 
+              className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer hover:shadow-md transition"
+              onClick={() => setSelectedCustomer(cust)}
+            >
+              <div>
+                <p className="font-bold text-gray-900 text-lg">{cust.name}</p>
+                <p className="text-sm text-gray-500">{cust.phone}</p>
+                <p className="text-sm font-semibold text-jts-red mt-1">Pending: ₹{cust.totalPending.toLocaleString('en-IN')}/- ({cust.unpaidOrders.length} orders)</p>
+              </div>
+              <button 
+                onClick={(e) => { e.stopPropagation(); handleShare(cust); }}
+                className="self-start sm:self-auto bg-green-100 hover:bg-green-200 text-green-800 font-semibold py-2 px-4 rounded-xl text-sm flex items-center gap-2 transition"
+              >
+                <span>📤 Share Bill</span>
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Hidden Bill Template for capturing */}
+      {shareData && (
+        <div className="absolute top-[-9999px] left-[-9999px]">
+          {Array.from({ length: Math.ceil(shareData.unpaidOrders.length / 12) }).map((_, i) => {
+            const pageOrders = shareData.unpaidOrders.slice(i * 12, (i + 1) * 12);
+            const isLastPage = i === Math.ceil(shareData.unpaidOrders.length / 12) - 1;
+            const totalPages = Math.ceil(shareData.unpaidOrders.length / 12);
+            
+            return (
+              <div key={i} className="bill-capture-node bg-white p-6 w-[450px] border border-gray-100 mb-10">
+                <div className="text-center border-b border-gray-200 pb-4 mb-4">
+                  <h2 className="text-2xl font-black text-gray-900 uppercase" style={{ fontFamily: "'Oswald', sans-serif" }}>Jain Tiffin Service</h2>
+                  <p className="text-sm text-gray-500 mt-1">Monthly Bill - {monthPickerValue} {totalPages > 1 ? `(Part ${i+1}/${totalPages})` : ''}</p>
+                </div>
+                
+                {i === 0 && (
+                  <div className="mb-4">
+                    <p className="font-bold text-gray-900">{shareData.name}</p>
+                    <p className="text-sm text-gray-600">{shareData.phone}</p>
+                    <p className="text-sm text-gray-600 mt-1">{shareData.address}</p>
+                  </div>
+                )}
+
+                <div className="space-y-3 mb-4">
+                  <div className="flex justify-between text-xs font-semibold text-gray-400 uppercase border-b border-gray-100 pb-1">
+                    <span>Date & Items</span>
+                    <span>Amount</span>
+                  </div>
+                  {pageOrders.map((order, idx) => (
+                    <div key={order.orderId || idx} className="flex justify-between text-sm py-2 border-b border-gray-50 items-start gap-4">
+                      <div className="flex flex-col">
+                        <span className="font-bold text-gray-800">{order.date}</span>
+                        <span className="text-xs text-gray-500 mt-0.5">{order.itemsSummary}</span>
+                      </div>
+                      <span className="font-bold text-gray-900 shrink-0 mt-0.5">₹{order.grandTotal.toLocaleString('en-IN')}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {isLastPage && (
+                  <div className="flex justify-between items-center bg-gray-50 rounded-xl p-3 border border-gray-100 mt-6">
+                    <span className="font-bold text-gray-700 uppercase text-xs">Total Pending</span>
+                    <span className="font-black text-jts-red text-xl">₹{shareData.totalPending.toLocaleString('en-IN')}/-</span>
+                  </div>
+                )}
+                
+                <div className="text-center mt-6 pt-4 border-t border-gray-200">
+                  <p className="text-xs text-gray-400 font-medium">Thank you for ordering with us!</p>
+                  <p className="text-[10px] text-gray-400 mt-1">Gpay / PayTM: 87790 84488 (Keyur Shah)</p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Detail Modal */}
+      {selectedCustomer && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-4" onClick={() => setSelectedCustomer(null)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="p-5 border-b border-gray-100 flex justify-between items-center shrink-0">
+              <div>
+                <h3 className="font-bold text-gray-900 text-lg">{selectedCustomer.name}</h3>
+                <p className="text-xs text-gray-500">Bill Details for {monthPickerValue}</p>
+              </div>
+              <button onClick={() => setSelectedCustomer(null)} className="p-2 hover:bg-gray-100 rounded-xl transition text-gray-500">✕</button>
+            </div>
+            
+            <div className="p-5 overflow-y-auto space-y-4">
+              <div className="flex justify-between items-center bg-red-50 rounded-xl p-3 border border-red-100">
+                <span className="font-bold text-red-800 text-sm">Total Pending</span>
+                <span className="font-black text-jts-red text-xl">₹{selectedCustomer.totalPending.toLocaleString('en-IN')}/-</span>
+              </div>
+
+              <div className="space-y-3">
+                {selectedCustomer.unpaidOrders.map((order, idx) => (
+                  <div key={order.orderId || idx} className="bg-gray-50 rounded-xl p-3 border border-gray-100">
+                    <div className="flex justify-between items-start mb-2 border-b border-gray-200 pb-2">
+                      <span className="font-bold text-gray-800">{order.date}</span>
+                      <span className="font-bold text-jts-red">₹{order.grandTotal.toLocaleString('en-IN')}</span>
+                    </div>
+                    <p className="text-sm text-gray-600 leading-relaxed">{order.itemsSummary}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+            
+            <div className="p-4 border-t border-gray-100 shrink-0">
+              <button 
+                onClick={() => { setSelectedCustomer(null); handleShare(selectedCustomer); }}
+                className="w-full py-3 bg-green-100 hover:bg-green-200 text-green-800 font-bold rounded-xl transition flex items-center justify-center gap-2 shadow-sm"
+              >
+                📤 Share Bill
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AdminPage() {
   const [adminPassword, setAdminPassword] = useState('');
   const [authenticated, setAuthenticated] = useState(false);
@@ -1276,6 +1523,7 @@ export default function AdminPage() {
           <TabBtn active={activeTab === 'menu'}    onClick={() => setActiveTab('menu')}>🍽️ Tomorrow's Menu</TabBtn>
           <TabBtn active={activeTab === 'orders'}  onClick={() => setActiveTab('orders')}>📋 Orders</TabBtn>
           <TabBtn active={activeTab === 'kitchen'} onClick={() => setActiveTab('kitchen')}>👨‍🍳 Kitchen</TabBtn>
+          <TabBtn active={activeTab === 'billing'} onClick={() => setActiveTab('billing')}>💰 Billing</TabBtn>
         </div>
       </div>
 
@@ -1284,6 +1532,7 @@ export default function AdminPage() {
         {activeTab === 'menu'    && <MenuTab    password={adminPassword} currentMenu={currentMenu} currentMetadata={currentMetadata} onMenuSaved={(savedItems, savedMeta) => { setCurrentMenu(savedItems); setCurrentMetadata(savedMeta); }} />}
         {activeTab === 'orders'  && <OrdersTab  password={adminPassword} />}
         {activeTab === 'kitchen' && <KitchenTab password={adminPassword} />}
+        {activeTab === 'billing' && <BillingTab password={adminPassword} />}
         {activeTab === 'manage' && (
           <ManageUsersView adminPassword={adminPassword} />
         )}
