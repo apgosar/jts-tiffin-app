@@ -162,35 +162,22 @@ describe('POST /api/orders — Item Quantity Validation', () => {
 // POST /api/orders — Item count limits
 // ─────────────────────────────────────────────────────────
 describe('POST /api/orders — Item Type Limit Validation', () => {
-  it('should return 400 when more than 6 item types are submitted', async () => {
+  it('should return 400 when more than 50 item types are submitted', async () => {
+    const items = Array.from({ length: 51 }).map(() => ({ name: 'Full Lunch', quantity: 1, price: 220 }));
     const res = await request(app).post('/api/orders').send({
       customer: baseCustomer,
-      items: [
-        { name: 'Full Lunch',  quantity: 1, price: 220 },
-        { name: 'Mini Lunch',  quantity: 1, price: 140 },
-        { name: 'Brunch',      quantity: 1, price: 180 },
-        { name: 'Family Meal', quantity: 1, price: 320 },
-        { name: 'Choviar Special', quantity: 1, price: 160 },
-        { name: 'Roti',        quantity: 1, price: 8 },
-        { name: 'Full Choviar', quantity: 1, price: 150 },
-      ],
+      items: items,
       paymentMode: 'Cash',
     });
     expect(res.statusCode).toEqual(400);
     expect(res.body.error).toContain('Too many item types');
   });
 
-  it('should accept exactly 6 item types', async () => {
+  it('should accept exactly 50 item types', async () => {
+    const items = Array.from({ length: 50 }).map(() => ({ name: 'Full Lunch', quantity: 1, price: 220 }));
     const res = await request(app).post('/api/orders').send({
       customer: baseCustomer,
-      items: [
-        { name: 'Full Lunch',  quantity: 1, price: 220 },
-        { name: 'Mini Lunch',  quantity: 1, price: 140 },
-        { name: 'Brunch',      quantity: 1, price: 180 },
-        { name: 'Family Meal', quantity: 1, price: 320 },
-        { name: 'Choviar Special', quantity: 1, price: 160 },
-        { name: 'Roti',        quantity: 1, price: 8 },
-      ],
+      items: items,
       paymentMode: 'Cash',
     });
     expect(res.statusCode).not.toEqual(400);

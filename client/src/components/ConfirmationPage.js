@@ -26,7 +26,32 @@ export default function ConfirmationPage() {
     );
   }
 
-  const { orderId, items, subtotal, surchargeTotal, grandTotal, zone, customer } = lastOrder;
+  const { orderId, items, subtotal, surchargeTotal, grandTotal, zone, customer, roundOffAmount, date } = lastOrder;
+
+  const lunchItems = items.filter(i => i.category === 'Lunch' || !i.category);
+  const choviarItems = items.filter(i => i.category === 'Choviar');
+
+  const lunchSubtotal = lunchItems.reduce((sum, i) => sum + i.price * i.quantity, 0);
+  const choviarSubtotal = choviarItems.reduce((sum, i) => sum + i.price * i.quantity, 0);
+
+  let lunchSurcharge = 0;
+  let choviarSurcharge = 0;
+  let lunchOutsideTiffins = 0;
+  let choviarOutsideTiffins = 0;
+
+  if (zone === 'outside') {
+    lunchOutsideTiffins = lunchItems.filter(i => i.name.includes('Lunch') || i.name.includes('Meal') || i.name.includes('Brunch')).reduce((s, i) => s + i.quantity, 0);
+    if (lunchOutsideTiffins === 0 && lunchItems.length > 0) lunchOutsideTiffins = 1;
+    
+    choviarOutsideTiffins = choviarItems.filter(i => i.name.includes('Choviar') || i.name.includes('Meal')).reduce((s, i) => s + i.quantity, 0);
+    if (choviarOutsideTiffins === 0 && choviarItems.length > 0) choviarOutsideTiffins = 1;
+
+    lunchSurcharge = lunchItems.length > 0 ? 40 * lunchOutsideTiffins : 0;
+    choviarSurcharge = choviarItems.length > 0 ? 40 * choviarOutsideTiffins : 0;
+  } else if (zone === 'borivali') {
+    if (lunchItems.length > 0 && lunchSubtotal < 250) lunchSurcharge = 30;
+    if (choviarItems.length > 0 && choviarSubtotal < 250) choviarSurcharge = 30;
+  }
 
   return (
     <div className="min-h-screen bg-jts-cream flex flex-col">
@@ -40,9 +65,17 @@ export default function ConfirmationPage() {
             Thank you, <span className="font-semibold text-gray-700">{customer.name}</span>!{' '}
             Your tiffin order has been received. 🛵
           </p>
-          <div className="bg-jts-cream border border-red-200 rounded-xl px-5 py-3 w-full">
-            <p className="text-xs text-jts-red font-medium uppercase tracking-wide">Order ID</p>
-            <p className="text-xl font-black text-jts-red tracking-widest">{orderId}</p>
+          <div className="bg-jts-cream border border-red-200 rounded-xl px-5 py-3 w-full flex justify-between items-center text-left">
+            <div>
+              <p className="text-xs text-jts-red font-medium uppercase tracking-wide">Order ID</p>
+              <p className="text-xl font-black text-jts-red tracking-widest">{orderId}</p>
+            </div>
+            {date && (
+              <div className="text-right border-l border-red-200 pl-4">
+                <p className="text-xs text-jts-red font-medium uppercase tracking-wide">Delivery Date</p>
+                <p className="text-md font-bold text-gray-800">{date}</p>
+              </div>
+            )}
           </div>
           <p className="text-xs text-jts-navy font-medium">
             📞 For queries: Keyur Shah – 87790 84488
@@ -52,36 +85,96 @@ export default function ConfirmationPage() {
         {/* Order summary */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
           <h2 className="font-bold text-gray-800 mb-3">🧾 Order Summary</h2>
-          <div className="flex flex-col gap-2 text-sm">
-            {items.map((item) => (
-              <div key={item.name} className="flex justify-between">
-                <span className="text-gray-700">
-                  {item.name} <span className="text-gray-400">×{item.quantity}</span>
-                </span>
-                <span className="font-semibold text-gray-800">
-                  ₹{(item.price * item.quantity).toLocaleString('en-IN')}/-
-                </span>
-              </div>
-            ))}
-
-            <div className="border-t border-gray-100 pt-2 mt-1 flex justify-between text-gray-700">
-              <span>Subtotal</span>
-              <span className="font-semibold">₹{subtotal.toLocaleString('en-IN')}/-</span>
-            </div>
-
-            {surchargeTotal > 0 && (
-              <div className="flex justify-between">
-                <span className="text-amber-700">Outside Borivali surcharge</span>
-                <span className="font-semibold text-amber-700">₹{surchargeTotal}/-</span>
+          <div className="flex flex-col text-sm">
+            
+            {/* Lunch Section */}
+            {lunchItems.length > 0 && (
+              <div className="mb-4">
+                <h3 className="font-bold text-gray-800 mb-2 border-b border-gray-100 pb-1">Lunch Order</h3>
+                <div className="flex flex-col gap-2">
+                  {lunchItems.map((item) => (
+                    <div key={item.name} className="flex justify-between">
+                      <span className="text-gray-700">
+                        {item.name} <span className="text-gray-400">×{item.quantity}</span>
+                      </span>
+                      <span className="font-semibold text-gray-800">
+                        ₹{(item.price * item.quantity).toLocaleString('en-IN')}/-
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-2 pt-2 border-t border-gray-100 space-y-1.5">
+                  <div className="flex justify-between text-gray-700">
+                    <span>Items Total</span>
+                    <span className="font-semibold">₹{lunchSubtotal.toLocaleString('en-IN')}/-</span>
+                  </div>
+                  {lunchSurcharge > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-amber-700">
+                        {zone === 'borivali' ? 'Delivery Charge (Orders < ₹250)' : `Outside Borivali surcharge (₹40 × ${lunchOutsideTiffins})`}
+                      </span>
+                      <span className="font-semibold text-amber-700">+₹{lunchSurcharge}/-</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between font-bold text-gray-800 border-t border-gray-50 pt-1 mt-1 text-sm">
+                    <span>Lunch Subtotal</span>
+                    <span>₹{(lunchSubtotal + lunchSurcharge).toLocaleString('en-IN')}/-</span>
+                  </div>
+                </div>
               </div>
             )}
 
-            {zone === 'outside' && surchargeTotal === 0 && null}
+            {/* Choviar Section */}
+            {choviarItems.length > 0 && (
+              <div className="mb-2">
+                <h3 className="font-bold text-gray-800 mb-2 border-b border-gray-100 pb-1">Choviar Order</h3>
+                <div className="flex flex-col gap-2">
+                  {choviarItems.map((item) => (
+                    <div key={item.name} className="flex justify-between">
+                      <span className="text-gray-700">
+                        {item.name} <span className="text-gray-400">×{item.quantity}</span>
+                      </span>
+                      <span className="font-semibold text-gray-800">
+                        ₹{(item.price * item.quantity).toLocaleString('en-IN')}/-
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-2 pt-2 border-t border-gray-100 space-y-1.5">
+                  <div className="flex justify-between text-gray-700">
+                    <span>Items Total</span>
+                    <span className="font-semibold">₹{choviarSubtotal.toLocaleString('en-IN')}/-</span>
+                  </div>
+                  {choviarSurcharge > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-amber-700">
+                        {zone === 'borivali' ? 'Delivery Charge (Orders < ₹250)' : `Outside Borivali surcharge (₹40 × ${choviarOutsideTiffins})`}
+                      </span>
+                      <span className="font-semibold text-amber-700">+₹{choviarSurcharge}/-</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between font-bold text-gray-800 border-t border-gray-50 pt-1 mt-1 text-sm">
+                    <span>Choviar Subtotal</span>
+                    <span>₹{(choviarSubtotal + choviarSurcharge).toLocaleString('en-IN')}/-</span>
+                  </div>
+                </div>
+              </div>
+            )}
 
-            <div className="border-t border-gray-100 pt-2 flex justify-between font-bold mt-1">
-              <span>Total</span>
-              <span className="text-jts-red">₹{grandTotal.toLocaleString('en-IN')}/-</span>
+            {/* Grand Total */}
+            <div className="mt-1 pt-1 space-y-1.5">
+              {(roundOffAmount || 0) !== 0 && (
+                <div className="flex justify-between text-gray-700">
+                  <span>Round Off</span>
+                  <span className="font-semibold">{(roundOffAmount || 0) > 0 ? '+' : ''}₹{roundOffAmount || 0}/-</span>
+                </div>
+              )}
+              <div className="border-t border-gray-200 pt-2 flex justify-between font-bold mt-1 text-base">
+                <span>Total</span>
+                <span className="text-jts-red">₹{grandTotal.toLocaleString('en-IN')}/-</span>
+              </div>
             </div>
+
           </div>
         </div>
 

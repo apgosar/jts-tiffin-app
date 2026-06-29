@@ -114,22 +114,76 @@ export default function CheckoutPage() {
   // Pincode / zone
   const [zone, setZone]     = useState(null); // null | 'borivali' | 'outside'
 
+  const computeZone = (pincode) => {
+    if (/^\d{6}$/.test(pincode)) {
+      fetch(`/api/check-pincode?pincode=${pincode}`)
+        .then(r => r.json())
+        .then(data => setZone(data.zone || null))
+        .catch(() => setZone(null));
+    } else {
+      setZone(null);
+    }
+  };
+
+  const applyProfile = (profile) => {
+    if (!profile) return;
+    setForm(prev => ({
+      ...prev,
+      name:     profile.name || '',
+      wingFlat: profile.wingFlat || '',
+      building: profile.building || '',
+      street:   profile.street || '',
+      landmark: profile.landmark || '',
+      locality: profile.locality || '',
+      pincode:  profile.pincode || '',
+    }));
+    if (profile.pincode) computeZone(profile.pincode);
+  };
+
+  const performLookup = async (val) => {
+    if (/^[6-9]\d{9}$/.test(val)) {
+      setLookupState('loading');
+      try {
+        const res     = await lookupCustomer(val);
+        const profiles = res.data.profiles || [];
+        setSavedProfiles(profiles);
+        if (profiles.length > 0) {
+          setSelectedProfile(0);
+          applyProfile(profiles[0]);
+        } else {
+          setSelectedProfile(-1);
+          setForm(EMPTY_FORM);
+          setZone(null);
+        }
+      } catch {
+        setSavedProfiles([]);
+        setSelectedProfile(-1);
+        setForm(EMPTY_FORM);
+        setZone(null);
+      } finally {
+        setLookupState('done');
+      }
+    } else {
+      setLookupState('idle');
+      setSavedProfiles([]);
+      setSelectedProfile(null);
+      setForm(EMPTY_FORM);
+      setZone(null);
+    }
+  };
+
   useEffect(() => {
     try {
       const saved = localStorage.getItem('jts_customer_profile');
       if (saved) {
         const profile = JSON.parse(saved);
-        setPhone(profile.phone || '');
-        setForm({
-          name:     profile.name || '',
-          wingFlat: profile.wingFlat || '',
-          building: profile.building || '',
-          street:   profile.street || '',
-          landmark: profile.landmark || '',
-          locality: profile.locality || '',
-          pincode:  profile.pincode || '',
-        });
-        if (profile.pincode) computeZone(profile.pincode);
+        if (profile.phone) {
+          setPhone(profile.phone);
+          // Pre-fill form instantly from cache
+          applyProfile(profile);
+          // Trigger automated backend lookup
+          performLookup(profile.phone);
+        }
       }
     } catch (err) {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -201,70 +255,11 @@ export default function CheckoutPage() {
   }
 
   // ── Phone change + lookup ────────────────────────────────────────────────────
-  const handlePhoneChange = async (e) => {
+  const handlePhoneChange = (e) => {
     const val = e.target.value.replace(/\D/g, '').slice(0, 10);
     setPhone(val);
     if (errors.phone) setErrors(prev => ({ ...prev, phone: '' }));
-
-    if (/^[6-9]\d{9}$/.test(val)) {
-      setLookupState('loading');
-      try {
-        const res     = await lookupCustomer(val);
-        const profiles = res.data.profiles || [];
-        setSavedProfiles(profiles);
-        if (profiles.length > 0) {
-          setSelectedProfile(0);
-          applyProfile(profiles[0]);
-        } else {
-          setSelectedProfile(-1);
-          setForm(EMPTY_FORM);
-          setZone(null);
-        }
-      } catch {
-        setSavedProfiles([]);
-        setSelectedProfile(-1);
-        setForm(EMPTY_FORM);
-        setZone(null);
-      } finally {
-        setLookupState('done');
-      }
-    } else {
-      setLookupState('idle');
-      setSavedProfiles([]);
-      setSelectedProfile(null);
-      setForm(EMPTY_FORM);
-      setZone(null);
-    }
-  };
-
-  const applyProfile = (profile) => {
-    if (!profile) return;
-    setForm(prev => ({
-      ...prev,
-      name:     profile.name || '',
-      wingFlat: profile.wingFlat || '',
-      building: profile.building || '',
-      street:   profile.street || '',
-      landmark: profile.landmark || '',
-      locality: profile.locality || '',
-      pincode:  profile.pincode || '',
-    }));
-    computeZone(profile.pincode || '');
-  };
-
-  const computeZone = (pincode) => {
-    // Zone is determined server-side; we just show a badge if pincode is 6 digits.
-    // We optimistically show nothing until submission if we don't know the pincodes.
-    // The server will tell us the zone and surcharge.
-    // For real-time UX, we expose a /api/check-pincode endpoint in server.js.
-    if (/^\d{6}$/.test(pincode)) {
-      fetch(`/api/check-pincode?pincode=${pincode}`)
-        .then(r => r.json())
-        .then(data => setZone(data.zone || null))
-        .catch(() => setZone(null));
-    } else {
-      setZone(null);
-    }
+    performLookup(val);
   };
 
   const handleFormChange = (field) => (e) => {
@@ -349,6 +344,7 @@ export default function CheckoutPage() {
         grandTotal:     res.data.grandTotal,
         zone:           res.data.zone,
         customer:       { ...form, phone },
+        date:           res.data.date,
       });
       
       try {
@@ -418,7 +414,7 @@ export default function CheckoutPage() {
               </div>
               <div className="mt-2 pt-2 border-t border-gray-100 space-y-1.5">
                 <div className="flex justify-between text-sm text-gray-700">
-                  <span>Subtotal ({lunchQty} item{lunchQty !== 1 ? 's' : ''})</span>
+                  <span>Items Total ({lunchQty} item{lunchQty !== 1 ? 's' : ''})</span>
                   <span className="font-semibold">₹{lunchSubtotal.toLocaleString('en-IN')}</span>
                 </div>
                 {lunchSurcharge > 0 && (
@@ -429,6 +425,10 @@ export default function CheckoutPage() {
                     <span className="font-semibold text-amber-700">+₹{lunchSurcharge}</span>
                   </div>
                 )}
+                <div className="flex justify-between font-bold text-gray-800 border-t border-gray-50 pt-1 mt-1 text-sm">
+                  <span>Lunch Subtotal</span>
+                  <span>₹{(lunchSubtotal + lunchSurcharge).toLocaleString('en-IN')}</span>
+                </div>
               </div>
             </div>
           )}
@@ -449,7 +449,7 @@ export default function CheckoutPage() {
               </div>
               <div className="mt-2 pt-2 border-t border-gray-100 space-y-1.5">
                 <div className="flex justify-between text-sm text-gray-700">
-                  <span>Subtotal ({choviarQty} item{choviarQty !== 1 ? 's' : ''})</span>
+                  <span>Items Total ({choviarQty} item{choviarQty !== 1 ? 's' : ''})</span>
                   <span className="font-semibold">₹{choviarSubtotal.toLocaleString('en-IN')}</span>
                 </div>
                 {choviarSurcharge > 0 && (
@@ -460,6 +460,10 @@ export default function CheckoutPage() {
                     <span className="font-semibold text-amber-700">+₹{choviarSurcharge}</span>
                   </div>
                 )}
+                <div className="flex justify-between font-bold text-gray-800 border-t border-gray-50 pt-1 mt-1 text-sm">
+                  <span>Choviar Subtotal</span>
+                  <span>₹{(choviarSubtotal + choviarSurcharge).toLocaleString('en-IN')}</span>
+                </div>
               </div>
             </div>
           )}

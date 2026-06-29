@@ -235,7 +235,7 @@ app.post('/api/orders', orderLimiter, async (req, res) => {
 
   const MAX_QTY_PER_ITEM = 20;
   const MAX_ROTI_QTY = 200;
-  const MAX_ITEM_TYPES   = 6;
+  const MAX_ITEM_TYPES   = 50;
   if (items.length > MAX_ITEM_TYPES) {
     return res.status(400).json({ error: `Too many item types. Maximum ${MAX_ITEM_TYPES} allowed per order.` });
   }
@@ -379,7 +379,7 @@ app.post('/api/orders', orderLimiter, async (req, res) => {
       MOCK_CUSTOMERS.push(customerRecord);
     }
 
-    return res.json({ success: true, orderId: baseOrderId, zone, surchargeTotal: totalSurcharge, grandTotal: grandTotalRounded });
+    return res.json({ success: true, orderId: baseOrderId, zone, surchargeTotal: totalSurcharge, grandTotal: grandTotalRounded, date });
   }
 
   try {
@@ -415,7 +415,8 @@ app.post('/api/orders', orderLimiter, async (req, res) => {
       orderId: baseOrderId, 
       zone, 
       surchargeTotal: totalSurcharge, 
-      grandTotal: grandTotalRounded 
+      grandTotal: grandTotalRounded,
+      date
     });
   } catch (err) {
     console.error('Error writing order:', err.message);
