@@ -1269,8 +1269,14 @@ function BillingTab({ password }) {
           groups[phone].totalPending += order.grandTotal;
           groups[phone].unpaidOrders.push(order);
         }
-        
-        const customerList = Object.values(groups).sort((a, b) => a.name.localeCompare(b.name));
+        const customerList = Object.values(groups).map(cust => {
+          cust.unpaidOrders.sort((a, b) => {
+            const [d1, m1, y1] = a.date.split('/');
+            const [d2, m2, y2] = b.date.split('/');
+            return new Date(y1, m1 - 1, d1) - new Date(y2, m2 - 1, d2);
+          });
+          return cust;
+        }).sort((a, b) => a.name.localeCompare(b.name));
         setCustomers(customerList);
       } catch (err) {
         setError(err.response?.data?.error || 'Failed to fetch billing data.');

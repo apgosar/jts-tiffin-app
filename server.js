@@ -146,9 +146,14 @@ function computeServerPrice(itemName, menuItems, metadata) {
   const item = menuItems.find(m => m.name === itemName);
   if (item) return { price: item.price, category: item.category || 'Lunch' };
 
-  // Fallbacks for recurring orders where standard packages might not be in today's menu
-  if (itemName === 'Full Choviar') return { price: 150, category: 'Choviar' }; // Estimated price
-  
+  if (itemName === 'Full Choviar') {
+    const choviarItems = (menuItems || []).filter(m => m.category === 'Choviar' && m.name !== 'Full Choviar');
+    if (choviarItems.length > 0) {
+      const price = choviarItems.reduce((sum, item) => sum + (Number(item.price) || 0), 0);
+      return { price, category: 'Choviar' };
+    }
+    return { price: 150, category: 'Choviar' }; // Fallback
+  }
   return null;
 }
 
@@ -967,17 +972,29 @@ app.get('/api/admin/kitchen', adminLimiter, requireAdmin, async (req, res) => {
 
     if (choviarItems.length > 0) {
       const comp = {};
+      const baseChoviarItems = (menuItems || []).filter(m => m.category === 'Choviar' && m.name !== 'Full Choviar');
+      
       choviarItems.forEach(item => {
         const n = (item.name || '').trim();
         const orderQty = item.quantity || 0;
         if (orderQty <= 0) return;
 
-        // If the menu defines a per-order qty for this item, multiply it
-        const multiplier = choviarMenuQtyMap[n] || 1;
-        const kitchenQty = orderQty * multiplier;
+        if (n === 'Full Choviar') {
+          baseChoviarItems.forEach(bm => {
+             const bName = (bm.name || '').trim();
+             const multiplier = choviarMenuQtyMap[bName] || 1;
+             const kitchenQty = orderQty * multiplier;
+             comp[bName] = (comp[bName] || 0) + kitchenQty;
+             choviarGrandTotals[bName] = (choviarGrandTotals[bName] || 0) + kitchenQty;
+          });
+        } else {
+          // If the menu defines a per-order qty for this item, multiply it
+          const multiplier = choviarMenuQtyMap[n] || 1;
+          const kitchenQty = orderQty * multiplier;
 
-        comp[n] = (comp[n] || 0) + kitchenQty;
-        choviarGrandTotals[n] = (choviarGrandTotals[n] || 0) + kitchenQty;
+          comp[n] = (comp[n] || 0) + kitchenQty;
+          choviarGrandTotals[n] = (choviarGrandTotals[n] || 0) + kitchenQty;
+        }
       });
 
       choviarKitchenOrders.push({
