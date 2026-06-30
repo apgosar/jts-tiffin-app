@@ -1253,7 +1253,25 @@ function BillingTab({ password }) {
         
         for (const order of orders) {
           if (order.status === 'CANCELLED') continue;
-          if (order.paymentReceived) continue;
+          
+          let outstanding = order.grandTotal || 0;
+          let paid = 0;
+
+          if (order.paymentReceived) {
+            if (order.amountReceived !== undefined && order.amountReceived !== '') {
+              const amount = Number(order.amountReceived);
+              if (!isNaN(amount)) {
+                paid = amount;
+                outstanding = outstanding - paid;
+              } else {
+                outstanding = 0; // Fully paid
+              }
+            } else {
+              outstanding = 0; // Fully paid
+            }
+          }
+
+          if (outstanding <= 0) continue;
           
           const phone = order.phone || 'Unknown';
           if (!groups[phone]) {
@@ -1266,7 +1284,10 @@ function BillingTab({ password }) {
             };
           }
           
-          groups[phone].totalPending += order.grandTotal;
+          order.outstanding = outstanding;
+          order.paid = paid;
+
+          groups[phone].totalPending += outstanding;
           groups[phone].unpaidOrders.push(order);
         }
         const customerList = Object.values(groups).map(cust => {
@@ -1405,8 +1426,9 @@ function BillingTab({ password }) {
                       <div className="flex flex-col">
                         <span className="font-bold text-gray-800">{order.date}</span>
                         <span className="text-xs text-gray-500 mt-0.5">{order.itemsSummary}</span>
+                        {order.paid > 0 && <span className="text-[10px] text-green-600 font-bold mt-0.5">Partial: ₹{order.paid} paid</span>}
                       </div>
-                      <span className="font-bold text-gray-900 shrink-0 mt-0.5">₹{order.grandTotal.toLocaleString('en-IN')}</span>
+                      <span className="font-bold text-gray-900 shrink-0 mt-0.5">₹{order.outstanding.toLocaleString('en-IN')}</span>
                     </div>
                   ))}
                 </div>
@@ -1451,9 +1473,10 @@ function BillingTab({ password }) {
                   <div key={order.orderId || idx} className="bg-gray-50 rounded-xl p-3 border border-gray-100">
                     <div className="flex justify-between items-start mb-2 border-b border-gray-200 pb-2">
                       <span className="font-bold text-gray-800">{order.date}</span>
-                      <span className="font-bold text-jts-red">₹{order.grandTotal.toLocaleString('en-IN')}</span>
+                      <span className="font-bold text-jts-red">₹{order.outstanding.toLocaleString('en-IN')}</span>
                     </div>
                     <p className="text-sm text-gray-600 leading-relaxed">{order.itemsSummary}</p>
+                    {order.paid > 0 && <p className="text-xs text-green-600 font-bold mt-1 pt-1 border-t border-gray-100 border-dashed">Partial Payment: ₹{order.paid} received</p>}
                   </div>
                 ))}
               </div>

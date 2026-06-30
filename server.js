@@ -406,7 +406,8 @@ app.post('/api/orders', orderLimiter, async (req, res) => {
         paymentReceived: false,
         paymentMethod: 'Cash',
         amountReceived: '',
-        status: 'ACTIVE'
+        status: 'ACTIVE',
+        category: sub.category
       });
     }
 
@@ -518,7 +519,7 @@ app.post('/api/orders/recurring', orderLimiter, async (req, res) => {
           ...customerRecord, zone, items: lunchItems,
           itemsSummary: lunchItems.map(i => `${i.name}×${i.quantity}`).join(', '),
           surchargeTotal: lunchSurcharge, grandTotal: lunchSubtotal + lunchSurcharge + (isFirst ? roundOffAmount : 0),
-          deliveryPerson: '', routeOrder: 9999, paymentReceived: false, paymentMethod: 'Cash', amountReceived: '', status: 'ACTIVE'
+          deliveryPerson: '', routeOrder: 9999, paymentReceived: false, paymentMethod: 'Cash', amountReceived: '', status: 'ACTIVE', category: 'Lunch'
         });
       }
 
@@ -531,7 +532,7 @@ app.post('/api/orders/recurring', orderLimiter, async (req, res) => {
           ...customerRecord, zone, items: choviarItems,
           itemsSummary: choviarItems.map(i => `${i.name}×${i.quantity}`).join(', '),
           surchargeTotal: choviarSurcharge, grandTotal: choviarSubtotal + choviarSurcharge + (isFirst ? roundOffAmount : 0),
-          deliveryPerson: '', routeOrder: 9999, paymentReceived: false, paymentMethod: 'Cash', amountReceived: '', status: 'ACTIVE'
+          deliveryPerson: '', routeOrder: 9999, paymentReceived: false, paymentMethod: 'Cash', amountReceived: '', status: 'ACTIVE', category: 'Choviar'
         });
       }
     }
@@ -1068,10 +1069,21 @@ app.get('/api/delivery/orders', publicLimiter, async (req, res) => {
       const row = rows[i];
       const deliveryPerson = row.deliveryPerson || '';
       
-      if (deliveryPerson.trim().length > 0) {
+      if (deliveryPerson.trim().length > 0 && deliveryPerson.trim().toLowerCase() !== 'dabbawala') {
         const nameHi = await translateToHindi(row.name);
         const addressHi = await translateToHindi(row.address);
         
+        let category = row.category;
+        if (!category) {
+          const items = row.items || [];
+          if (items.length > 0) {
+            const hasLunchItems = items.some(i => i.category !== 'Choviar');
+            category = hasLunchItems ? 'Lunch' : 'Choviar';
+          } else {
+            category = row.orderId && row.orderId.endsWith('-C') ? 'Choviar' : 'Lunch';
+          }
+        }
+
         orders.push({
           orderId: row.orderId, // UUID instead of rowIndex
           name: nameHi,
@@ -1082,7 +1094,8 @@ app.get('/api/delivery/orders', publicLimiter, async (req, res) => {
           routeOrder: typeof row.routeOrder === 'number' ? row.routeOrder : 9999,
           paymentReceived: !!row.paymentReceived,
           paymentMethod: row.paymentMethod || 'Cash',
-          amountReceived: row.amountReceived || ''
+          amountReceived: row.amountReceived || '',
+          category: category
         });
       }
     }
