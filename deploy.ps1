@@ -1,4 +1,4 @@
-﻿# ============================================================
+# ============================================================
 #  deploy.ps1  –  JTS Tiffin App  →  Google Cloud Run
 #  Usage: .\deploy.ps1
 # ============================================================
@@ -123,6 +123,7 @@ $deployOutput = gcloud run deploy $SERVICE_NAME `
     --min-instances 0 `
     --max-instances 3 `
     --env-vars-file $envYamlPath `
+    --clear-base-image `
     --quiet 2>&1
 
 # Print deploy output

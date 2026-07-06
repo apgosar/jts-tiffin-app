@@ -71,6 +71,7 @@ jobs:
           service: jts-tiffin-app
           region: asia-south1
           source: ./
+          flags: '--clear-base-image'
           env_vars: |-
             NODE_ENV=production
             ADMIN_PASSWORD=${{ secrets.ADMIN_PASSWORD }}
