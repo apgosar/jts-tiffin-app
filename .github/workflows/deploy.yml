@@ -71,7 +71,7 @@ jobs:
           service: jts-tiffin-app
           region: asia-south1
           source: ./
-          flags: '--clear-base-image'
+          flags: '--clear-base-image --memory=256Mi --cpu=1 --cpu-throttling --no-cpu-boost'
           env_vars: |-
             NODE_ENV=production
             ADMIN_PASSWORD=${{ secrets.ADMIN_PASSWORD }}

@@ -119,7 +119,10 @@ $deployOutput = gcloud run deploy $SERVICE_NAME `
     --platform managed `
     --allow-unauthenticated `
     --port 8080 `
-    --memory 512Mi `
+    --memory 256Mi `
+    --cpu 1 `
+    --cpu-throttling `
+    --no-cpu-boost `
     --min-instances 0 `
     --max-instances 3 `
     --env-vars-file $envYamlPath `
