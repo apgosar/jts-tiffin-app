@@ -11,6 +11,6 @@ test.describe('JTS Delivery Portal End-to-End', () => {
     // Verify it handles loading state
     // Because USE_MOCK_DATA=true returns { success: true, orders: [] } instantly,
     // we should see the "No orders assigned for today" message.
-    await expect(page.locator('text=आज के लिए कोई ऑर्डर असाइन नहीं किया गया है।')).toBeVisible();
+    await expect(page.locator('text=No orders assigned for today.')).toBeVisible();
   });
 });
