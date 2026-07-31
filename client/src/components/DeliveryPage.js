@@ -25,7 +25,7 @@ function DeliveryPage() {
       setLoading(false);
     } catch (err) {
       console.error(err);
-      setError('ऑर्डर लोड करने में समस्या। (Error loading orders)');
+      setError('Error loading orders. Please try again.');
       setLoading(false);
     }
   };
@@ -48,7 +48,7 @@ function DeliveryPage() {
       });
       if (!res.ok) throw new Error('Failed to save');
     } catch (err) {
-      alert('सेव करने में त्रुटि (Error saving). कृपया पुनः प्रयास करें।');
+      alert('Error saving. Please try again.');
       fetchOrders();
     } finally {
       setTimeout(() => {
@@ -88,7 +88,7 @@ function DeliveryPage() {
 
   if (loading) return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-      <div className="text-xl font-bold text-jts-red animate-pulse">ऑर्डर लोड हो रहे हैं...</div>
+      <div className="text-xl font-bold text-jts-red animate-pulse">Loading orders...</div>
     </div>
   );
 
@@ -124,7 +124,7 @@ function DeliveryPage() {
           <table className="w-full text-xs text-left border-collapse">
             <thead className="bg-gray-100 border-b border-gray-300 text-gray-800 uppercase tracking-wider">
               <tr>
-                <th className="border-r border-gray-300 px-1 py-2 text-center w-8">#</th>
+                <th className="border-r border-gray-300 px-1 py-2 text-center w-10">SEQ/SR</th>
                 <th className="border-r border-gray-300 px-2 py-2 w-1/3">Details</th>
                 <th className="border-r border-gray-300 px-1 py-2 text-center w-12">Amt</th>
                 <th className="px-1 py-2 text-center">Collection</th>
@@ -133,8 +133,9 @@ function DeliveryPage() {
             <tbody>
               {ordersList.map(order => (
                 <tr key={order.orderId} className={`border-b border-gray-300 transition ${order.paymentReceived ? 'bg-green-50/50' : 'hover:bg-gray-50'}`}>
-                  <td className="border-r border-gray-300 px-1 py-2 text-center align-middle font-bold text-gray-700">
-                    {order.routeOrder}
+                  <td className="border-r border-gray-300 px-1 py-2 text-center align-middle">
+                    <div className="font-bold text-gray-700 text-sm">#{order.routeOrder}</div>
+                    <div className="text-[9px] font-bold text-gray-400 mt-0.5">SR: {order.serialNumber || '-'}</div>
                   </td>
                   <td className="border-r border-gray-300 px-2 py-2 align-middle">
                     <div className="flex justify-between items-start gap-1 mb-1">
@@ -231,20 +232,30 @@ function DeliveryPage() {
       </header>
 
       {riders.length > 0 && (
-        <div className="flex overflow-x-auto bg-white shadow-sm hide-scrollbar sticky top-[68px] z-10">
-          {riders.map(rider => (
-            <button
-              key={rider}
-              onClick={() => setActiveTab(rider)}
-              className={`flex-1 min-w-[120px] py-3 text-center font-bold text-lg border-b-4 transition-colors ${
-                activeTab === rider 
-                  ? 'border-jts-red text-jts-red bg-red-50' 
-                  : 'border-transparent text-gray-500 hover:bg-gray-50'
-              }`}
-            >
-              {rider}
-            </button>
-          ))}
+        <div className="flex flex-col bg-white shadow-sm sticky top-[68px] z-10 border-b border-gray-200">
+          <div className="flex overflow-x-auto hide-scrollbar">
+            {riders.map(rider => (
+              <button
+                key={rider}
+                onClick={() => setActiveTab(rider)}
+                className={`flex-1 min-w-[120px] py-3 text-center font-bold text-lg border-b-4 transition-colors ${
+                  activeTab === rider 
+                    ? 'border-jts-red text-jts-red bg-red-50' 
+                    : 'border-transparent text-gray-500 hover:bg-gray-50'
+                }`}
+              >
+                {rider}
+              </button>
+            ))}
+          </div>
+          {/* Summary for active rider */}
+          <div className="flex items-center justify-center gap-4 py-2 px-4 bg-gray-50 text-xs font-bold text-gray-600 border-t border-gray-100">
+            <span>Lunch: <span className="text-jts-red text-sm">{lunchOrders.length}</span></span>
+            <span className="w-1 h-1 rounded-full bg-gray-300"></span>
+            <span>Choviar: <span className="text-jts-red text-sm">{choviarOrders.length}</span></span>
+            <span className="w-1 h-1 rounded-full bg-gray-300"></span>
+            <span className="text-gray-800">Total: <span className="text-jts-red text-sm">{activeOrders.length}</span></span>
+          </div>
         </div>
       )}
 
@@ -256,7 +267,7 @@ function DeliveryPage() {
 
       {riders.length === 0 && (
         <div className="p-8 text-center text-gray-500 font-bold text-lg">
-          आज के लिए कोई ऑर्डर असाइन नहीं किया गया है।
+          No orders assigned for today.
         </div>
       )}
 

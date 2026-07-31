@@ -8,6 +8,9 @@ export const getMenu = () => API.get('/api/menu');
 export const lookupCustomer = (phone) =>
   API.get(`/api/customer/lookup`, { params: { phone } });
 
+export const updateOrder = (orderId, phone, payload) =>
+  API.put(`/api/orders/manage/${orderId}`, payload, { params: { phone } });
+
 export const placeOrder = (data) => API.post('/api/orders', data);
 
 // ─── Admin endpoints ──────────────────────────────────────────────────────────

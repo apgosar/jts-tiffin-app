@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCart, getOrderingState } from '../App';
-import { lookupCustomer, placeOrder } from '../services/api';
+import { lookupCustomer, placeOrder, updateOrder } from '../services/api';
 
 // ─── Small helpers ────────────────────────────────────────────────────────────
 function Field({ label, id, required, error, children }) {
@@ -64,12 +64,12 @@ function ZoneBadge({ zone, cartSubtotal }) {
 }
 
 // ─── Order Row ────────────────────────────────────────────────────────────────
-function OrderRow({ item, onIncrement, onDecrement }) {
+function OrderRow({ item, onIncrement, onDecrement, hidePrices }) {
   return (
     <div className="flex items-center justify-between gap-3 py-2.5 text-sm border-b border-gray-100 last:border-0">
       <div className="flex-1 min-w-0">
         <p className="font-semibold text-gray-800">{item.name}</p>
-        <p className="text-xs text-gray-500">₹{item.price}/- each</p>
+        {!hidePrices && <p className="text-xs text-gray-500">₹{item.price}/- each</p>}
       </div>
       <div className="flex items-center gap-2 flex-shrink-0">
         <button
@@ -83,9 +83,11 @@ function OrderRow({ item, onIncrement, onDecrement }) {
           onClick={onIncrement}
           className="w-8 h-8 rounded-full bg-jts-red text-white hover:bg-jts-crimson flex items-center justify-center text-lg font-bold transition-colors"
         >+</button>
-        <span className="font-semibold text-gray-700 min-w-[60px] text-right">
-          ₹{(item.price * item.quantity).toLocaleString('en-IN')}
-        </span>
+        {!hidePrices && (
+          <span className="font-semibold text-gray-700 min-w-[60px] text-right">
+            ₹{(item.price * item.quantity).toLocaleString('en-IN')}
+          </span>
+        )}
       </div>
     </div>
   );
@@ -93,13 +95,13 @@ function OrderRow({ item, onIncrement, onDecrement }) {
 
 // ─── INITIAL FORM STATE ───────────────────────────────────────────────────────
 const EMPTY_FORM = {
-  name: '', wingFlat: '', building: '', street: '', landmark: '', locality: '', pincode: '',
+  name: '', wingFlat: '', building: '', street: '', landmark: '', locality: '', pincode: '', instructions: ''
 };
 
 // ─── CheckoutPage ─────────────────────────────────────────────────────────────
 export default function CheckoutPage() {
   const navigate = useNavigate();
-  const { cartItems, cartSubtotal, updateQuantity, clearCart, setLastOrder, metadata } = useCart();
+  const { cartItems, cartSubtotal, updateQuantity, clearCart, setLastOrder, metadata, editOrder, setEditOrder } = useCart();
 
   // Phone lookup
   const [phone, setPhone]                     = useState('');
@@ -136,6 +138,7 @@ export default function CheckoutPage() {
       landmark: profile.landmark || '',
       locality: profile.locality || '',
       pincode:  profile.pincode || '',
+      instructions: profile.instructions || '',
     }));
     if (profile.pincode) computeZone(profile.pincode);
   };
@@ -175,7 +178,7 @@ export default function CheckoutPage() {
   useEffect(() => {
     try {
       const saved = localStorage.getItem('jts_customer_profile');
-      if (saved) {
+      if (saved && !editOrder) {
         const profile = JSON.parse(saved);
         if (profile.phone) {
           setPhone(profile.phone);
@@ -184,6 +187,10 @@ export default function CheckoutPage() {
           // Trigger automated backend lookup
           performLookup(profile.phone);
         }
+      } else if (editOrder) {
+        // Pre-fill from editOrder if we are editing
+        setPhone(editOrder.phone || '');
+        applyProfile(editOrder);
       }
     } catch (err) {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -195,12 +202,15 @@ export default function CheckoutPage() {
   const [serverError, setServerError] = useState('');
 
   // ── Ordering cutoffs ─────────────────────────────────────────────────────────
-  const { status } = getOrderingState(metadata?.betaTesting);
+  const { status } = getOrderingState(metadata);
   const hasLunch = cartItems.some(item => item.category === 'Lunch' || !item.category);
   const isCheckoutBlocked = status === 'CLOSED' || (status === 'LUNCH_CLOSED' && hasLunch);
   
+  // Custom Order flag
+  const isCustomOrder = cartItems.some(i => i.category === 'Individual');
+  
   // ── Derived zone / surcharge ─────────────────────────────────────────────────
-  const lunchItems = cartItems.filter(i => i.category === 'Lunch' || !i.category);
+  const lunchItems = cartItems.filter(i => i.category === 'Lunch' || i.category === 'Individual' || !i.category);
   const choviarItems = cartItems.filter(i => i.category === 'Choviar');
 
   const lunchSubtotal = lunchItems.reduce((sum, i) => sum + i.price * i.quantity, 0);
@@ -320,7 +330,7 @@ export default function CheckoutPage() {
         `${form.landmark ? ', ' + form.landmark.trim() : ''}, ` +
         `${form.locality.trim()} – ${form.pincode.trim()}`;
 
-      const res = await placeOrder({
+      const payload = {
         customer: {
           name:    form.name.trim(),
           phone:   phone.trim(),
@@ -331,10 +341,18 @@ export default function CheckoutPage() {
           locality: form.locality.trim(),
           pincode:  form.pincode.trim(),
           address:  formattedAddress,
+          instructions: form.instructions.trim(),
         },
         items: cartItems.map(({ name, price, quantity }) => ({ name, price, quantity })),
         subtotal: cartSubtotal,
-      });
+      };
+
+      let res;
+      if (editOrder) {
+        res = await updateOrder(editOrder.orderId, phone.trim(), payload);
+      } else {
+        res = await placeOrder(payload);
+      }
 
       setLastOrder({
         orderId:        res.data.orderId,
@@ -355,6 +373,7 @@ export default function CheckoutPage() {
       } catch (err) {}
 
       clearCart();
+      if (editOrder) setEditOrder(null);
       navigate('/confirmation');
     } catch (err) {
       console.error(err);
@@ -377,7 +396,7 @@ export default function CheckoutPage() {
           >
             ←
           </button>
-          <h1 className="font-bold text-gray-900 text-base">Checkout</h1>
+          <h1 className="font-bold text-gray-900 text-base">{editOrder ? 'Update Order' : 'Checkout'}</h1>
         </div>
       </header>
 
@@ -407,29 +426,33 @@ export default function CheckoutPage() {
                   <OrderRow
                     key={item.name}
                     item={item}
+                    hidePrices={isCustomOrder}
                     onIncrement={() => updateQuantity(item.name, 1)}
                     onDecrement={() => updateQuantity(item.name, -1)}
                   />
                 ))}
               </div>
-              <div className="mt-2 pt-2 border-t border-gray-100 space-y-1.5">
-                <div className="flex justify-between text-sm text-gray-700">
-                  <span>Items Total ({lunchQty} item{lunchQty !== 1 ? 's' : ''})</span>
-                  <span className="font-semibold">₹{lunchSubtotal.toLocaleString('en-IN')}</span>
-                </div>
-                {lunchSurcharge > 0 && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-amber-700">
-                      {zone === 'borivali' ? 'Delivery Charge (Orders < ₹250)' : `Outside Borivali surcharge (₹40 × ${lunchOutsideTiffins})`}
-                    </span>
-                    <span className="font-semibold text-amber-700">+₹{lunchSurcharge}</span>
+              
+              {!isCustomOrder && (
+                <div className="mt-2 pt-2 border-t border-gray-100 space-y-1.5">
+                  <div className="flex justify-between text-sm text-gray-700">
+                    <span>Items Total ({lunchQty} item{lunchQty !== 1 ? 's' : ''})</span>
+                    <span className="font-semibold">₹{lunchSubtotal.toLocaleString('en-IN')}</span>
                   </div>
-                )}
-                <div className="flex justify-between font-bold text-gray-800 border-t border-gray-50 pt-1 mt-1 text-sm">
-                  <span>Lunch Subtotal</span>
-                  <span>₹{(lunchSubtotal + lunchSurcharge).toLocaleString('en-IN')}</span>
+                  {lunchSurcharge > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-amber-700">
+                        {zone === 'borivali' ? 'Delivery Charge (Orders < ₹250)' : `Outside Borivali surcharge (₹40 × ${lunchOutsideTiffins})`}
+                      </span>
+                      <span className="font-semibold text-amber-700">+₹{lunchSurcharge}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between font-bold text-gray-800 border-t border-gray-50 pt-1 mt-1 text-sm">
+                    <span>Lunch Subtotal</span>
+                    <span>₹{(lunchSubtotal + lunchSurcharge).toLocaleString('en-IN')}</span>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           )}
 
@@ -442,35 +465,39 @@ export default function CheckoutPage() {
                   <OrderRow
                     key={item.name}
                     item={item}
+                    hidePrices={isCustomOrder}
                     onIncrement={() => updateQuantity(item.name, 1)}
                     onDecrement={() => updateQuantity(item.name, -1)}
                   />
                 ))}
               </div>
-              <div className="mt-2 pt-2 border-t border-gray-100 space-y-1.5">
-                <div className="flex justify-between text-sm text-gray-700">
-                  <span>Items Total ({choviarQty} item{choviarQty !== 1 ? 's' : ''})</span>
-                  <span className="font-semibold">₹{choviarSubtotal.toLocaleString('en-IN')}</span>
-                </div>
-                {choviarSurcharge > 0 && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-amber-700">
-                      {zone === 'borivali' ? 'Delivery Charge (Orders < ₹250)' : `Outside Borivali surcharge (₹40 × ${choviarOutsideTiffins})`}
-                    </span>
-                    <span className="font-semibold text-amber-700">+₹{choviarSurcharge}</span>
+              
+              {!isCustomOrder && (
+                <div className="mt-2 pt-2 border-t border-gray-100 space-y-1.5">
+                  <div className="flex justify-between text-sm text-gray-700">
+                    <span>Items Total ({choviarQty} item{choviarQty !== 1 ? 's' : ''})</span>
+                    <span className="font-semibold">₹{choviarSubtotal.toLocaleString('en-IN')}</span>
                   </div>
-                )}
-                <div className="flex justify-between font-bold text-gray-800 border-t border-gray-50 pt-1 mt-1 text-sm">
-                  <span>Choviar Subtotal</span>
-                  <span>₹{(choviarSubtotal + choviarSurcharge).toLocaleString('en-IN')}</span>
+                  {choviarSurcharge > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-amber-700">
+                        {zone === 'borivali' ? 'Delivery Charge (Orders < ₹250)' : `Outside Borivali surcharge (₹40 × ${choviarOutsideTiffins})`}
+                      </span>
+                      <span className="font-semibold text-amber-700">+₹{choviarSurcharge}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between font-bold text-gray-800 border-t border-gray-50 pt-1 mt-1 text-sm">
+                    <span>Choviar Subtotal</span>
+                    <span>₹{(choviarSubtotal + choviarSurcharge).toLocaleString('en-IN')}</span>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           )}
 
           {/* Grand Total */}
           <div className="mt-1 pt-1 space-y-1.5">
-            {roundOffAmount !== 0 && (
+            {!isCustomOrder && roundOffAmount !== 0 && (
               <div className="flex justify-between text-sm text-gray-700">
                 <span>Round Off</span>
                 <span className="font-semibold">{roundOffAmount > 0 ? '+' : ''}₹{roundOffAmount}</span>
@@ -607,15 +634,40 @@ export default function CheckoutPage() {
                   </Field>
 
                   {/* Zone Badge */}
-                  {form.pincode.length === 6 && zone && <ZoneBadge zone={zone} cartSubtotal={cartSubtotal} />}
+                  {form.pincode.length === 6 && zone && !isCustomOrder && <ZoneBadge zone={zone} cartSubtotal={cartSubtotal} />}
+
+                  <Field label="Special Instructions (Optional)" id="instructions" error={errors.instructions}>
+                    <textarea 
+                      id="instructions" 
+                      value={form.instructions} 
+                      onChange={handleFormChange('instructions')} 
+                      placeholder="e.g. Less spicy, keep at security..." 
+                      className="w-full px-3 py-3 border border-gray-200 rounded-xl text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-jts-red focus:border-transparent transition"
+                      rows="2"
+                    />
+                  </Field>
                 </div>
               </div>
             </>
           )}
 
           {/* Show zone badge for selected profile */}
-          {lookupState === 'done' && selectedProfile >= 0 && zone && (
+          {lookupState === 'done' && selectedProfile >= 0 && zone && !isCustomOrder && (
             <ZoneBadge zone={zone} cartSubtotal={cartSubtotal} />
+          )}
+
+          {/* Special Instructions for Saved Profile */}
+          {lookupState === 'done' && selectedProfile >= 0 && (
+            <Field label="Special Instructions (Optional)" id="instructions" error={errors.instructions}>
+              <textarea 
+                id="instructions" 
+                value={form.instructions} 
+                onChange={handleFormChange('instructions')} 
+                placeholder="e.g. Less spicy, keep at security..." 
+                className="w-full px-3 py-3 border border-gray-200 rounded-xl text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-jts-red focus:border-transparent transition"
+                rows="2"
+              />
+            </Field>
           )}
 
           {/* Server error */}
@@ -635,7 +687,7 @@ export default function CheckoutPage() {
                   ? 'bg-red-300 cursor-not-allowed'
                   : 'bg-jts-red hover:bg-jts-crimson active:bg-red-900 shadow-md'}`}
             >
-              {submitting ? 'Placing Order…' : '🛍️ Place Order'}
+              {submitting ? (editOrder ? 'Updating Order…' : 'Placing Order…') : (editOrder ? '✏️ Update Order' : '🛍️ Place Order')}
             </button>
           )}
         </form>

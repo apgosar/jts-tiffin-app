@@ -18,7 +18,8 @@ export default function RecurringPage() {
     street: '',
     landmark: '',
     locality: '',
-    pincode: ''
+    pincode: '',
+    instructions: ''
   });
 
   const [dateRange, setDateRange] = useState({
@@ -97,12 +98,13 @@ export default function RecurringPage() {
         street: p.street || '',
         landmark: p.landmark || '',
         locality: p.locality || '',
-        pincode: p.pincode || ''
+        pincode: p.pincode || '',
+        instructions: p.instructions || ''
       }));
     } else {
       setForm(f => ({
         ...f,
-        name: '', wingFlat: '', building: '', street: '', landmark: '', pincode: ''
+        name: '', wingFlat: '', building: '', street: '', landmark: '', pincode: '', instructions: ''
       }));
     }
   };
@@ -400,6 +402,10 @@ export default function RecurringPage() {
                     <div>
                       <label className="block text-xs font-bold text-gray-500 mb-1">Pincode *</label>
                       <input type="text" value={form.pincode} onChange={handleFormChange('pincode')} placeholder="e.g. 400092" maxLength="6" className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-jts-red focus:outline-none" />
+                    </div>
+                    <div className="mt-3">
+                      <label className="block text-xs font-bold text-gray-500 mb-1">Special Instructions (Optional)</label>
+                      <textarea value={form.instructions} onChange={handleFormChange('instructions')} placeholder="e.g. Less spicy, keep at security..." rows="2" className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-jts-red focus:outline-none text-sm" />
                     </div>
                   </div>
                 </>

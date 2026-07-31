@@ -85,7 +85,19 @@ let MOCK_MENU = [
   { name: 'Family Meal', description: '9 Roti, Sabji, Dal, Rice, Salad / Sweet / Namkeen / Farsan', price: 320, available: true, category: 'Lunch' },
   { name: 'Choviar Special', description: 'Ragdo, 4 Kelawada, Dal Khichdi', price: 160, available: true, category: 'Choviar', qty: 4 },
 ];
-let MOCK_METADATA = { sabji: 'Bhindi', sweet: 'Aamras', dal: 'Gujarati Dal', farsan: 'Dhokla', betaTesting: 'Yes' };
+let MOCK_METADATA = { 
+  sabji: 'Bhindi', sweet: 'Aamras', dal: 'Gujarati Dal', farsan: 'Dhokla', 
+  betaTesting: 'Yes',
+  breadType: 'Roti',
+  lunchCutoff: '05:00',
+  choviarCutoff: '11:00',
+  tiffinMatrix: {
+    "Mini Lunch": { Roti: 3, Paratha: 3, Puri: 3, Namkeen: 1, Salad: 1, Farsan: 1, Sweet: 1 },
+    "Brunch": { Roti: 6, Paratha: 4, Puri: 6, Namkeen: 1, Salad: 1, Farsan: 1, Sweet: 1 },
+    "Full Lunch": { Roti: 6, Paratha: 4, Puri: 6, Namkeen: 1, Salad: 1, Farsan: 1, Sweet: 1 },
+    "Family Meal": { Roti: 9, Paratha: 6, Puri: 9, Namkeen: 2, Salad: 2, Farsan: 2, Sweet: 2 }
+  }
+};
 
 let MOCK_ORDERS    = [];
 let MOCK_CUSTOMERS = []; // [{ name, phone, wingFlat, building, street, landmark, locality, pincode, lastOrderDate }]
@@ -271,18 +283,60 @@ app.post('/api/orders', orderLimiter, async (req, res) => {
     validatedItems.push({ name: item.name, price: serverData.price, quantity: parseInt(item.quantity, 10), category: serverData.category });
   }
 
+  const now = new Date();
+  const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+  const istTime = new Date(utc + (3600000 * 5.5));
+  const istHour = istTime.getHours();
+
+  const betaTesting = metadata.betaTesting === 'Yes';
+  const lunchCutoff = parseInt(metadata.lunchCutoff?.split(':')[0] || '5', 10);
+  const choviarCutoff = parseInt(metadata.choviarCutoff?.split(':')[0] || '11', 10);
+
+  // Determine target date (delivery date)
+  const deliveryTime = new Date(istTime);
+  // Default rollover logic (to be replaced by liveMenuDate if needed, but for now stick to 19:00 rollover)
+  if (istHour >= 19) {
+    deliveryTime.setDate(deliveryTime.getDate() + 1);
+  }
+  deliveryTime.setHours(0, 0, 0, 0);
+  
+  if (!betaTesting) {
+    const hasLunch = validatedItems.some(i => i.category !== 'Choviar');
+    const hasChoviar = validatedItems.some(i => i.category === 'Choviar');
+
+    if (hasLunch) {
+      const lunchCutoffHr = parseInt(metadata.lunchCutoff?.split(':')[0] || '5', 10);
+      const lunchCutoffDay = metadata.lunchCutoffDay || 'Same Day';
+      const lunchCutoffTime = new Date(deliveryTime);
+      if (lunchCutoffDay === 'Previous Day') {
+        lunchCutoffTime.setDate(lunchCutoffTime.getDate() - 1);
+      }
+      lunchCutoffTime.setHours(lunchCutoffHr, 0, 0, 0);
+
+      if (istTime >= lunchCutoffTime) {
+        return res.status(400).json({ error: `Lunch order cutoff (${lunchCutoffHr}:00 ${lunchCutoffDay === 'Previous Day' ? 'Yesterday' : 'Today'}) has passed for the selected delivery day.` });
+      }
+    }
+
+    if (hasChoviar) {
+      const choviarCutoffHr = parseInt(metadata.choviarCutoff?.split(':')[0] || '11', 10);
+      const choviarCutoffDay = metadata.choviarCutoffDay || 'Same Day';
+      const choviarCutoffTime = new Date(deliveryTime);
+      if (choviarCutoffDay === 'Previous Day') {
+        choviarCutoffTime.setDate(choviarCutoffTime.getDate() - 1);
+      }
+      choviarCutoffTime.setHours(choviarCutoffHr, 0, 0, 0);
+
+      if (istTime >= choviarCutoffTime) {
+        return res.status(400).json({ error: `Choviar order cutoff (${choviarCutoffHr}:00 ${choviarCutoffDay === 'Previous Day' ? 'Yesterday' : 'Today'}) has passed for the selected delivery day.` });
+      }
+    }
+  }
+
   const zone = getZone(customer.pincode.trim());
   const subtotal = validatedItems.reduce((s, i) => s + i.price * i.quantity, 0);
   
   const baseOrderId  = uuidv4().slice(0, 8).toUpperCase();
-  const now          = new Date();
-  
-  const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
-  const istTime = new Date(utc + (3600000 * 5.5));
-  const deliveryTime = new Date(istTime);
-  if (istTime.getHours() >= 19) {
-    deliveryTime.setDate(deliveryTime.getDate() + 1);
-  }
   const date = `${String(deliveryTime.getDate()).padStart(2, '0')}/${String(deliveryTime.getMonth() + 1).padStart(2, '0')}/${deliveryTime.getFullYear()}`;
   const time = formatTime(now);
 
@@ -356,6 +410,7 @@ app.post('/api/orders', orderLimiter, async (req, res) => {
     pincode:  customer.pincode.trim(),
     address:  customer.address.trim(),
     lastOrderDate: date,
+    instructions: (customer.instructions || '').trim(),
   };
 
   if (USE_MOCK) {
@@ -495,6 +550,7 @@ app.post('/api/orders/recurring', orderLimiter, async (req, res) => {
     building: customer.building.trim(), street: customer.street.trim(), landmark: (customer.landmark || '').trim(),
     locality: customer.locality.trim(), pincode: customer.pincode.trim(), address: customer.address.trim(),
     lastOrderDate: deliveryDates[deliveryDates.length - 1] || formatDate(new Date()),
+    instructions: (customer.instructions || '').trim(),
   };
 
   if (USE_MOCK) return res.json({ success: true, count: deliveryDates.length });
@@ -555,36 +611,76 @@ app.get('/api/orders/manage', publicLimiter, async (req, res) => {
   }
 
   const queryPhone = phone.trim();
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
 
-  // Helper to parse DD/MM/YYYY
+  // Helper to parse DD/MM/YYYY to a local midnight Date obj
   const parseDate = (dStr) => {
     const [day, month, year] = dStr.split('/');
     return new Date(year, month - 1, day);
   };
 
+  const now = new Date();
+  const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+  const istTime = new Date(utc + (3600000 * 5.5));
+  const istHour = istTime.getHours();
+  const istTodayStr = `${String(istTime.getDate()).padStart(2, '0')}/${String(istTime.getMonth() + 1).padStart(2, '0')}/${istTime.getFullYear()}`;
+  const todayDateObj = parseDate(istTodayStr);
+
+  let metadata = MOCK_METADATA;
+
   if (USE_MOCK) {
     const orders = MOCK_ORDERS.filter(o => o.phone === queryPhone && o.status !== 'CANCELLED');
-    const futureOrders = orders.filter(o => parseDate(o.date) > today).map(o => ({ ...o, id: o.orderId, canCancel: true }));
-    return res.json({ success: true, orders: futureOrders });
+    const mappedOrders = [];
+    
+    const lunchCutoff = parseInt(metadata.lunchCutoff?.split(':')[0] || '5', 10);
+    const choviarCutoff = parseInt(metadata.choviarCutoff?.split(':')[0] || '11', 10);
+    const betaTesting = metadata.betaTesting === 'Yes';
+
+    for (const o of orders) {
+      const oDate = parseDate(o.date);
+      if (oDate > todayDateObj) {
+        mappedOrders.push({ ...o, id: o.orderId, canCancel: true, canEdit: true });
+      } else if (oDate.getTime() === todayDateObj.getTime()) {
+        let canModify = betaTesting;
+        if (!betaTesting) {
+          if (o.category === 'Lunch' && istHour < lunchCutoff) canModify = true;
+          if (o.category === 'Choviar' && istHour < choviarCutoff) canModify = true;
+        }
+        mappedOrders.push({ ...o, id: o.orderId, canCancel: canModify, canEdit: canModify });
+      }
+    }
+    return res.json({ success: true, orders: mappedOrders.sort((a, b) => parseDate(a.date) - parseDate(b.date)) });
   }
 
   try {
+    const metaSnap = await db.collection('admin').doc('metadata').get();
+    if (metaSnap.exists) metadata = metaSnap.data();
+    
+    const lunchCutoff = parseInt(metadata.lunchCutoff?.split(':')[0] || '5', 10);
+    const choviarCutoff = parseInt(metadata.choviarCutoff?.split(':')[0] || '11', 10);
+    const betaTesting = metadata.betaTesting === 'Yes';
+
     const snapshot = await db.collection('orders')
       .where('phone', '==', queryPhone)
       .get();
       
     const allOrders = snapshot.docs.map(doc => doc.data()).filter(o => o.status !== 'CANCELLED');
-    // Only return future orders (after today)
-    const futureOrders = allOrders.filter(o => parseDate(o.date) > today);
+    const mappedOrders = [];
     
-    // Sort by date ascending
-    futureOrders.sort((a, b) => parseDate(a.date) - parseDate(b.date));
+    for (const o of allOrders) {
+      const oDate = parseDate(o.date);
+      if (oDate > todayDateObj) {
+        mappedOrders.push({ ...o, id: o.orderId, canCancel: true, canEdit: true });
+      } else if (oDate.getTime() === todayDateObj.getTime()) {
+        let canModify = betaTesting;
+        if (!betaTesting) {
+          if (o.category === 'Lunch' && istHour < lunchCutoff) canModify = true;
+          if (o.category === 'Choviar' && istHour < choviarCutoff) canModify = true;
+        }
+        mappedOrders.push({ ...o, id: o.orderId, canCancel: canModify, canEdit: canModify });
+      }
+    }
     
-    // Add canCancel flag and map orderId to id for frontend UI
-    const mappedOrders = futureOrders.map(o => ({ ...o, id: o.orderId, canCancel: true }));
-    
+    mappedOrders.sort((a, b) => parseDate(a.date) - parseDate(b.date));
     res.json({ success: true, orders: mappedOrders });
   } catch (err) {
     console.error('Error fetching customer orders:', err.message);
@@ -602,25 +698,48 @@ app.delete('/api/orders/manage/:orderId', publicLimiter, async (req, res) => {
   }
 
   const queryPhone = phone.trim();
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
+  
   const parseDate = (dStr) => {
     const [day, month, year] = dStr.split('/');
     return new Date(year, month - 1, day);
   };
 
+  const now = new Date();
+  const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+  const istTime = new Date(utc + (3600000 * 5.5));
+  const istHour = istTime.getHours();
+  const istTodayStr = `${String(istTime.getDate()).padStart(2, '0')}/${String(istTime.getMonth() + 1).padStart(2, '0')}/${istTime.getFullYear()}`;
+  const todayDateObj = parseDate(istTodayStr);
+
+  let metadata = MOCK_METADATA;
+
   if (USE_MOCK) {
     const order = MOCK_ORDERS.find(o => o.orderId === orderId && o.phone === queryPhone);
     if (!order) return res.status(404).json({ error: 'Order not found or unauthorized' });
-    if (parseDate(order.date) <= today) {
-      return res.status(400).json({ error: 'Cannot cancel orders for today or past dates' });
+    
+    const lunchCutoff = parseInt(metadata.lunchCutoff?.split(':')[0] || '5', 10);
+    const choviarCutoff = parseInt(metadata.choviarCutoff?.split(':')[0] || '11', 10);
+    const betaTesting = metadata.betaTesting === 'Yes';
+
+    const oDate = parseDate(order.date);
+    if (oDate < todayDateObj) return res.status(400).json({ error: 'Cannot cancel past orders' });
+    if (oDate.getTime() === todayDateObj.getTime() && !betaTesting) {
+      if (order.category === 'Lunch' && istHour >= lunchCutoff) return res.status(400).json({ error: `Lunch order cutoff (${lunchCutoff} AM) has passed for today` });
+      if (order.category === 'Choviar' && istHour >= choviarCutoff) return res.status(400).json({ error: `Choviar order cutoff (${choviarCutoff} AM) has passed for today` });
     }
+    
     order.status = 'CANCELLED';
     return res.json({ success: true, message: 'Order cancelled successfully' });
   }
 
   try {
+    const metaSnap = await db.collection('admin').doc('metadata').get();
+    if (metaSnap.exists) metadata = metaSnap.data();
+
+    const lunchCutoff = parseInt(metadata.lunchCutoff?.split(':')[0] || '5', 10);
+    const choviarCutoff = parseInt(metadata.choviarCutoff?.split(':')[0] || '11', 10);
+    const betaTesting = metadata.betaTesting === 'Yes';
+
     const orderRef = db.collection('orders').doc(orderId);
     const doc = await orderRef.get();
     
@@ -629,8 +748,11 @@ app.delete('/api/orders/manage/:orderId', publicLimiter, async (req, res) => {
     const orderData = doc.data();
     if (orderData.phone !== queryPhone) return res.status(403).json({ error: 'Unauthorized to cancel this order' });
     
-    if (parseDate(orderData.date) <= today) {
-      return res.status(400).json({ error: 'Cannot cancel orders for today or past dates' });
+    const oDate = parseDate(orderData.date);
+    if (oDate < todayDateObj) return res.status(400).json({ error: 'Cannot cancel past orders' });
+    if (oDate.getTime() === todayDateObj.getTime() && !betaTesting) {
+      if (orderData.category === 'Lunch' && istHour >= lunchCutoff) return res.status(400).json({ error: `Lunch order cutoff (${lunchCutoff} AM) has passed for today` });
+      if (orderData.category === 'Choviar' && istHour >= choviarCutoff) return res.status(400).json({ error: `Choviar order cutoff (${choviarCutoff} AM) has passed for today` });
     }
 
     await orderRef.update({ status: 'CANCELLED' });
@@ -638,6 +760,161 @@ app.delete('/api/orders/manage/:orderId', publicLimiter, async (req, res) => {
   } catch (err) {
     console.error('Error cancelling order:', err.message);
     res.status(500).json({ error: 'Failed to cancel order.' });
+  }
+});
+
+// PUT /api/orders/manage/:orderId?phone=XXXXXXXXXX
+app.put('/api/orders/manage/:orderId', orderLimiter, async (req, res) => {
+  const { phone } = req.query;
+  const { orderId } = req.params;
+  const { customer, items } = req.body;
+  
+  if (!phone || !orderId || !customer || !items) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+
+  const queryPhone = phone.trim();
+
+  // Validate items
+  const MAX_QTY_PER_ITEM = 20;
+  const MAX_ROTI_QTY = 200;
+  const MAX_ITEM_TYPES = 50;
+  if (items.length > MAX_ITEM_TYPES) return res.status(400).json({ error: 'Too many items' });
+  for (const item of items) {
+    const qty = parseInt(item.quantity, 10);
+    const limit = item.name === 'Roti' ? MAX_ROTI_QTY : MAX_QTY_PER_ITEM;
+    if (!qty || qty < 1 || qty > limit) return res.status(400).json({ error: `Invalid quantity for ${item.name}` });
+  }
+
+  try {
+    let orderRef;
+    let orderData;
+    
+    if (USE_MOCK) {
+      orderData = MOCK_ORDERS.find(o => o.orderId === orderId && o.phone === queryPhone);
+    } else {
+      orderRef = db.collection('orders').doc(orderId);
+      const doc = await orderRef.get();
+      if (doc.exists) orderData = doc.data();
+    }
+    
+    if (!orderData) return res.status(404).json({ error: 'Order not found' });
+    if (orderData.phone !== queryPhone) return res.status(403).json({ error: 'Unauthorized to edit this order' });
+    
+    const parseDate = (dStr) => {
+      const [day, month, year] = dStr.split('/');
+      return new Date(year, month - 1, day);
+    };
+    const now = new Date();
+    const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+    const istTime = new Date(utc + (3600000 * 5.5));
+    const istHour = istTime.getHours();
+    const istTodayStr = `${String(istTime.getDate()).padStart(2, '0')}/${String(istTime.getMonth() + 1).padStart(2, '0')}/${istTime.getFullYear()}`;
+    const todayDateObj = parseDate(istTodayStr);
+    const oDate = parseDate(orderData.date);
+    
+    const result = await getMenuForPricing();
+    const menuItems = result.menuItems;
+    const metadata = result.metadata;
+    
+    const lunchCutoffHr = parseInt(metadata.lunchCutoff?.split(':')[0] || '5', 10);
+    const lunchCutoffDay = metadata.lunchCutoffDay || 'Same Day';
+    const choviarCutoffHr = parseInt(metadata.choviarCutoff?.split(':')[0] || '11', 10);
+    const choviarCutoffDay = metadata.choviarCutoffDay || 'Same Day';
+    const betaTesting = metadata.betaTesting === 'Yes';
+
+    if (oDate < todayDateObj) return res.status(400).json({ error: 'Cannot edit past orders' });
+
+    if (!betaTesting) {
+      const deliveryTime = new Date(oDate);
+      deliveryTime.setHours(0, 0, 0, 0);
+
+      if (orderData.category === 'Lunch') {
+        const lunchCutoffTime = new Date(deliveryTime);
+        if (lunchCutoffDay === 'Previous Day') lunchCutoffTime.setDate(lunchCutoffTime.getDate() - 1);
+        lunchCutoffTime.setHours(lunchCutoffHr, 0, 0, 0);
+
+        if (istTime >= lunchCutoffTime) {
+          return res.status(400).json({ error: `Lunch order cutoff (${lunchCutoffHr}:00 ${lunchCutoffDay === 'Previous Day' ? 'Yesterday' : 'Today'}) has passed for this order's delivery day` });
+        }
+      }
+
+      if (orderData.category === 'Choviar') {
+        const choviarCutoffTime = new Date(deliveryTime);
+        if (choviarCutoffDay === 'Previous Day') choviarCutoffTime.setDate(choviarCutoffTime.getDate() - 1);
+        choviarCutoffTime.setHours(choviarCutoffHr, 0, 0, 0);
+
+        if (istTime >= choviarCutoffTime) {
+          return res.status(400).json({ error: `Choviar order cutoff (${choviarCutoffHr}:00 ${choviarCutoffDay === 'Previous Day' ? 'Yesterday' : 'Today'}) has passed for this order's delivery day` });
+        }
+      }
+    }
+    
+    const validatedItems = [];
+    for (const item of items) {
+      const serverData = computeServerPrice(item.name, menuItems, metadata);
+      if (!serverData) return res.status(400).json({ error: `Unknown item: "${item.name}"` });
+      
+      if (serverData.category === 'Choviar' && orderData.category === 'Lunch') {
+        return res.status(400).json({ error: 'Cannot add Choviar items to a Lunch order edit' });
+      }
+      if (serverData.category === 'Lunch' && orderData.category === 'Choviar') {
+        return res.status(400).json({ error: 'Cannot add Lunch items to a Choviar order edit' });
+      }
+      
+      validatedItems.push({ name: item.name, price: serverData.price, quantity: parseInt(item.quantity, 10), category: serverData.category });
+    }
+
+    if (validatedItems.length === 0) return res.status(400).json({ error: 'No valid items provided' });
+
+    const zone = getZone(customer.pincode.trim());
+    const subtotal = validatedItems.reduce((s, i) => s + i.price * i.quantity, 0);
+    
+    let surcharge = 0;
+    if (zone === 'outside') {
+      let tiffins = validatedItems.filter(i => i.name.includes('Lunch') || i.name.includes('Meal') || i.name.includes('Brunch') || i.name.includes('Choviar')).reduce((s, i) => s + i.quantity, 0);
+      if (tiffins === 0) tiffins = 1;
+      surcharge = 40 * tiffins;
+    } else if (zone === 'borivali' && subtotal < 250) {
+      surcharge = 30;
+    }
+
+    const exactTotal = subtotal + surcharge;
+    const grandTotalRounded = Math.round(exactTotal / 5) * 5;
+    
+    const customerRecord = {
+      name:     customer.name.trim(),
+      phone:    customer.phone.trim(),
+      wingFlat: customer.wingFlat.trim(),
+      building: customer.building.trim(),
+      street:   customer.street.trim(),
+      landmark: (customer.landmark || '').trim(),
+      locality: customer.locality.trim(),
+      pincode:  customer.pincode.trim(),
+      address:  customer.address.trim(),
+      lastOrderDate: orderData.date,
+      instructions: (customer.instructions || '').trim(),
+    };
+
+    const updatedData = {
+      ...customerRecord,
+      zone,
+      items: validatedItems,
+      itemsSummary: validatedItems.map(i => `${i.name}×${i.quantity}`).join(', '),
+      surchargeTotal: surcharge,
+      grandTotal: grandTotalRounded,
+    };
+
+    if (USE_MOCK) {
+      Object.assign(orderData, updatedData);
+    } else {
+      await orderRef.update(updatedData);
+    }
+    
+    res.json({ success: true, message: 'Order updated successfully', orderId, zone, surchargeTotal: surcharge, grandTotal: grandTotalRounded, date: orderData.date });
+  } catch (err) {
+    console.error('Error updating order:', err.message);
+    res.status(500).json({ error: 'Failed to update order.' });
   }
 });
 
@@ -804,54 +1081,134 @@ app.put('/api/admin/menu', adminLimiter, requireAdmin, async (req, res) => {
   }
 });
 
-function getRawComponents(items, metadata = { sweetAvailable: 'Yes', farsanAvailable: 'Yes' }) {
-  const comp = { Roti: 0, Sabji: 0, Dal: 0, Rice: 0, Sweet: 0, Farsan: 0 };
+function getRawComponents(items, metadata) {
+  const meta = metadata || MOCK_METADATA;
+  const comp = { Roti: 0, Paratha: 0, Puri: 0, Sabji: 0, Dal: 0, Rice: 0, Sweet: 0, Farsan: 0, Namkeen: 0, Salad: 0 };
   
-  const sweetOn = metadata.sweetAvailable === 'Yes';
-  const farsanOn = metadata.farsanAvailable === 'Yes';
+  const sweetOn = meta.sweetAvailable === 'Yes';
+  const farsanOn = meta.farsanAvailable === 'Yes';
+  const namkeenOn = meta.namkeenAvailable === 'Yes';
+  const saladOn = meta.saladAvailable === 'Yes';
+  const breadType = meta.breadType || 'Roti';
+  const matrix = meta.tiffinMatrix || MOCK_METADATA.tiffinMatrix;
   
   (items || []).forEach(item => {
     const n = (item.name || '').trim();
     const q = item.quantity || 0;
     
-    if (n === 'Mini Lunch') {
-      comp.Roti += 3 * q; comp.Sabji += 0.5 * q; comp.Dal += 0.5 * q; comp.Rice += 0.5 * q; 
-      if (sweetOn) comp.Sweet += 1 * q; 
-      if (farsanOn) comp.Farsan += 1 * q;
-    } else if (n.toLowerCase().includes('brunch')) {
-      comp.Roti += 6 * q; comp.Sabji += 1 * q; comp.Dal += 0.5 * q; comp.Rice += 0.5 * q; 
-      if (sweetOn) comp.Sweet += 1 * q; 
-      if (farsanOn) comp.Farsan += 1 * q;
-    } else if (n.toLowerCase().includes('full lunch')) {
-      comp.Roti += 6 * q; comp.Sabji += 1 * q; comp.Dal += 1 * q; comp.Rice += 1 * q; 
-      if (sweetOn) comp.Sweet += 1 * q; 
-      if (farsanOn) comp.Farsan += 1 * q;
-    } else if (n === 'Family Meal') {
-      comp.Roti += 9 * q; comp.Sabji += 1.5 * q; comp.Dal += 1.5 * q; comp.Rice += 1.5 * q; 
-      if (sweetOn) comp.Sweet += 1 * q; 
-      if (farsanOn) comp.Farsan += 1 * q;
-    } else if (n.toLowerCase() === 'roti') {
-      comp.Roti += 1 * q;
-    } else if (n.toLowerCase().includes('sabji (half)')) {
-      comp.Sabji += 0.5 * q;
-    } else if (n.toLowerCase().includes('sabji (full)')) {
-      comp.Sabji += 1 * q;
-    } else if (n.toLowerCase().includes('dal (half)')) {
-      comp.Dal += 0.5 * q;
-    } else if (n.toLowerCase().includes('dal (full)')) {
-      comp.Dal += 1 * q;
-    } else if (n === 'Rice (Half)') {
-      comp.Rice += 0.5 * q;
-    } else if (n === 'Rice (Full)' || n === 'Rice') {
-      comp.Rice += 1 * q;
-    } else if (n.toLowerCase().includes('sweet')) {
-      comp.Sweet += 1 * q;
-    } else if (n.toLowerCase().includes('farsan')) {
-      comp.Farsan += 1 * q;
+    // Tiffin processing
+    let tiffinName = null;
+    if (n === 'Mini Lunch') tiffinName = 'Mini Lunch';
+    else if (n.toLowerCase().includes('brunch')) tiffinName = 'Brunch';
+    else if (n.toLowerCase().includes('full lunch')) tiffinName = 'Full Lunch';
+    else if (n === 'Family Meal') tiffinName = 'Family Meal';
+
+    if (tiffinName) {
+      const dbMatrix = matrix[tiffinName] || matrix['Full Lunch'];
+      const defaultMatrix = MOCK_METADATA.tiffinMatrix[tiffinName] || MOCK_METADATA.tiffinMatrix['Full Lunch'];
+      const tMatrix = { ...defaultMatrix, ...dbMatrix };
+      
+      // Bread
+      comp[breadType] += (tMatrix[breadType] || 0) * q;
+      // Fixed sides for tiffins
+      if (tiffinName === 'Mini Lunch') {
+        comp.Sabji += 0.5 * q; comp.Dal += 0.5 * q; comp.Rice += 0.5 * q;
+      } else if (tiffinName === 'Brunch') {
+        comp.Sabji += 1 * q; comp.Dal += 0.5 * q; comp.Rice += 0.5 * q;
+      } else if (tiffinName === 'Full Lunch') {
+        comp.Sabji += 1 * q; comp.Dal += 1 * q; comp.Rice += 1 * q;
+      } else if (tiffinName === 'Family Meal') {
+        comp.Sabji += 1.5 * q; comp.Dal += 1.5 * q; comp.Rice += 1.5 * q;
+      }
+      // Addons
+      if (sweetOn) comp.Sweet += (tMatrix.Sweet || 0) * q;
+      if (farsanOn) comp.Farsan += (tMatrix.Farsan || 0) * q;
+      if (namkeenOn) comp.Namkeen += (tMatrix.Namkeen || 0) * q;
+      if (saladOn) comp.Salad += (tMatrix.Salad || 0) * q;
+    } else {
+      // Individual items
+      if (n.toLowerCase() === breadType.toLowerCase()) {
+        comp[breadType] += 1 * q;
+      } else if (n.toLowerCase().includes('sabji (half)')) {
+        comp.Sabji += 0.5 * q;
+      } else if (n.toLowerCase().includes('sabji (full)')) {
+        comp.Sabji += 1 * q;
+      } else if (n.toLowerCase().includes('dal (half)')) {
+        comp.Dal += 0.5 * q;
+      } else if (n.toLowerCase().includes('dal (full)')) {
+        comp.Dal += 1 * q;
+      } else if (n === 'Rice (Half)') {
+        comp.Rice += 0.5 * q;
+      } else if (n === 'Rice (Full)' || n === 'Rice') {
+        comp.Rice += 1 * q;
+      } else if (n.toLowerCase().includes('sweet')) {
+        comp.Sweet += 1 * q;
+      } else if (n.toLowerCase().includes('farsan')) {
+        comp.Farsan += 1 * q;
+      }
     }
   });
   return comp;
 }
+
+function computeSerialNumbers(orders, metadata) {
+  const lunchMap = {};
+  const choviarMap = {};
+
+  const lunchOrders = [];
+  const choviarOrders = [];
+
+  orders.forEach(o => {
+    if (o.status === 'CANCELLED') return;
+    const lunchItems = (o.items || []).filter(i => i.category !== 'Choviar');
+    const choviarItems = (o.items || []).filter(i => i.category === 'Choviar');
+    
+    if (lunchItems.length > 0) {
+      const comp = getRawComponents(lunchItems, metadata);
+      lunchOrders.push({ 
+        orderId: o.orderId, 
+        zone: o.zone || 'borivali', 
+        routeOrder: typeof o.routeOrder === 'number' ? o.routeOrder : 9999, 
+        Roti: comp.Roti || comp.Paratha || comp.Puri || 0 
+      });
+    }
+    if (choviarItems.length > 0) {
+      choviarOrders.push({ 
+        orderId: o.orderId, 
+        zone: o.zone || 'borivali', 
+        routeOrder: typeof o.routeOrder === 'number' ? o.routeOrder : 9999 
+      });
+    }
+  });
+
+  const outsideLunch = lunchOrders.filter(o => o.zone === 'outside');
+  const borivaliLunch = lunchOrders.filter(o => o.zone !== 'outside');
+  
+  outsideLunch.sort((a, b) => {
+    if (a.Roti !== b.Roti) return a.Roti - b.Roti;
+    return a.routeOrder - b.routeOrder;
+  });
+  
+  borivaliLunch.sort((a, b) => {
+    if (a.Roti !== b.Roti) return a.Roti - b.Roti;
+    return a.routeOrder - b.routeOrder;
+  });
+  
+  [...outsideLunch, ...borivaliLunch].forEach((o, idx) => {
+    lunchMap[o.orderId] = idx + 1;
+  });
+
+  const outsideChoviar = choviarOrders.filter(o => o.zone === 'outside');
+  const borivaliChoviar = choviarOrders.filter(o => o.zone !== 'outside');
+  outsideChoviar.sort((a, b) => a.routeOrder - b.routeOrder);
+  borivaliChoviar.sort((a, b) => a.routeOrder - b.routeOrder);
+  [...outsideChoviar, ...borivaliChoviar].forEach((o, idx) => {
+    choviarMap[o.orderId] = idx + 1;
+  });
+
+  return { lunchMap, choviarMap };
+}
+
 
 app.get('/api/admin/kitchen', adminLimiter, requireAdmin, async (req, res) => {
   const { date } = req.query;
@@ -870,7 +1227,7 @@ app.get('/api/admin/kitchen', adminLimiter, requireAdmin, async (req, res) => {
         .get();
       orders = snapshot.docs.map(doc => doc.data()).filter(o => o.status !== 'CANCELLED');
       
-      const metaSnap = await db.collection('admin').doc('metadata').get();
+      const metaSnap = await db.collection('metadata').doc('global').get();
       if (metaSnap.exists) {
         metadata = metaSnap.data();
       }
@@ -898,11 +1255,12 @@ app.get('/api/admin/kitchen', adminLimiter, requireAdmin, async (req, res) => {
   const choviarGrandTotals = {};
   const choviarKitchenOrders = [];
 
+  const breadType = metadata.breadType || 'Roti';
   const packetSummary = {
     Dal: { Half: 0, Full: 0 },
     Rice: { Half: 0, Full: 0 },
     Sabji: { Half: 0, Full: 0 },
-    Roti: {}
+    Bread: {}
   };
   const outsideOrders = [];
 
@@ -920,12 +1278,14 @@ app.get('/api/admin/kitchen', adminLimiter, requireAdmin, async (req, res) => {
 
     if (lunchItems.length > 0) {
       const comp = getRawComponents(lunchItems, metadata);
-      grandTotals.Roti += comp.Roti;
+      grandTotals[breadType] = (grandTotals[breadType] || 0) + comp[breadType];
       grandTotals.Sabji += comp.Sabji;
       grandTotals.Dal += comp.Dal;
       grandTotals.Rice += comp.Rice;
       grandTotals.Sweet += comp.Sweet;
       grandTotals.Farsan += comp.Farsan;
+      grandTotals.Namkeen = (grandTotals.Namkeen || 0) + comp.Namkeen;
+      grandTotals.Salad = (grandTotals.Salad || 0) + comp.Salad;
 
       kitchenOrders.push({
         orderId: order.orderId,
@@ -943,21 +1303,24 @@ app.get('/api/admin/kitchen', adminLimiter, requireAdmin, async (req, res) => {
         if (q <= 0) return;
 
         if (n === 'Mini Lunch') {
-          packetSummary.Roti['3'] = (packetSummary.Roti['3'] || 0) + q;
+          packetSummary.Bread['3'] = (packetSummary.Bread['3'] || 0) + q;
           packetSummary.Dal.Half += q; packetSummary.Rice.Half += q; packetSummary.Sabji.Half += q;
         } else if (n.toLowerCase().includes('brunch')) {
-          packetSummary.Roti['6'] = (packetSummary.Roti['6'] || 0) + q;
+          const bQty = metadata?.tiffinMatrix?.Brunch?.[breadType] || 6;
+          packetSummary.Bread[bQty] = (packetSummary.Bread[bQty] || 0) + q;
           packetSummary.Dal.Half += q; packetSummary.Rice.Half += q; packetSummary.Sabji.Full += q;
         } else if (n.toLowerCase().includes('full lunch')) {
-          packetSummary.Roti['6'] = (packetSummary.Roti['6'] || 0) + q;
+          const bQty = metadata?.tiffinMatrix?.['Full Lunch']?.[breadType] || 6;
+          packetSummary.Bread[bQty] = (packetSummary.Bread[bQty] || 0) + q;
           packetSummary.Dal.Full += q; packetSummary.Rice.Full += q; packetSummary.Sabji.Full += q;
         } else if (n === 'Family Meal') {
-          packetSummary.Roti['9'] = (packetSummary.Roti['9'] || 0) + q;
+          const bQty = metadata?.tiffinMatrix?.['Family Meal']?.[breadType] || 9;
+          packetSummary.Bread[bQty] = (packetSummary.Bread[bQty] || 0) + q;
           packetSummary.Dal.Full += q; packetSummary.Dal.Half += q;
           packetSummary.Rice.Full += q; packetSummary.Rice.Half += q;
           packetSummary.Sabji.Full += q; packetSummary.Sabji.Half += q;
-        } else if (n.toLowerCase() === 'roti') {
-          packetSummary.Roti[q] = (packetSummary.Roti[q] || 0) + 1;
+        } else if (n.toLowerCase() === breadType.toLowerCase()) {
+          packetSummary.Bread[q] = (packetSummary.Bread[q] || 0) + 1;
         } else if (n.startsWith('Sabji')) {
           if (n.includes('(Half)')) packetSummary.Sabji.Half += q;
           else packetSummary.Sabji.Full += q;
@@ -1010,8 +1373,14 @@ app.get('/api/admin/kitchen', adminLimiter, requireAdmin, async (req, res) => {
     }
   });
 
-  kitchenOrders.sort((a, b) => a.routeOrder - b.routeOrder);
-  choviarKitchenOrders.sort((a, b) => a.routeOrder - b.routeOrder);
+  const { lunchMap, choviarMap } = computeSerialNumbers(orders, metadata);
+
+  kitchenOrders.forEach(o => { o.serialNumber = lunchMap[o.orderId] || 0; });
+  choviarKitchenOrders.forEach(o => { o.serialNumber = choviarMap[o.orderId] || 0; });
+
+  // Sort according to serial number (which corresponds to outside first by roti, then borivali by sequence)
+  kitchenOrders.sort((a, b) => (a.serialNumber || 0) - (b.serialNumber || 0));
+  choviarKitchenOrders.sort((a, b) => (a.serialNumber || 0) - (b.serialNumber || 0));
 
   res.json({ 
     date, 
@@ -1027,27 +1396,7 @@ app.get('/api/admin/kitchen', adminLimiter, requireAdmin, async (req, res) => {
 });
 
 // ─── Delivery Portal ─────────────────────────────────────────────────────────
-const translationCache = new Map();
-async function translateToHindi(text) {
-  if (!text) return '';
-  if (translationCache.has(text)) return translationCache.get(text);
-  try {
-    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=hi&dt=t&q=${encodeURIComponent(text)}`;
-    const response = await fetch(url);
-    const data = await response.json();
-    let translated = '';
-    if (data && data[0]) {
-      data[0].forEach(part => {
-        if (part[0]) translated += part[0];
-      });
-    }
-    translationCache.set(text, translated);
-    return translated;
-  } catch (err) {
-    console.error('Translation error:', err.message);
-    return text;
-  }
-}
+// Removed Hindi translation logic as requested
 
 app.get('/api/delivery/orders', publicLimiter, async (req, res) => {
   try {
@@ -1063,6 +1412,16 @@ app.get('/api/delivery/orders', publicLimiter, async (req, res) => {
       .get();
       
     const rows = snapshot.docs.map(doc => doc.data()).filter(o => o.status !== 'CANCELLED');
+    
+    // Fetch metadata to compute serial numbers consistently
+    let metadata = MOCK_METADATA;
+    const metaSnap = await db.collection('metadata').doc('global').get();
+    if (metaSnap.exists) {
+      metadata = metaSnap.data();
+    }
+    
+    const { lunchMap, choviarMap } = computeSerialNumbers(rows, metadata);
+
     const orders = [];
 
     for (let i = 0; i < rows.length; i++) {
@@ -1070,9 +1429,6 @@ app.get('/api/delivery/orders', publicLimiter, async (req, res) => {
       const deliveryPerson = row.deliveryPerson || '';
       
       if (deliveryPerson.trim().length > 0 && deliveryPerson.trim().toLowerCase() !== 'dabbawala') {
-        const nameHi = await translateToHindi(row.name);
-        const addressHi = await translateToHindi(row.address);
-        
         let category = row.category;
         if (!category) {
           const items = row.items || [];
@@ -1084,18 +1440,25 @@ app.get('/api/delivery/orders', publicLimiter, async (req, res) => {
           }
         }
 
+        let serialNumber = 0;
+        if (category === 'Lunch') serialNumber = lunchMap[row.orderId] || 0;
+        else serialNumber = choviarMap[row.orderId] || 0;
+
         orders.push({
           orderId: row.orderId, // UUID instead of rowIndex
-          name: nameHi,
+          name: row.name || '',
           phone: row.phone || '',
-          address: addressHi,
+          address: row.address || '',
           amount: row.grandTotal || '0',
           deliveryPerson: deliveryPerson,
           routeOrder: typeof row.routeOrder === 'number' ? row.routeOrder : 9999,
           paymentReceived: !!row.paymentReceived,
           paymentMethod: row.paymentMethod || 'Cash',
           amountReceived: row.amountReceived || '',
-          category: category
+          itemsSummary: row.itemsSummary || '',
+          status: row.status || 'PENDING',
+          category: category,
+          serialNumber: serialNumber
         });
       }
     }
@@ -1129,6 +1492,31 @@ app.put('/api/delivery/orders/payment', publicLimiter, express.json(), async (re
   } catch (err) {
     console.error('Error updating payment:', err.message);
     res.status(500).json({ error: 'Failed to update payment' });
+  }
+});
+
+app.put('/api/admin/orders/payment/batch', adminLimiter, requireAdmin, express.json(), async (req, res) => {
+  const { updates } = req.body;
+  if (!Array.isArray(updates) || updates.length === 0) return res.status(400).json({ error: 'updates array required' });
+
+  try {
+    if (!USE_MOCK) {
+      const batch = db.batch();
+      updates.forEach(u => {
+        const orderRef = db.collection('orders').doc(u.orderId);
+        batch.update(orderRef, {
+          paymentReceived: !!u.paymentReceived,
+          paymentMethod: u.paymentMethod || 'Cash',
+          amountReceived: u.amountReceived !== undefined ? String(u.amountReceived) : '',
+          paymentDate: u.paymentDate || ''
+        });
+      });
+      await batch.commit();
+    }
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error in batch payment:', err.message);
+    res.status(500).json({ error: 'Failed to batch update payments' });
   }
 });
 

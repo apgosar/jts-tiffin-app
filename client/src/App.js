@@ -28,7 +28,7 @@ function getStoredJson(key, fallback) {
   }
 }
 
-export function getOrderingState(betaTesting = 'No') {
+export function getOrderingState(metadata = {}) {
   // Allow ?simHour=X in the URL for testing — disabled in production builds
   const isDev = process.env.NODE_ENV !== 'production';
   const urlParams = new URLSearchParams(window.location.search);
@@ -38,27 +38,72 @@ export function getOrderingState(betaTesting = 'No') {
   const hour = simHourParam !== null ? parseInt(simHourParam, 10) : now.getHours();
 
   let targetDate = new Date(now);
-  let status = 'OPEN'; // 'OPEN', 'LUNCH_CLOSED', 'CLOSED'
-  
-  if (hour >= 0 && hour < 5) {
-    status = 'OPEN';
-  } else if (hour >= 5 && hour < 11) {
-    status = 'LUNCH_CLOSED';
-  } else if (hour >= 11 && hour < 19) {
-    status = 'CLOSED';
-    targetDate.setDate(targetDate.getDate() + 1);
-  } else {
-    status = 'OPEN';
+  targetDate.setHours(0, 0, 0, 0);
+
+  // Determine target date (delivery date)
+  // Default rollover logic at 19:00 (7 PM)
+  if (hour >= 19) {
     targetDate.setDate(targetDate.getDate() + 1);
   }
 
-  // Beta testing bypass
-  if (betaTesting === 'Yes') {
+  let status = 'OPEN'; // 'OPEN', 'LUNCH_CLOSED', 'CHOVIAR_ONLY'
+
+  const lunchCutoffHr = parseInt(metadata.lunchCutoff?.split(':')[0] || '5', 10);
+  const lunchCutoffDay = metadata.lunchCutoffDay || 'Same Day';
+  const choviarCutoffHr = parseInt(metadata.choviarCutoff?.split(':')[0] || '11', 10);
+  const choviarCutoffDay = metadata.choviarCutoffDay || 'Same Day';
+
+  const lunchCutoffTime = new Date(targetDate);
+  if (lunchCutoffDay === 'Previous Day') lunchCutoffTime.setDate(lunchCutoffTime.getDate() - 1);
+  lunchCutoffTime.setHours(lunchCutoffHr, 0, 0, 0);
+
+  const choviarCutoffTime = new Date(targetDate);
+  if (choviarCutoffDay === 'Previous Day') choviarCutoffTime.setDate(choviarCutoffTime.getDate() - 1);
+  choviarCutoffTime.setHours(choviarCutoffHr, 0, 0, 0);
+
+  const currentTime = new Date(now);
+  if (simHourParam !== null) {
+    currentTime.setHours(hour, 0, 0, 0);
+  }
+
+  const lunchMissed = currentTime >= lunchCutoffTime;
+  const choviarMissed = currentTime >= choviarCutoffTime;
+
+  if (lunchMissed && choviarMissed) {
+    status = 'CLOSED';
+    // If we missed everything for the target date, push target date to the next day
+    // (This ensures users can always order *something* eventually)
+    targetDate.setDate(targetDate.getDate() + 1);
     status = 'OPEN';
+  } else if (lunchMissed && !choviarMissed) {
+    status = 'LUNCH_CLOSED';
+  } else if (!lunchMissed && choviarMissed) {
+    status = 'CHOVIAR_CLOSED'; // Edge case
+  } else {
+    status = 'OPEN';
+  }
+
+  // Beta testing bypass
+  if (metadata.betaTesting === 'Yes') {
+    status = 'OPEN';
+  }
+
+  const liveMenuDateStr = metadata.liveMenuDate;
+  const targetDateStr = `${String(targetDate.getDate()).padStart(2, '0')}/${String(targetDate.getMonth() + 1).padStart(2, '0')}/${targetDate.getFullYear()}`;
+  
+  // Menu is live if liveMenuDate isn't set, OR if targetDate is <= liveMenuDate
+  let isMenuLive = true;
+  if (liveMenuDateStr) {
+    const [d, m, y] = liveMenuDateStr.split('/');
+    const liveDateObj = new Date(parseInt(y, 10), parseInt(m, 10) - 1, parseInt(d, 10));
+    if (targetDate > liveDateObj) {
+      isMenuLive = false;
+    }
   }
 
   return {
     status,
+    isMenuLive,
     targetDate,
     targetDateLabel: targetDate.toLocaleDateString('en-IN', {
       weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
@@ -73,6 +118,7 @@ export default function App() {
   const [menu, setMenu] = useState([]);
   const [metadata, setMetadata] = useState({});
   const [lastOrder, setLastOrder] = useState(() => getStoredJson(ORDER_STORAGE_KEY, null));
+  const [editOrder, setEditOrder] = useState(null);
 
   // Persist cart
   useEffect(() => {
@@ -116,6 +162,13 @@ export default function App() {
 
   const clearCart    = () => setCart({});
   const clearLastOrder = () => setLastOrder(null);
+  const loadCartFromItems = (items) => {
+    const newCart = {};
+    items.forEach(item => {
+      newCart[item.name] = { ...item };
+    });
+    setCart(newCart);
+  };
 
   // ── Derived cart values ──────────────────────────────────────────────────────
   const cartItems    = Object.values(cart).filter(i => i.quantity > 0);
@@ -128,7 +181,8 @@ export default function App() {
       menu, setMenu,
       metadata, setMetadata,
       lastOrder, setLastOrder, clearLastOrder,
-      updateQuantity, clearCart,
+      updateQuantity, clearCart, loadCartFromItems,
+      editOrder, setEditOrder,
     }}>
       <Router>
         <Routes>

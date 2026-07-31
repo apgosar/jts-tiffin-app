@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronLeft, LogIn, Calendar, XCircle, Search } from 'lucide-react';
+import { useCart } from '../App';
+import { ChevronLeft, LogIn, Calendar, XCircle, Search, Edit3 } from 'lucide-react';
 import LoadingSpinner from './LoadingSpinner';
 
 export default function MyOrdersPage() {
   const navigate = useNavigate();
+  const { loadCartFromItems, setEditOrder } = useCart();
   const [phone, setPhone] = useState('');
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -58,6 +60,12 @@ export default function MyOrdersPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleEdit = (order) => {
+    loadCartFromItems(order.items || []);
+    setEditOrder(order);
+    navigate('/');
   };
 
   return (
@@ -149,16 +157,24 @@ export default function MyOrdersPage() {
                         <p className="text-lg font-extrabold text-jts-red">₹{order.grandTotal}</p>
                       </div>
                       
-                      {order.canCancel ? (
-                        <button 
-                          onClick={() => handleCancel(order.id)}
-                          className="px-3 py-1.5 border border-red-200 text-red-600 rounded-lg text-xs font-bold hover:bg-red-50 transition-colors flex items-center gap-1.5"
-                        >
-                          <XCircle size={14} /> Cancel
-                        </button>
+                      {order.canEdit ? (
+                        <div className="flex gap-2">
+                          <button 
+                            onClick={() => handleEdit(order)}
+                            className="px-3 py-1.5 border border-blue-200 text-blue-600 rounded-lg text-xs font-bold hover:bg-blue-50 transition-colors flex items-center gap-1.5"
+                          >
+                            <Edit3 size={14} /> Edit
+                          </button>
+                          <button 
+                            onClick={() => handleCancel(order.id)}
+                            className="px-3 py-1.5 border border-red-200 text-red-600 rounded-lg text-xs font-bold hover:bg-red-50 transition-colors flex items-center gap-1.5"
+                          >
+                            <XCircle size={14} /> Cancel
+                          </button>
+                        </div>
                       ) : (
                         <span className="text-xs font-bold text-gray-400 bg-gray-100 px-2 py-1 rounded-md">
-                          Cannot cancel today
+                          Cannot edit/cancel today
                         </span>
                       )}
                     </div>

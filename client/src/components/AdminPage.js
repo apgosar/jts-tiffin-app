@@ -121,6 +121,12 @@ function OrderModal({ order, onClose }) {
             <section>
               <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Delivery Address</h3>
               <p className="text-sm text-gray-700 leading-relaxed">{order.address}</p>
+              {order.instructions && (
+                <div className="mt-2 bg-yellow-50 border border-yellow-200 rounded-lg p-2">
+                  <p className="text-xs font-bold text-yellow-800 uppercase tracking-wide mb-0.5">Special Instructions</p>
+                  <p className="text-sm text-yellow-900">{order.instructions}</p>
+                </div>
+              )}
             </section>
             <section>
               <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Items</h3>
@@ -163,12 +169,12 @@ function MenuTab({ password, currentMenu, currentMetadata, onMenuSaved }) {
   const [items, setItems]       = useState(currentMenu.length > 0 ? currentMenu : TIFFIN_DEFAULTS);
   const [metadata, setMetadata] = useState({
     sabji: '', sweet: '', dal: '', farsan: '', rice: '',
+    breadType: 'Roti',
     rotiPrice: '8', riceHalfPrice: '15', riceFullPrice: '30',
     sabjiHalfPrice: '25', sabjiFullPrice: '50',
     dalHalfPrice: '25', dalFullPrice: '50',
     farsanPrice: '0', farsanAvailable: 'No',
     sweetPrice: '0', sweetAvailable: 'No',
-    namkeenAvailable: 'No', saladAvailable: 'No',
     ...currentMetadata
   });
   const [saving, setSaving]     = useState(false);
@@ -202,15 +208,22 @@ function MenuTab({ password, currentMenu, currentMetadata, onMenuSaved }) {
     if (meta.namkeenAvailable === 'Yes') addons.push('Namkeen');
     if (meta.farsanAvailable === 'Yes') addons.push('Farsan');
     const suffix = addons.length > 0 ? ', ' + addons.join(' / ') : '';
+    const bread = meta.breadType || 'Roti';
+    const matrix = meta.tiffinMatrix || {
+      mini: { Roti: 3, Paratha: 3, Puri: 3 },
+      brunch: { Roti: 6, Paratha: 4, Puri: 6 },
+      full: { Roti: 6, Paratha: 4, Puri: 6 },
+      family: { Roti: 9, Paratha: 6, Puri: 9 }
+    };
 
     setItems(prevItems => prevItems.map(item => {
       if (item.category !== 'Lunch') return item;
       
       let base = '';
-      if (item.name === 'Mini Lunch') base = '3 Roti, 1/2 Sabji, 1/2 Dal, 1/2 Rice';
-      else if (item.name === 'Brunch') base = '6 Roti, Sabji, 1/2 Dal, 1/2 Rice';
-      else if (item.name === 'Full Lunch') base = '6 Roti, Sabji, Dal, Rice';
-      else if (item.name === 'Family Meal') base = '9 Roti, 1.5 Sabji, 1.5 Dal, 1.5 Rice';
+      if (item.name === 'Mini Lunch') base = `${matrix.mini[bread]} ${bread}, 1/2 Sabji, 1/2 Dal, 1/2 Rice`;
+      else if (item.name === 'Brunch') base = `${matrix.brunch[bread]} ${bread}, Sabji, 1/2 Dal, 1/2 Rice`;
+      else if (item.name === 'Full Lunch') base = `${matrix.full[bread]} ${bread}, Sabji, Dal, Rice`;
+      else if (item.name === 'Family Meal') base = `${matrix.family[bread]} ${bread}, 1.5 Sabji, 1.5 Dal, 1.5 Rice`;
       else return item;
       
       return { ...item, description: base + suffix };
@@ -220,7 +233,7 @@ function MenuTab({ password, currentMenu, currentMetadata, onMenuSaved }) {
   const updateMeta = (field, value) => {
     setMetadata(prev => {
       const next = { ...prev, [field]: value };
-      if (['farsanAvailable', 'sweetAvailable', 'namkeenAvailable', 'saladAvailable'].includes(field)) {
+      if (['farsanAvailable', 'sweetAvailable', 'namkeenAvailable', 'saladAvailable', 'breadType'].includes(field)) {
         updateLunchDescriptions(next);
       }
       return next;
@@ -234,12 +247,13 @@ function MenuTab({ password, currentMenu, currentMetadata, onMenuSaved }) {
     if (metadata.namkeenAvailable === 'Yes') addons.push('Namkeen');
     if (metadata.farsanAvailable === 'Yes') addons.push('Farsan');
     const suffix = addons.length > 0 ? ', ' + addons.join(' / ') : '';
+    const bread = metadata.breadType || 'Roti';
 
     setItems([
-      { name: 'Mini Lunch',  description: `3 Roti, 1/2 Sabji, 1/2 Dal, 1/2 Rice${suffix}`, price: 140, available: true, category: 'Lunch' },
-      { name: 'Brunch',      description: `6 Roti, Sabji, 1/2 Dal, 1/2 Rice${suffix}`, price: 180, available: true, category: 'Lunch' },
-      { name: 'Full Lunch',  description: `6 Roti, Sabji, Dal, Rice${suffix}`, price: 220, available: true, category: 'Lunch' },
-      { name: 'Family Meal', description: `9 Roti, 1.5 Sabji, 1.5 Dal, 1.5 Rice${suffix}`, price: 320, available: true, category: 'Lunch' },
+      { name: 'Mini Lunch',  description: `3 ${bread}, 1/2 Sabji, 1/2 Dal, 1/2 Rice${suffix}`, price: 140, available: true, category: 'Lunch' },
+      { name: 'Brunch',      description: `6 ${bread}, Sabji, 1/2 Dal, 1/2 Rice${suffix}`, price: 180, available: true, category: 'Lunch' },
+      { name: 'Full Lunch',  description: `6 ${bread}, Sabji, Dal, Rice${suffix}`, price: 220, available: true, category: 'Lunch' },
+      { name: 'Family Meal', description: `9 ${bread}, 1.5 Sabji, 1.5 Dal, 1.5 Rice${suffix}`, price: 320, available: true, category: 'Lunch' },
       { name: 'Choviar Special', description: 'Ragdo, 4 Kelawada, Dal Khichdi', price: 160, available: true, category: 'Choviar' },
     ]);
   };
@@ -272,6 +286,28 @@ function MenuTab({ password, currentMenu, currentMetadata, onMenuSaved }) {
     }
   };
 
+  const handleMakeLive = async () => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const dateStr = `${String(tomorrow.getDate()).padStart(2, '0')}/${String(tomorrow.getMonth() + 1).padStart(2, '0')}/${tomorrow.getFullYear()}`;
+    
+    const newMeta = { ...metadata, liveMenuDate: dateStr };
+    setMetadata(newMeta);
+    
+    setSaving(true);
+    setMsg('');
+    try {
+      await updateAdminMenu({ items, metadata: newMeta }, password);
+      setMsg(`✅ Menu is now LIVE for ${dateStr}!`);
+      if (onMenuSaved) onMenuSaved(items, newMeta);
+    } catch (err) {
+      setMsg('❌ ' + (err.response?.data?.error || 'Failed to make menu live.'));
+    } finally {
+      setSaving(false);
+      setTimeout(() => setMsg(''), 4000);
+    }
+  };
+
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
   const tomorrowLabel = tomorrow.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' });
@@ -294,58 +330,44 @@ function MenuTab({ password, currentMenu, currentMetadata, onMenuSaved }) {
       <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm flex flex-col gap-4">
         <h3 className="text-sm font-bold text-gray-800 border-b pb-2">Custom Order & Lunch Details</h3>
         
-        {/* Roti */}
-        <div>
-          <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Roti Price</label>
-          <input type="number" value={metadata.rotiPrice || ''} onChange={e => updateMeta('rotiPrice', e.target.value)} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
+        {/* Bread Type */}
+        <div className="mb-2 border-b border-gray-100 pb-4">
+          <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide block mb-2">Bread of the Day</label>
+          <div className="flex gap-4">
+            {['Roti', 'Paratha', 'Puri'].map(bType => (
+              <label key={bType} className="flex items-center gap-1.5 cursor-pointer text-xs font-bold text-gray-700">
+                <input
+                  type="radio"
+                  name="breadType"
+                  value={bType}
+                  checked={(metadata.breadType || 'Roti') === bType}
+                  onChange={e => updateMeta('breadType', e.target.value)}
+                  className="w-4 h-4 text-jts-red focus:ring-jts-red"
+                />
+                {bType}
+              </label>
+            ))}
+          </div>
         </div>
+
+
 
         {/* Rice */}
         <div>
           <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide block mb-1">Rice Name</label>
           <input type="text" value={metadata.rice || ''} onChange={e => updateMeta('rice', e.target.value)} placeholder="e.g. Jeera Rice" className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
-          <div className="grid grid-cols-2 gap-3 mt-2">
-            <div>
-              <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Half Price</label>
-              <input type="number" value={metadata.riceHalfPrice || ''} onChange={e => updateMeta('riceHalfPrice', e.target.value)} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
-            </div>
-            <div>
-              <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Full Price</label>
-              <input type="number" value={metadata.riceFullPrice || ''} onChange={e => updateMeta('riceFullPrice', e.target.value)} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
-            </div>
-          </div>
         </div>
 
         {/* Sabji */}
         <div>
           <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide block mb-1">Sabji Name</label>
           <input type="text" value={metadata.sabji || ''} onChange={e => updateMeta('sabji', e.target.value)} placeholder="e.g. Bhindi" className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
-          <div className="grid grid-cols-2 gap-3 mt-2">
-            <div>
-              <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Half Price</label>
-              <input type="number" value={metadata.sabjiHalfPrice || ''} onChange={e => updateMeta('sabjiHalfPrice', e.target.value)} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
-            </div>
-            <div>
-              <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Full Price</label>
-              <input type="number" value={metadata.sabjiFullPrice || ''} onChange={e => updateMeta('sabjiFullPrice', e.target.value)} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
-            </div>
-          </div>
         </div>
 
         {/* Dal */}
         <div>
           <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide block mb-1">Dal Name</label>
           <input type="text" value={metadata.dal || ''} onChange={e => updateMeta('dal', e.target.value)} placeholder="e.g. Gujarati Dal" className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
-          <div className="grid grid-cols-2 gap-3 mt-2">
-            <div>
-              <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Half Price</label>
-              <input type="number" value={metadata.dalHalfPrice || ''} onChange={e => updateMeta('dalHalfPrice', e.target.value)} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
-            </div>
-            <div>
-              <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Full Price</label>
-              <input type="number" value={metadata.dalFullPrice || ''} onChange={e => updateMeta('dalFullPrice', e.target.value)} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
-            </div>
-          </div>
         </div>
 
         {/* Farsan */}
@@ -383,20 +405,6 @@ function MenuTab({ password, currentMenu, currentMetadata, onMenuSaved }) {
           <label className="flex items-center gap-1.5 cursor-pointer text-xs font-bold text-gray-700">
             <input type="checkbox" checked={metadata.saladAvailable === 'Yes'} onChange={e => updateMeta('saladAvailable', e.target.checked ? 'Yes' : 'No')} className="w-4 h-4 text-jts-red rounded" />
             Salad Included
-          </label>
-        </div>
-
-        {/* Testing Mode */}
-        <div className="mt-2 bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 flex items-center justify-between">
-          <div>
-            <p className="text-sm font-bold text-blue-900">Beta Testing Mode</p>
-            <p className="text-[10px] font-medium text-blue-700">Disables all timing restrictions for ordering</p>
-          </div>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <div className={`w-12 h-6 rounded-full flex items-center transition-colors ${metadata.betaTesting === 'Yes' ? 'bg-blue-600' : 'bg-gray-300'}`}>
-              <div className={`w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${metadata.betaTesting === 'Yes' ? 'translate-x-6' : 'translate-x-1'}`} />
-            </div>
-            <input type="checkbox" className="hidden" checked={metadata.betaTesting === 'Yes'} onChange={e => updateMeta('betaTesting', e.target.checked ? 'Yes' : 'No')} />
           </label>
         </div>
       </div>
@@ -523,10 +531,19 @@ function MenuTab({ password, currentMenu, currentMetadata, onMenuSaved }) {
       <button
         onClick={handleSave}
         disabled={saving}
-        className={`w-full py-3.5 rounded-xl font-bold text-white text-sm transition
+        className={`w-full py-3.5 rounded-xl font-bold text-white text-sm transition mb-4
           ${saving ? 'bg-red-300 cursor-not-allowed' : 'bg-jts-red hover:bg-jts-crimson shadow-md'}`}
       >
-        {saving ? 'Saving…' : '💾 Save Menu'}
+        {saving ? 'Saving…' : '💾 Save Menu (Hidden from Users)'}
+      </button>
+
+      <button
+        onClick={handleMakeLive}
+        disabled={saving}
+        className={`w-full py-3.5 rounded-xl font-black text-white text-sm tracking-wide transition shadow-md
+          ${saving ? 'bg-green-300 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'}`}
+      >
+        🚀 MAKE MENU LIVE FOR TOMORROW
       </button>
     </div>
   );
@@ -780,10 +797,15 @@ function OrdersTab({ password }) {
                         </td>
                         <td className="border-r border-gray-300 px-2 py-1 align-middle text-xs text-gray-700 leading-snug break-words">
                           {order.address}
+                          {order.instructions && (
+                            <div className="mt-1 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded inline-block">
+                              📝 {order.instructions}
+                            </div>
+                          )}
                         </td>
                         <td className="px-1 py-1 text-center align-middle">
                           <div className="flex flex-col gap-1 pl-1">
-                            {['Dabbawala', 'Sagar', 'Dalpat'].map(driver => (
+                            {['Dabbawala', 'Sagar'].map(driver => (
                               <label key={driver} className="flex items-center gap-1 cursor-pointer">
                                 <input
                                   type="radio"
@@ -887,7 +909,7 @@ function KitchenTab({ password }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="bg-white rounded-xl border border-gray-100 p-4 flex flex-col gap-3">
+      <div className="bg-white rounded-xl border border-gray-100 p-4 flex flex-col gap-3 print:hidden">
         <div>
           <label className="text-xs font-medium text-gray-600 block mb-1">Delivery Date</label>
           <input
@@ -900,14 +922,14 @@ function KitchenTab({ password }) {
         <button
           onClick={() => fetchSummary(kitchenDate)}
           disabled={loading}
-          className={`w-full py-3 rounded-xl font-bold text-sm text-white transition print-hide
+          className={`w-full py-3 rounded-xl font-bold text-sm text-white transition
             ${loading ? 'bg-red-300 cursor-not-allowed' : 'bg-jts-red hover:bg-jts-crimson'}`}
         >
           {loading ? 'Loading…' : '🔄 Refresh Kitchen Summary'}
         </button>
       </div>
 
-      {error && <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-sm text-red-700 print-hide">{error}</div>}
+      {error && <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-sm text-red-700 print:hidden">{error}</div>}
 
       {summary && (
         <>
@@ -933,16 +955,20 @@ function KitchenTab({ password }) {
                   <div>
                     <h3 className="text-lg font-black text-gray-800 border-b-2 border-gray-200 pb-2 mb-4">🍽️ LUNCH ({summary.orderCount})</h3>
                 {/* Grand Totals Grid */}
-                <h4 className="text-sm font-bold text-gray-800 border-b pb-2 mb-3">🔢 Grand Totals (Bulk Quantities)</h4>
-                <div className="grid grid-cols-3 gap-3 mb-6">
+                <h4 className="text-sm font-bold text-gray-800 border-b pb-2 mb-3 print:hidden">🔢 Grand Totals (Bulk Quantities)</h4>
+                <div className="grid grid-cols-3 gap-3 mb-6 print:hidden">
                   {[
                     { label: 'Roti', val: summary.grandTotals?.Roti },
+                    { label: 'Paratha', val: summary.grandTotals?.Paratha },
+                    { label: 'Puri', val: summary.grandTotals?.Puri },
                     { label: 'Sabji', val: summary.grandTotals?.Sabji },
                     { label: 'Dal', val: summary.grandTotals?.Dal },
                     { label: 'Rice', val: summary.grandTotals?.Rice },
+                    { label: 'Namkeen', val: summary.grandTotals?.Namkeen },
+                    { label: 'Salad', val: summary.grandTotals?.Salad },
                     { label: 'Sweet', val: summary.grandTotals?.Sweet },
                     { label: 'Farsan', val: summary.grandTotals?.Farsan },
-                  ].filter(stat => (stat.label !== 'Sweet' && stat.label !== 'Farsan') || stat.val > 0).map(stat => (
+                  ].filter(stat => stat.val > 0).map(stat => (
                     <div key={stat.label} className="bg-red-50 rounded-lg p-3 text-center border border-red-100">
                       <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">{stat.label}</p>
                       <p className="text-2xl font-black text-jts-red mt-1">{stat.val || 0}</p>
@@ -983,28 +1009,28 @@ function KitchenTab({ password }) {
                         </table>
                       </div>
 
-                      {/* Roti Table */}
+                      {/* Bread Table */}
                       <div>
                         <table className="w-full text-center text-sm border-collapse border border-gray-200 bg-white max-w-[250px]">
                           <thead>
                             <tr className="bg-gray-100 text-gray-700">
-                              <th className="border border-gray-200 p-2">Roti</th>
+                              <th className="border border-gray-200 p-2">Bread</th>
                               <th className="border border-gray-200 p-2">Pkt</th>
                             </tr>
                           </thead>
                           <tbody>
-                            {Object.entries(summary.packetSummary.Roti || {})
+                            {Object.entries(summary.packetSummary.Bread || {})
                               .sort((a, b) => Number(a[0]) - Number(b[0]))
-                              .map(([rotiCount, pktCount], i) => (
-                                <tr key={rotiCount} className={i % 2 === 1 ? "bg-red-50/50" : ""}>
-                                  <td className="border border-gray-200 p-2 text-gray-800">{rotiCount}</td>
+                              .map(([breadCount, pktCount], i) => (
+                                <tr key={breadCount} className={i % 2 === 1 ? "bg-red-50/50" : ""}>
+                                  <td className="border border-gray-200 p-2 text-gray-800">{breadCount}</td>
                                   <td className="border border-gray-200 p-2 font-bold">{pktCount}</td>
                                 </tr>
                               ))
                             }
-                            {Object.keys(summary.packetSummary.Roti || {}).length === 0 && (
+                            {Object.keys(summary.packetSummary.Bread || {}).length === 0 && (
                               <tr>
-                                <td colSpan={2} className="border border-gray-200 p-4 text-gray-400 italic">No rotis</td>
+                                <td colSpan={2} className="border border-gray-200 p-4 text-gray-400 italic">No breads</td>
                               </tr>
                             )}
                           </tbody>
@@ -1020,14 +1046,15 @@ function KitchenTab({ password }) {
                     <table className="w-full text-left text-xs leading-tight">
                       <thead>
                         <tr className="bg-gray-50 text-gray-500 text-[9px] uppercase tracking-tighter">
-                          <th className="py-1.5 px-1 rounded-l-lg font-bold">Seq</th>
-                          <th className="py-1.5 px-1 font-bold">Driver</th>
+                          <th className="py-1.5 px-1 rounded-l-lg font-bold">SR NO</th>
                           <th className="py-1.5 px-1 font-bold">Name</th>
                           <th className="py-1.5 px-1 font-bold">Locality</th>
                           <th className="py-1.5 px-1 text-center font-bold">Roti</th>
                           <th className="py-1.5 px-1 text-center font-bold">Sabji</th>
                           <th className="py-1.5 px-1 text-center font-bold">Dal</th>
                           <th className="py-1.5 px-1 text-center font-bold">Rice</th>
+                          {summary.grandTotals?.Namkeen > 0 && <th className="py-1.5 px-1 text-center font-bold">Namkeen</th>}
+                          {summary.grandTotals?.Salad > 0 && <th className="py-1.5 px-1 text-center font-bold">Salad</th>}
                           {summary.grandTotals?.Sweet > 0 && <th className="py-1.5 px-1 text-center font-bold">Sweet</th>}
                           {summary.grandTotals?.Farsan > 0 && <th className="py-1.5 px-1 rounded-r-lg text-center font-bold">Farsan</th>}
                         </tr>
@@ -1035,8 +1062,7 @@ function KitchenTab({ password }) {
                       <tbody className="divide-y divide-gray-100">
                         {summary.kitchenOrders.map((order, i) => (
                           <tr key={order.orderId || i} className={`hover:bg-gray-50 transition ${order.zone === 'outside' ? 'bg-orange-50/50' : ''}`}>
-                            <td className="py-2 px-1 font-bold text-gray-800">#{order.routeOrder === 9999 ? '-' : order.routeOrder}</td>
-                            <td className="py-2 px-1 text-gray-600 font-medium truncate max-w-[60px]">{order.deliveryPerson}</td>
+                            <td className="py-2 px-1 font-bold text-gray-800">#{order.serialNumber || '-'}</td>
                             <td className="py-2 px-1 text-gray-800 font-bold whitespace-normal min-w-[100px] leading-snug">
                               {order.name}
                               {order.zone === 'outside' && <span className="ml-1 inline-block px-1 py-0.5 bg-orange-200 text-orange-900 text-[9px] font-black rounded">O</span>}
@@ -1046,6 +1072,8 @@ function KitchenTab({ password }) {
                             <td className="py-2 px-1 text-center text-gray-800 font-bold">{order.Sabji || '-'}</td>
                             <td className="py-2 px-1 text-center text-gray-800 font-bold">{order.Dal || '-'}</td>
                             <td className="py-2 px-1 text-center text-gray-800 font-bold">{order.Rice || '-'}</td>
+                            {summary.grandTotals?.Namkeen > 0 && <td className="py-2 px-1 text-center text-gray-800 font-bold">{order.Namkeen || '-'}</td>}
+                            {summary.grandTotals?.Salad > 0 && <td className="py-2 px-1 text-center text-gray-800 font-bold">{order.Salad || '-'}</td>}
                             {summary.grandTotals?.Sweet > 0 && <td className="py-2 px-1 text-center text-gray-800 font-bold">{order.Sweet || '-'}</td>}
                             {summary.grandTotals?.Farsan > 0 && <td className="py-2 px-1 text-center text-gray-800 font-bold">{order.Farsan || '-'}</td>}
                           </tr>
@@ -1063,7 +1091,7 @@ function KitchenTab({ password }) {
                     <h3 className="text-lg font-black text-jts-red border-b-2 border-jts-red/20 pb-2 mb-4">🌙 CHOVIAR ({summary.choviarOrderCount})</h3>
                     
                     {/* Choviar Grand Totals Grid */}
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6 print:hidden">
                       {Object.entries(summary.choviarGrandTotals || {}).map(([itemName, count]) => (
                         <div key={itemName} className="bg-orange-50 rounded-lg p-3 text-center border border-orange-100">
                           <p className="text-xs font-bold text-gray-600 uppercase tracking-tight truncate px-1">{itemName}</p>
@@ -1078,8 +1106,7 @@ function KitchenTab({ password }) {
                         <table className="w-full text-left text-xs leading-tight">
                           <thead>
                             <tr className="bg-orange-50/50 text-gray-600 text-[9px] uppercase tracking-tighter">
-                              <th className="py-1.5 px-1 rounded-l-lg font-bold">Seq</th>
-                              <th className="py-1.5 px-1 font-bold">Driver</th>
+                              <th className="py-1.5 px-1 rounded-l-lg font-bold">SR NO</th>
                               <th className="py-1.5 px-1 font-bold">Name</th>
                               <th className="py-1.5 px-1 font-bold">Locality</th>
                               {Object.keys(summary.choviarGrandTotals || {}).map(item => (
@@ -1090,8 +1117,7 @@ function KitchenTab({ password }) {
                           <tbody className="divide-y divide-gray-100">
                             {summary.choviarKitchenOrders.map((order, i) => (
                               <tr key={order.orderId || i} className={`hover:bg-gray-50 transition ${order.zone === 'outside' ? 'bg-orange-50/50' : ''}`}>
-                                <td className="py-2 px-1 font-bold text-gray-800">#{order.routeOrder === 9999 ? '-' : order.routeOrder}</td>
-                                <td className="py-2 px-1 text-gray-600 font-medium truncate max-w-[60px]">{order.deliveryPerson}</td>
+                                <td className="py-2 px-1 font-bold text-gray-800">#{order.serialNumber || '-'}</td>
                                 <td className="py-2 px-1 text-gray-800 font-bold whitespace-normal min-w-[100px] leading-snug">
                                   {order.name}
                                   {order.zone === 'outside' && <span className="ml-1 inline-block px-1 py-0.5 bg-orange-200 text-orange-900 text-[9px] font-black rounded">O</span>}
@@ -1236,6 +1262,78 @@ function BillingTab({ password }) {
   // Hidden references for the shareable bill
   const [shareData, setShareData] = useState(null);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
+  
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [recordAmount, setRecordAmount] = useState('');
+  const [recordMethod, setRecordMethod] = useState('Gpay');
+  const [recordDate, setRecordDate] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  });
+  const [isRecording, setIsRecording] = useState(false);
+
+  const handleRecordPayment = async (e) => {
+    e.preventDefault();
+    if (!selectedCustomer) return;
+    const totalToPay = Number(recordAmount);
+    if (isNaN(totalToPay) || totalToPay <= 0) return alert('Enter a valid amount');
+    
+    setIsRecording(true);
+    try {
+      let remaining = totalToPay;
+      const updates = [];
+      const [year, month, day] = recordDate.split('-');
+      const formattedDate = `${day}/${month}/${year}`;
+      
+      const ordersToPay = [...selectedCustomer.unpaidOrders].filter(o => o.outstanding > 0);
+      
+      for (const order of ordersToPay) {
+        if (remaining <= 0) break;
+        const applyAmt = Math.min(order.outstanding, remaining);
+        remaining -= applyAmt;
+        const newPaid = order.paid + applyAmt;
+        
+        updates.push({
+          orderId: order.orderId || order.id,
+          paymentReceived: true,
+          paymentMethod: recordMethod,
+          amountReceived: newPaid,
+          paymentDate: formattedDate
+        });
+      }
+      
+      if (remaining > 0) {
+        if (updates.length > 0) {
+           updates[updates.length - 1].amountReceived += remaining;
+        } else if (selectedCustomer.unpaidOrders.length > 0) {
+           const lastOrder = selectedCustomer.unpaidOrders[selectedCustomer.unpaidOrders.length - 1];
+           updates.push({
+             orderId: lastOrder.orderId || lastOrder.id,
+             paymentReceived: true,
+             paymentMethod: recordMethod,
+             amountReceived: lastOrder.paid + remaining,
+             paymentDate: formattedDate
+           });
+        }
+      }
+      
+      const res = await fetch('/api/admin/orders/payment/batch', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'x-admin-password': password },
+        body: JSON.stringify({ updates })
+      });
+      if (!res.ok) throw new Error('Failed to record payment');
+      
+      alert('Payment recorded successfully!');
+      setRecordAmount('');
+      setSelectedCustomer(null);
+      setRefreshKey(prev => prev + 1);
+    } catch (err) {
+      alert(err.message || 'Error recording payment');
+    } finally {
+      setIsRecording(false);
+    }
+  };
 
   useEffect(() => {
     const fetchBilling = async () => {
@@ -1271,7 +1369,7 @@ function BillingTab({ password }) {
             }
           }
 
-          if (outstanding <= 0) continue;
+          if (outstanding === 0) continue;
           
           const phone = order.phone || 'Unknown';
           if (!groups[phone]) {
@@ -1297,7 +1395,7 @@ function BillingTab({ password }) {
             return new Date(y1, m1 - 1, d1) - new Date(y2, m2 - 1, d2);
           });
           return cust;
-        }).sort((a, b) => a.name.localeCompare(b.name));
+        }).filter(cust => cust.totalPending !== 0).sort((a, b) => a.name.localeCompare(b.name));
         setCustomers(customerList);
       } catch (err) {
         setError(err.response?.data?.error || 'Failed to fetch billing data.');
@@ -1307,7 +1405,7 @@ function BillingTab({ password }) {
     };
 
     fetchBilling();
-  }, [monthPickerValue, password]);
+  }, [monthPickerValue, password, refreshKey]);
 
   const handleShare = async (customer) => {
     setShareData(customer);
@@ -1353,14 +1451,24 @@ function BillingTab({ password }) {
   return (
     <div className="space-y-4">
       {/* Month Filter */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Select Month</label>
-        <input 
-          type="month" 
-          value={monthPickerValue}
-          onChange={(e) => setMonthPickerValue(e.target.value)}
-          className="w-full sm:w-auto px-4 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-jts-red transition"
-        />
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 print:hidden">
+        <div>
+          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Select Month</label>
+          <input 
+            type="month" 
+            value={monthPickerValue}
+            onChange={(e) => setMonthPickerValue(e.target.value)}
+            className="w-full sm:w-auto px-4 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-jts-red transition"
+          />
+        </div>
+        <button onClick={() => window.print()} className="px-5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl transition text-sm flex items-center gap-2">
+          🖨️ Print Report
+        </button>
+      </div>
+
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 mb-4 text-center print:hidden">
+        <p className="text-sm text-gray-500 font-medium mb-1">Total Outstanding ({monthPickerValue})</p>
+        <p className="text-3xl font-black text-jts-red">₹{customers.reduce((sum, c) => sum + c.totalPending, 0).toLocaleString('en-IN')}/-</p>
       </div>
 
       {loading ? (
@@ -1426,7 +1534,8 @@ function BillingTab({ password }) {
                       <div className="flex flex-col">
                         <span className="font-bold text-gray-800">{order.date}</span>
                         <span className="text-xs text-gray-500 mt-0.5">{order.itemsSummary}</span>
-                        {order.paid > 0 && <span className="text-[10px] text-green-600 font-bold mt-0.5">Partial: ₹{order.paid} paid</span>}
+                        {order.paid > 0 && order.outstanding > 0 && <span className="text-[10px] text-orange-600 font-bold mt-0.5">Partial: ₹{order.paid} paid</span>}
+                        {order.paid > 0 && order.outstanding < 0 && <span className="text-[10px] text-green-600 font-bold mt-0.5">Excess: ₹{order.paid} paid</span>}
                       </div>
                       <span className="font-bold text-gray-900 shrink-0 mt-0.5">₹{order.outstanding.toLocaleString('en-IN')}</span>
                     </div>
@@ -1463,20 +1572,62 @@ function BillingTab({ password }) {
             </div>
             
             <div className="p-5 overflow-y-auto space-y-4">
+              
+              <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
+                <h4 className="font-bold text-blue-900 mb-3 text-sm">Record Payment</h4>
+                <form onSubmit={handleRecordPayment} className="space-y-3">
+                  <div className="flex gap-2">
+                    <input 
+                      type="number" 
+                      placeholder="Amount" 
+                      value={recordAmount}
+                      onChange={e => setRecordAmount(e.target.value)}
+                      className="w-full px-3 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-400 outline-none text-sm"
+                      required
+                    />
+                    <select 
+                      value={recordMethod} 
+                      onChange={e => setRecordMethod(e.target.value)}
+                      className="px-3 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-400 outline-none text-sm bg-white"
+                    >
+                      <option value="Gpay">Gpay</option>
+                      <option value="Cash">Cash</option>
+                    </select>
+                  </div>
+                  <div className="flex gap-2 items-center">
+                    <input 
+                      type="date" 
+                      value={recordDate}
+                      onChange={e => setRecordDate(e.target.value)}
+                      className="flex-1 px-3 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-400 outline-none text-sm"
+                      required
+                    />
+                    <button 
+                      type="submit" 
+                      disabled={isRecording}
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition text-sm disabled:opacity-50 shrink-0"
+                    >
+                      {isRecording ? '...' : 'Save'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+
               <div className="flex justify-between items-center bg-red-50 rounded-xl p-3 border border-red-100">
                 <span className="font-bold text-red-800 text-sm">Total Pending</span>
                 <span className="font-black text-jts-red text-xl">₹{selectedCustomer.totalPending.toLocaleString('en-IN')}/-</span>
               </div>
 
               <div className="space-y-3">
-                {selectedCustomer.unpaidOrders.map((order, idx) => (
+                {selectedCustomer.unpaidOrders.filter(o => o.outstanding !== 0).map((order, idx) => (
                   <div key={order.orderId || idx} className="bg-gray-50 rounded-xl p-3 border border-gray-100">
                     <div className="flex justify-between items-start mb-2 border-b border-gray-200 pb-2">
                       <span className="font-bold text-gray-800">{order.date}</span>
                       <span className="font-bold text-jts-red">₹{order.outstanding.toLocaleString('en-IN')}</span>
                     </div>
                     <p className="text-sm text-gray-600 leading-relaxed">{order.itemsSummary}</p>
-                    {order.paid > 0 && <p className="text-xs text-green-600 font-bold mt-1 pt-1 border-t border-gray-100 border-dashed">Partial Payment: ₹{order.paid} received</p>}
+                    {order.paid > 0 && order.outstanding > 0 && <p className="text-xs text-orange-600 font-bold mt-1 pt-1 border-t border-gray-100 border-dashed">Partial Payment: ₹{order.paid} received</p>}
+                    {order.paid > 0 && order.outstanding < 0 && <p className="text-xs text-green-600 font-bold mt-1 pt-1 border-t border-gray-100 border-dashed">Excess Payment: ₹{order.paid} received</p>}
                   </div>
                 ))}
               </div>
@@ -1493,6 +1644,177 @@ function BillingTab({ password }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Tab 5: Settings ───────────────────────────────────────────────────────────
+function SettingsTab({ password, currentMetadata, onMetadataSaved }) {
+  const [metadata, setMetadata] = useState({
+    lunchCutoff: '05:00',
+    choviarCutoff: '11:00',
+    betaTesting: 'No',
+    namkeenAvailable: 'No',
+    saladAvailable: 'No',
+    tiffinMatrix: {
+      "Mini Lunch": { Roti: 3, Paratha: 3, Puri: 3, Namkeen: 1, Salad: 1, Farsan: 1, Sweet: 1 },
+      "Brunch": { Roti: 6, Paratha: 4, Puri: 6, Namkeen: 1, Salad: 1, Farsan: 1, Sweet: 1 },
+      "Full Lunch": { Roti: 6, Paratha: 4, Puri: 6, Namkeen: 1, Salad: 1, Farsan: 1, Sweet: 1 },
+      "Family Meal": { Roti: 9, Paratha: 6, Puri: 9, Namkeen: 2, Salad: 2, Farsan: 2, Sweet: 2 }
+    },
+    ...currentMetadata
+  });
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  useEffect(() => {
+    if (currentMetadata && Object.keys(currentMetadata).length > 0) {
+      setMetadata(prev => ({ ...prev, ...currentMetadata }));
+    }
+  }, [currentMetadata]);
+
+  const updateMeta = (field, value) => setMetadata(prev => ({ ...prev, [field]: value }));
+  const updateMatrix = (tiffin, field, value) => {
+    setMetadata(prev => ({
+      ...prev,
+      tiffinMatrix: {
+        ...prev.tiffinMatrix,
+        [tiffin]: { ...prev.tiffinMatrix[tiffin], [field]: parseInt(value, 10) || 0 }
+      }
+    }));
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    setMsg('');
+    try {
+      // Just update metadata. We need to preserve currentMenu.
+      const menuRes = await fetch('/api/menu');
+      const menuData = await menuRes.json();
+      const currentItems = menuData.menu || [];
+      await updateAdminMenu({ items: currentItems, metadata }, password);
+      setMsg('✅ Settings saved successfully!');
+      if (onMetadataSaved) onMetadataSaved(metadata);
+    } catch (err) {
+      setMsg('❌ ' + (err.response?.data?.error || 'Failed to save settings.'));
+      setTimeout(() => setMsg(''), 4000);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* Cutoff Times */}
+      <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm flex flex-col gap-4">
+        <h3 className="text-sm font-bold text-gray-800 border-b pb-2">Cutoff Times (24hr format)</h3>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide block mb-1">Lunch Cutoff Time</label>
+            <div className="flex gap-2">
+              <input type="time" value={metadata.lunchCutoff || '05:00'} onChange={e => updateMeta('lunchCutoff', e.target.value)} className="w-1/2 text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
+              <select value={metadata.lunchCutoffDay || 'Same Day'} onChange={e => updateMeta('lunchCutoffDay', e.target.value)} className="w-1/2 text-sm border border-gray-200 rounded-lg px-2 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none">
+                <option value="Same Day">Same Day</option>
+                <option value="Previous Day">Previous Day</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide block mb-1">Choviar Cutoff Time</label>
+            <div className="flex gap-2">
+              <input type="time" value={metadata.choviarCutoff || '11:00'} onChange={e => updateMeta('choviarCutoff', e.target.value)} className="w-1/2 text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
+              <select value={metadata.choviarCutoffDay || 'Same Day'} onChange={e => updateMeta('choviarCutoffDay', e.target.value)} className="w-1/2 text-sm border border-gray-200 rounded-lg px-2 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none">
+                <option value="Same Day">Same Day</option>
+                <option value="Previous Day">Previous Day</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Pricing Settings */}
+      <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm flex flex-col gap-4">
+        <h3 className="text-sm font-bold text-gray-800 border-b pb-2">Pricing Settings</h3>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-2">
+          <div>
+            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Roti Price</label>
+            <input type="number" value={metadata.rotiPrice || ''} onChange={e => updateMeta('rotiPrice', e.target.value)} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Sabji (Half)</label>
+            <input type="number" value={metadata.sabjiHalfPrice || ''} onChange={e => updateMeta('sabjiHalfPrice', e.target.value)} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Sabji (Full)</label>
+            <input type="number" value={metadata.sabjiFullPrice || ''} onChange={e => updateMeta('sabjiFullPrice', e.target.value)} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Dal (Half)</label>
+            <input type="number" value={metadata.dalHalfPrice || ''} onChange={e => updateMeta('dalHalfPrice', e.target.value)} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Dal (Full)</label>
+            <input type="number" value={metadata.dalFullPrice || ''} onChange={e => updateMeta('dalFullPrice', e.target.value)} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Rice (Half)</label>
+            <input type="number" value={metadata.riceHalfPrice || ''} onChange={e => updateMeta('riceHalfPrice', e.target.value)} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Rice (Full)</label>
+            <input type="number" value={metadata.riceFullPrice || ''} onChange={e => updateMeta('riceFullPrice', e.target.value)} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
+          </div>
+        </div>
+        
+        {/* Testing Mode */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 flex items-center justify-between">
+          <div>
+            <p className="text-sm font-bold text-blue-900">Beta Testing Mode</p>
+            <p className="text-[10px] font-medium text-blue-700">Disables all timing restrictions for ordering</p>
+          </div>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <div className={`w-12 h-6 rounded-full flex items-center transition-colors ${metadata.betaTesting === 'Yes' ? 'bg-blue-600' : 'bg-gray-300'}`}>
+              <div className={`w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${metadata.betaTesting === 'Yes' ? 'translate-x-6' : 'translate-x-1'}`} />
+            </div>
+            <input type="checkbox" className="hidden" checked={metadata.betaTesting === 'Yes'} onChange={e => updateMeta('betaTesting', e.target.checked ? 'Yes' : 'No')} />
+          </label>
+        </div>
+      </div>
+
+      {/* Tiffin Matrix */}
+      <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm flex flex-col gap-4 overflow-x-auto">
+        <h3 className="text-sm font-bold text-gray-800 border-b pb-2">Tiffin Quantities Matrix</h3>
+        <table className="w-full text-center text-[10px] sm:text-xs min-w-[500px]">
+          <thead>
+            <tr className="bg-gray-100 text-gray-500 uppercase tracking-wide">
+              <th className="p-2 text-left">Tiffin</th>
+              <th className="p-2">Roti</th>
+              <th className="p-2">Paratha</th>
+              <th className="p-2">Puri</th>
+              <th className="p-2">Namkeen</th>
+              <th className="p-2">Salad</th>
+              <th className="p-2">Farsan</th>
+              <th className="p-2">Sweet</th>
+            </tr>
+          </thead>
+          <tbody>
+            {Object.keys(metadata.tiffinMatrix || {}).map(tiffin => (
+              <tr key={tiffin} className="border-t border-gray-100">
+                <td className="p-2 text-left font-bold text-gray-700">{tiffin}</td>
+                {['Roti', 'Paratha', 'Puri', 'Namkeen', 'Salad', 'Farsan', 'Sweet'].map(field => (
+                  <td key={field} className="p-1">
+                    <input type="number" min="0" value={metadata.tiffinMatrix[tiffin][field] || 0} onChange={e => updateMatrix(tiffin, field, e.target.value)} className="w-full max-w-[60px] text-center border border-gray-200 rounded px-1 py-1 focus:ring-1 focus:ring-jts-red" />
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Save Button */}
+      {msg && <div className={`p-3 rounded-lg text-sm font-bold shadow-sm ${msg.includes('✅') ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>{msg}</div>}
+      <button onClick={handleSave} disabled={saving} className={`w-full py-3.5 rounded-xl font-black text-white text-sm tracking-wide transition shadow-sm ${saving ? 'bg-red-300 cursor-not-allowed' : 'bg-jts-red hover:bg-jts-crimson'}`}>
+        {saving ? 'SAVING...' : '💾 SAVE SETTINGS'}
+      </button>
     </div>
   );
 }
@@ -1553,6 +1875,7 @@ export default function AdminPage() {
           <TabBtn active={activeTab === 'orders'}  onClick={() => setActiveTab('orders')}>📋 Orders</TabBtn>
           <TabBtn active={activeTab === 'kitchen'} onClick={() => setActiveTab('kitchen')}>👨‍🍳 Kitchen</TabBtn>
           <TabBtn active={activeTab === 'billing'} onClick={() => setActiveTab('billing')}>💰 Billing</TabBtn>
+          <TabBtn active={activeTab === 'settings'} onClick={() => setActiveTab('settings')}>⚙️ Settings</TabBtn>
         </div>
       </div>
 
@@ -1562,6 +1885,7 @@ export default function AdminPage() {
         {activeTab === 'orders'  && <OrdersTab  password={adminPassword} />}
         {activeTab === 'kitchen' && <KitchenTab password={adminPassword} />}
         {activeTab === 'billing' && <BillingTab password={adminPassword} />}
+        {activeTab === 'settings' && <SettingsTab password={adminPassword} currentMetadata={currentMetadata} onMetadataSaved={(savedMeta) => setCurrentMetadata(savedMeta)} />}
         {activeTab === 'manage' && (
           <ManageUsersView adminPassword={adminPassword} />
         )}

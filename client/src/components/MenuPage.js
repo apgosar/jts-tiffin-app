@@ -147,7 +147,9 @@ function StepperItem({ title, name, price, subtitle, description, qty, cart, upd
           )}
         </div>
         {description && <p className="text-xs text-gray-500 mt-0.5 leading-tight">{description}</p>}
-        <p className="text-xs text-gray-500 mt-0.5">₹{price}/- {subtitle && <span className="italic">({subtitle})</span>}</p>
+        {category !== 'Individual' && (
+          <p className="text-xs text-gray-500 mt-0.5">₹{price}/- {subtitle && <span className="italic">({subtitle})</span>}</p>
+        )}
       </div>
       <QuantityStepper quantity={quantity} onIncrement={handleInc} onDecrement={handleDec} />
     </div>
@@ -162,7 +164,7 @@ const VariantItem = ({ title, subtitle, namePrefix, halfPrice, fullPrice, cart, 
   const currentPrice = variant === 'Half' ? halfPrice : fullPrice;
   const quantity = cart[currentName]?.quantity || 0;
   
-  const handleInc = () => updateQuantity(currentName, 1, { name: currentName, price: Number(currentPrice), available: true });
+  const handleInc = () => updateQuantity(currentName, 1, { name: currentName, price: Number(currentPrice), available: true, category: 'Individual' });
   const handleDec = () => updateQuantity(currentName, -1);
   
   if (!Number(halfPrice) && !Number(fullPrice)) return null;
@@ -180,11 +182,11 @@ const VariantItem = ({ title, subtitle, namePrefix, halfPrice, fullPrice, cart, 
       <div className="flex gap-4 mt-2">
          <label className="flex items-center gap-1.5 text-xs font-bold text-gray-700 cursor-pointer">
            <input type="radio" name={`${title}-variant`} checked={variant==='Half'} onChange={() => setVariant('Half')} className="text-jts-red focus:ring-jts-red" />
-           Half (₹{halfPrice})
+           Half
          </label>
          <label className="flex items-center gap-1.5 text-xs font-bold text-gray-700 cursor-pointer">
            <input type="radio" name={`${title}-variant`} checked={variant==='Full'} onChange={() => setVariant('Full')} className="text-jts-red focus:ring-jts-red" />
-           Full (₹{fullPrice})
+           Full
          </label>
       </div>
     </div>
@@ -192,22 +194,21 @@ const VariantItem = ({ title, subtitle, namePrefix, halfPrice, fullPrice, cart, 
 };
 
 const RotiItem = ({ metadata, cart, updateQuantity }) => {
-  const name = 'Roti';
+  const name = metadata?.breadType || 'Roti';
   const price = Number(metadata?.rotiPrice) || 8;
   const quantity = cart[name]?.quantity || 0;
   
   const handleSetQuantity = (val) => {
     const diff = val - quantity;
     if (diff !== 0) {
-      updateQuantity(name, diff, { name, price, available: true });
+      updateQuantity(name, diff, { name, price, available: true, category: 'Individual' });
     }
   };
 
   return (
     <div className="flex items-center justify-between py-3 border-b border-gray-100 last:border-0">
       <div>
-        <p className="font-bold text-gray-800 text-sm">Roti</p>
-        <p className="text-xs text-gray-500">₹{price}/- per piece</p>
+        <p className="font-bold text-gray-800 text-sm">{name}</p>
       </div>
       <div className="flex items-center gap-2">
         <input 
@@ -262,11 +263,11 @@ function CustomOrderSection({ cart, updateQuantity, metadata }) {
         />
         
         {metadata?.farsanAvailable === 'Yes' && metadata?.farsan && (
-          <StepperItem title="Farsan" subtitle={metadata.farsan} name={`Farsan - ${metadata.farsan}`} price={metadata.farsanPrice} cart={cart} updateQuantity={updateQuantity} />
+          <StepperItem title="Farsan" subtitle={metadata.farsan} name={`Farsan - ${metadata.farsan}`} price={metadata.farsanPrice} cart={cart} updateQuantity={updateQuantity} category="Individual" />
         )}
         
         {metadata?.sweetAvailable === 'Yes' && metadata?.sweet && (
-          <StepperItem title="Sweet" subtitle={metadata.sweet} name={`Sweet - ${metadata.sweet}`} price={metadata.sweetPrice} cart={cart} updateQuantity={updateQuantity} />
+          <StepperItem title="Sweet" subtitle={metadata.sweet} name={`Sweet - ${metadata.sweet}`} price={metadata.sweetPrice} cart={cart} updateQuantity={updateQuantity} category="Individual" />
         )}
       </div>
     </div>
@@ -274,7 +275,7 @@ function CustomOrderSection({ cart, updateQuantity, metadata }) {
 }
 
 // ─── Floating Cart Bar ────────────────────────────────────────────────────────
-function CartBar({ cartCount, cartSubtotal, onViewOrder }) {
+function CartBar({ cartCount, cartSubtotal, isCustomOrder, onViewOrder }) {
   const [bouncing, setBouncing] = useState(false);
 
   useEffect(() => {
@@ -297,7 +298,9 @@ function CartBar({ cartCount, cartSubtotal, onViewOrder }) {
             {cartCount} {cartCount === 1 ? 'item' : 'items'}
           </span>
           <span className="font-bold text-base">View Order</span>
-          <span className="font-bold text-base">₹{cartSubtotal.toLocaleString('en-IN')}</span>
+          {!isCustomOrder && (
+            <span className="font-bold text-base">₹{cartSubtotal.toLocaleString('en-IN')}</span>
+          )}
         </button>
       </div>
     </div>
@@ -313,7 +316,7 @@ export default function MenuPage() {
   const [error, setError]       = useState(null);
   
   // Use ordering state helper
-  const { status, targetDateLabel } = getOrderingState(metadata?.betaTesting);
+  const { status, isMenuLive, targetDateLabel } = getOrderingState(metadata);
 
   useEffect(() => {
     let cancelled = false;
@@ -344,6 +347,9 @@ export default function MenuPage() {
     { name: 'Full Choviar', description: fullChoviarDesc, price: fullChoviarPrice, category: 'Choviar', available: true },
     ...baseChoviarMenu
   ] : [];
+
+  const isCustomOrder = Object.values(cart).some(i => i.quantity > 0 && i.category === 'Individual');
+
   return (
     <div className="min-h-screen bg-jts-lcream" style={{ paddingBottom: cartCount > 0 ? '96px' : '24px' }}>
       {/* ── Sticky Header ── */}
@@ -409,23 +415,29 @@ export default function MenuPage() {
 
       {/* ── Content ── */}
       <main className="max-w-md mx-auto px-4 py-5">
-        {status === 'CLOSED' && (
+        {!isMenuLive ? (
+          <div className="bg-white border-2 border-jts-gold rounded-xl p-6 shadow-md text-center my-10">
+            <p className="text-4xl mb-3">🕒</p>
+            <h2 className="text-xl font-bold text-jts-gold mb-2" style={{ fontFamily: "'Oswald', Impact, sans-serif" }}>Menu is being updated!</h2>
+            <p className="text-gray-600 text-sm font-medium">Tomorrow's menu is being prepared. Please check back later.</p>
+          </div>
+        ) : status === 'CLOSED' ? (
           <div className="bg-white border-2 border-jts-red rounded-xl p-6 shadow-md text-center my-10">
             <p className="text-4xl mb-3">👨‍🍳</p>
             <h2 className="text-xl font-bold text-jts-red mb-2" style={{ fontFamily: "'Oswald', Impact, sans-serif" }}>We are cooking tomorrow's menu!</h2>
             <p className="text-gray-600 text-sm font-medium">Orders will be live again post 7 PM.</p>
           </div>
-        )}
+        ) : null}
 
-        {status !== 'CLOSED' && loading && <LoadingSpinner message="Loading today's menu…" />}
+        {isMenuLive && status !== 'CLOSED' && loading && <LoadingSpinner message="Loading today's menu…" />}
 
-        {status !== 'CLOSED' && error && (
+        {isMenuLive && status !== 'CLOSED' && error && (
           <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-jts-red">
             {error}
           </div>
         )}
 
-        {status !== 'CLOSED' && !loading && !error && menu.length === 0 && (
+        {isMenuLive && status !== 'CLOSED' && !loading && !error && menu.length === 0 && (
           <div className="text-center py-16 text-gray-500">
             <p className="text-5xl mb-3">🍱</p>
             <p className="font-semibold text-lg text-gray-700">Menu not set yet</p>
@@ -433,7 +445,7 @@ export default function MenuPage() {
           </div>
         )}
 
-        {status !== 'CLOSED' && !loading && !error && menu.length > 0 && (
+        {isMenuLive && status !== 'CLOSED' && !loading && !error && menu.length > 0 && (
           <div className="flex flex-col gap-6">
             
             {/* ── Lunch Section ── */}
@@ -453,15 +465,18 @@ export default function MenuPage() {
                 ) : (
                   <>
                     {/* Metadata Banner */}
-                    {metadata && (metadata.sabji || (metadata.sweetAvailable === 'Yes' && metadata.sweet) || metadata.dal || (metadata.farsanAvailable === 'Yes' && metadata.farsan) || metadata.rice) && (
-                      <div className="bg-white border-2 border-jts-gold rounded-xl p-3 shadow-sm relative overflow-hidden">
-                        <div className="absolute top-0 right-0 bg-jts-gold text-jts-navy text-[10px] font-bold px-2 py-1 rounded-bl-lg">TODAY'S SPECIAL</div>
+                    {metadata && (metadata.sabji || (metadata.sweetAvailable === 'Yes' && metadata.sweet) || metadata.dal || (metadata.farsanAvailable === 'Yes' && metadata.farsan) || metadata.rice || metadata.namkeenAvailable === 'Yes' || metadata.saladAvailable === 'Yes') && (
+                      <div className="bg-white border-2 border-jts-gold rounded-xl p-3 shadow-sm relative overflow-hidden mb-6">
+                        <div className="absolute top-0 right-0 bg-jts-gold text-jts-navy text-[10px] font-bold px-2 py-1 rounded-bl-lg">TODAY'S MENU</div>
                         <div className="grid grid-cols-2 gap-y-2 gap-x-4 mt-1">
+                          {metadata.breadType && <div><span className="text-[10px] text-gray-500 font-bold uppercase tracking-wide block">Bread</span><span className="text-sm font-semibold text-gray-800">{metadata.breadType}</span></div>}
                           {metadata.sabji && <div><span className="text-[10px] text-gray-500 font-bold uppercase tracking-wide block">Sabji</span><span className="text-sm font-semibold text-gray-800">{metadata.sabji}</span></div>}
                           {metadata.sweetAvailable === 'Yes' && metadata.sweet && <div><span className="text-[10px] text-gray-500 font-bold uppercase tracking-wide block">Sweet</span><span className="text-sm font-semibold text-gray-800">{metadata.sweet}</span></div>}
                           {metadata.dal && <div><span className="text-[10px] text-gray-500 font-bold uppercase tracking-wide block">Dal</span><span className="text-sm font-semibold text-gray-800">{metadata.dal}</span></div>}
                           {metadata.farsanAvailable === 'Yes' && metadata.farsan && <div><span className="text-[10px] text-gray-500 font-bold uppercase tracking-wide block">Farsan</span><span className="text-sm font-semibold text-gray-800">{metadata.farsan}</span></div>}
                           {metadata.rice && <div><span className="text-[10px] text-gray-500 font-bold uppercase tracking-wide block">Rice</span><span className="text-sm font-semibold text-gray-800">{metadata.rice}</span></div>}
+                          {metadata.namkeenAvailable === 'Yes' && <div><span className="text-[10px] text-gray-500 font-bold uppercase tracking-wide block">Included</span><span className="text-sm font-semibold text-gray-800">Namkeen</span></div>}
+                          {metadata.saladAvailable === 'Yes' && <div><span className="text-[10px] text-gray-500 font-bold uppercase tracking-wide block">Included</span><span className="text-sm font-semibold text-gray-800">Salad</span></div>}
                         </div>
                       </div>
                     )}
@@ -519,6 +534,7 @@ export default function MenuPage() {
         <CartBar
           cartCount={cartCount}
           cartSubtotal={cartSubtotal}
+          isCustomOrder={isCustomOrder}
           onViewOrder={() => { window.scrollTo({ top: 0, behavior: 'smooth' }); navigate('/checkout'); }}
         />
       )}
