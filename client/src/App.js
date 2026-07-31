@@ -89,8 +89,6 @@ export function getOrderingState(metadata = {}) {
   }
 
   const liveMenuDateStr = metadata.liveMenuDate;
-  const targetDateStr = `${String(targetDate.getDate()).padStart(2, '0')}/${String(targetDate.getMonth() + 1).padStart(2, '0')}/${targetDate.getFullYear()}`;
-  
   // Menu is live if liveMenuDate isn't set, OR if targetDate is <= liveMenuDate
   let isMenuLive = true;
   if (liveMenuDateStr) {
