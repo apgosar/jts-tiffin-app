@@ -72,7 +72,7 @@ function TabBtn({ active, onClick, children }) {
   return (
     <button
       onClick={onClick}
-      className={`flex-1 py-2.5 text-xs font-bold transition rounded-lg
+      className={`whitespace-nowrap px-4 py-2.5 text-xs font-bold transition rounded-lg
         ${active ? 'bg-jts-red text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'}`}
     >
       {children}
@@ -197,11 +197,7 @@ function MenuTab({ password, currentMenu, currentMetadata, onMenuSaved }) {
     }
   }, [currentMenu, currentMetadata]);
 
-  const updateItem = (idx, field, value) => {
-    setItems(prev => prev.map((item, i) => i === idx ? { ...item, [field]: value } : item));
-  };
-
-  const updateLunchDescriptions = (meta) => {
+  const getDynamicMealConfig = (meta) => {
     const addons = [];
     if (meta.saladAvailable === 'Yes') addons.push('Salad');
     if (meta.sweetAvailable === 'Yes') addons.push('Sweet');
@@ -209,31 +205,83 @@ function MenuTab({ password, currentMenu, currentMetadata, onMenuSaved }) {
     if (meta.farsanAvailable === 'Yes') addons.push('Farsan');
     const suffix = addons.length > 0 ? ', ' + addons.join(' / ') : '';
     const bread = meta.breadType || 'Roti';
-    const matrix = meta.tiffinMatrix || {
-      mini: { Roti: 3, Paratha: 3, Puri: 3 },
-      brunch: { Roti: 6, Paratha: 4, Puri: 6 },
-      full: { Roti: 6, Paratha: 4, Puri: 6 },
-      family: { Roti: 9, Paratha: 6, Puri: 9 }
+    
+    const defaultMatrix = {
+      "Mini Lunch": { Roti: 3, Paratha: 3, Puri: 3, Sabji: 0.5, Dal: 0.5, Rice: 0.5, Sweet: 1, Farsan: 1 },
+      "Brunch": { Roti: 6, Paratha: 4, Puri: 6, Sabji: 1, Dal: 0.5, Rice: 0.5, Sweet: 1, Farsan: 1 },
+      "Full Lunch": { Roti: 6, Paratha: 4, Puri: 6, Sabji: 1, Dal: 1, Rice: 1, Sweet: 1, Farsan: 1 },
+      "Family Meal": { Roti: 9, Paratha: 6, Puri: 9, Sabji: 1.5, Dal: 1.5, Rice: 1.5, Sweet: 2, Farsan: 2 }
     };
+    
+    const defaultBasePrices = {
+      "Mini Lunch": 140,
+      "Brunch": 180,
+      "Full Lunch": 220,
+      "Family Meal": 320
+    };
+
+    const fmt = (val) => val === 0.5 ? "1/2" : val;
+
+    return { suffix, bread, defaultMatrix, defaultBasePrices, fmt };
+  };
+
+  const updateItem = (idx, field, value) => {
+    setItems(prev => {
+      const newItems = prev.map((item, i) => i === idx ? { ...item, [field]: value } : item);
+      
+      // If basePrice is changed, recalculate total price
+      if (field === 'basePrice' && newItems[idx].category === 'Lunch') {
+         const meta = metadata;
+         const { defaultMatrix } = getDynamicMealConfig(meta);
+         const m = meta.tiffinMatrix?.[newItems[idx].name] || defaultMatrix[newItems[idx].name];
+         let newPrice = parseFloat(value) || 0;
+         if (m) {
+           if (meta.sweetAvailable === 'Yes' && parseFloat(meta.sweetPrice) > 0) newPrice += parseFloat(meta.sweetPrice) * (m.Sweet || 1);
+           if (meta.farsanAvailable === 'Yes' && parseFloat(meta.farsanPrice) > 0) newPrice += parseFloat(meta.farsanPrice) * (m.Farsan || 1);
+           if (parseFloat(meta.sabjiPrice) > 0) newPrice += parseFloat(meta.sabjiPrice) * (m.Sabji || 1);
+         }
+         newItems[idx].price = newPrice;
+      }
+      return newItems;
+    });
+  };
+
+  const updateLunchDescriptions = (meta) => {
+    const { suffix, bread, defaultMatrix, defaultBasePrices, fmt } = getDynamicMealConfig(meta);
 
     setItems(prevItems => prevItems.map(item => {
       if (item.category !== 'Lunch') return item;
       
-      let base = '';
-      if (item.name === 'Mini Lunch') base = `${matrix.mini[bread]} ${bread}, 1/2 Sabji, 1/2 Dal, 1/2 Rice`;
-      else if (item.name === 'Brunch') base = `${matrix.brunch[bread]} ${bread}, Sabji, 1/2 Dal, 1/2 Rice`;
-      else if (item.name === 'Full Lunch') base = `${matrix.full[bread]} ${bread}, Sabji, Dal, Rice`;
-      else if (item.name === 'Family Meal') base = `${matrix.family[bread]} ${bread}, 1.5 Sabji, 1.5 Dal, 1.5 Rice`;
-      else return item;
+      const m = meta.tiffinMatrix?.[item.name] || defaultMatrix[item.name];
+      if (!m) return item;
+
+      const baseDesc = `${m[bread]} ${bread}, ${fmt(m.Sabji)} Sabji, ${fmt(m.Dal)} Dal, ${fmt(m.Rice)} Rice`;
       
-      return { ...item, description: base + suffix };
+      let basePrice = item.basePrice ?? defaultBasePrices[item.name];
+      if (basePrice === undefined) {
+         // fallback if it's a custom lunch item
+         basePrice = item.price || 0;
+      }
+      
+      let newPrice = basePrice;
+      if (meta.sweetAvailable === 'Yes' && parseFloat(meta.sweetPrice) > 0) {
+        newPrice += parseFloat(meta.sweetPrice) * (m.Sweet || 1);
+      }
+      if (meta.farsanAvailable === 'Yes' && parseFloat(meta.farsanPrice) > 0) {
+        newPrice += parseFloat(meta.farsanPrice) * (m.Farsan || 1);
+      }
+      if (parseFloat(meta.sabjiPrice) > 0) {
+        newPrice += parseFloat(meta.sabjiPrice) * (m.Sabji || 1);
+      }
+      
+      return { ...item, basePrice, description: baseDesc + suffix, price: newPrice };
     }));
   };
 
   const updateMeta = (field, value) => {
     setMetadata(prev => {
       const next = { ...prev, [field]: value };
-      if (['farsanAvailable', 'sweetAvailable', 'namkeenAvailable', 'saladAvailable', 'breadType'].includes(field)) {
+      if (['farsanAvailable', 'sweetAvailable', 'namkeenAvailable', 'saladAvailable', 'breadType', 'farsanPrice', 'sweetPrice', 'sabjiPrice'].includes(field)) {
         updateLunchDescriptions(next);
       }
       return next;
@@ -241,25 +289,33 @@ function MenuTab({ password, currentMenu, currentMetadata, onMenuSaved }) {
   };
 
   const loadPresets = () => {
-    const addons = [];
-    if (metadata.saladAvailable === 'Yes') addons.push('Salad');
-    if (metadata.sweetAvailable === 'Yes') addons.push('Sweet');
-    if (metadata.namkeenAvailable === 'Yes') addons.push('Namkeen');
-    if (metadata.farsanAvailable === 'Yes') addons.push('Farsan');
-    const suffix = addons.length > 0 ? ', ' + addons.join(' / ') : '';
-    const bread = metadata.breadType || 'Roti';
+    const { suffix, bread, defaultMatrix, defaultBasePrices, fmt } = getDynamicMealConfig(metadata);
+
+    const getPrice = (name) => {
+      const m = metadata.tiffinMatrix?.[name] || defaultMatrix[name];
+      let newPrice = defaultBasePrices[name];
+      if (metadata.sweetAvailable === 'Yes' && parseFloat(metadata.sweetPrice) > 0) newPrice += parseFloat(metadata.sweetPrice) * (m.Sweet || 1);
+      if (metadata.farsanAvailable === 'Yes' && parseFloat(metadata.farsanPrice) > 0) newPrice += parseFloat(metadata.farsanPrice) * (m.Farsan || 1);
+      if (parseFloat(metadata.sabjiPrice) > 0) newPrice += parseFloat(metadata.sabjiPrice) * (m.Sabji || 1);
+      return newPrice;
+    };
+
+    const getDesc = (name) => {
+      const m = metadata.tiffinMatrix?.[name] || defaultMatrix[name];
+      return `${m[bread]} ${bread}, ${fmt(m.Sabji)} Sabji, ${fmt(m.Dal)} Dal, ${fmt(m.Rice)} Rice${suffix}`;
+    };
 
     setItems([
-      { name: 'Mini Lunch',  description: `3 ${bread}, 1/2 Sabji, 1/2 Dal, 1/2 Rice${suffix}`, price: 140, available: true, category: 'Lunch' },
-      { name: 'Brunch',      description: `6 ${bread}, Sabji, 1/2 Dal, 1/2 Rice${suffix}`, price: 180, available: true, category: 'Lunch' },
-      { name: 'Full Lunch',  description: `6 ${bread}, Sabji, Dal, Rice${suffix}`, price: 220, available: true, category: 'Lunch' },
-      { name: 'Family Meal', description: `9 ${bread}, 1.5 Sabji, 1.5 Dal, 1.5 Rice${suffix}`, price: 320, available: true, category: 'Lunch' },
+      { name: 'Mini Lunch',  description: getDesc('Mini Lunch'), basePrice: defaultBasePrices['Mini Lunch'], price: getPrice('Mini Lunch'), available: true, category: 'Lunch' },
+      { name: 'Brunch',      description: getDesc('Brunch'), basePrice: defaultBasePrices['Brunch'], price: getPrice('Brunch'), available: true, category: 'Lunch' },
+      { name: 'Full Lunch',  description: getDesc('Full Lunch'), basePrice: defaultBasePrices['Full Lunch'], price: getPrice('Full Lunch'), available: true, category: 'Lunch' },
+      { name: 'Family Meal', description: getDesc('Family Meal'), basePrice: defaultBasePrices['Family Meal'], price: getPrice('Family Meal'), available: true, category: 'Lunch' },
       { name: 'Choviar Special', description: 'Ragdo, 4 Kelawada, Dal Khichdi', price: 160, available: true, category: 'Choviar' },
     ]);
   };
 
   const addLunchItem = () => {
-    setItems(prev => [...prev, { name: '', description: '', price: 0, available: true, category: 'Lunch' }]);
+    setItems(prev => [...prev, { name: '', description: '', basePrice: 0, price: 0, available: true, category: 'Lunch' }]);
   };
 
   const addChoviarItem = () => {
@@ -360,8 +416,11 @@ function MenuTab({ password, currentMenu, currentMetadata, onMenuSaved }) {
 
         {/* Sabji */}
         <div>
-          <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide block mb-1">Sabji Name</label>
-          <input type="text" value={metadata.sabji || ''} onChange={e => updateMeta('sabji', e.target.value)} placeholder="e.g. Bhindi" className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
+          <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide block mb-1">Sabji</label>
+          <div className="flex flex-wrap sm:flex-nowrap gap-2 items-center">
+            <input type="text" value={metadata.sabji || ''} onChange={e => updateMeta('sabji', e.target.value)} placeholder="Name (e.g. Bhindi)" className="flex-1 min-w-[120px] text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
+            <input type="number" value={metadata.sabjiPrice || ''} onChange={e => updateMeta('sabjiPrice', e.target.value)} placeholder="Premium ₹" className="w-24 text-sm border border-gray-200 rounded-lg px-2 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
+          </div>
         </div>
 
         {/* Dal */}
@@ -417,33 +476,35 @@ function MenuTab({ password, currentMenu, currentMetadata, onMenuSaved }) {
         </div>
         
         {items.filter(i => i.category === 'Choviar').length > 0 ? (
-          <div className="flex flex-col gap-2">
-            <div className="grid grid-cols-[1fr_60px_80px_40px_30px] gap-2 text-[10px] font-bold text-gray-500 uppercase tracking-wide px-1">
-              <span>Item Name</span>
-              <span className="text-center">Qty/Order</span>
-              <span>Price (₹)</span>
-              <span>Avail</span>
-              <span></span>
+          <div className="overflow-x-auto">
+            <div className="flex flex-col gap-2 min-w-[400px] pb-1">
+              <div className="grid grid-cols-[1fr_60px_80px_40px_30px] gap-2 text-[10px] font-bold text-gray-500 uppercase tracking-wide px-1">
+                <span>Item Name</span>
+                <span className="text-center">Qty/Order</span>
+                <span>Price (₹)</span>
+                <span>Avail</span>
+                <span></span>
+              </div>
+              {items.map((item, idx) => {
+                if (item.category !== 'Choviar') return null;
+                return (
+                  <div key={idx} className="grid grid-cols-[1fr_60px_80px_40px_30px] gap-2 items-center bg-gray-50 p-2 rounded-lg border border-gray-100">
+                    <input type="text" value={item.name} onChange={e => updateItem(idx, 'name', e.target.value)} className="w-full text-sm border border-gray-200 rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-jts-red bg-white" placeholder="Name" />
+                    <input
+                      type="number"
+                      min="1"
+                      value={item.qty || ''}
+                      onChange={e => updateItem(idx, 'qty', e.target.value === '' ? '' : parseInt(e.target.value, 10))}
+                      className="w-full text-sm text-center border border-gray-200 rounded-md px-1 py-1.5 focus:outline-none focus:ring-1 focus:ring-jts-red bg-white"
+                      placeholder="—"
+                    />
+                    <input type="number" value={item.price} onChange={e => updateItem(idx, 'price', e.target.value)} className="w-full text-sm border border-gray-200 rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-jts-red bg-white" placeholder="₹" />
+                    <input type="checkbox" checked={item.available} onChange={e => updateItem(idx, 'available', e.target.checked)} className="w-4 h-4 text-jts-red mx-auto" />
+                    <button onClick={() => removeItem(idx)} className="text-red-500 hover:text-red-700 font-bold flex items-center justify-center">✕</button>
+                  </div>
+                );
+              })}
             </div>
-            {items.map((item, idx) => {
-              if (item.category !== 'Choviar') return null;
-              return (
-                <div key={idx} className="grid grid-cols-[1fr_60px_80px_40px_30px] gap-2 items-center bg-gray-50 p-2 rounded-lg border border-gray-100">
-                  <input type="text" value={item.name} onChange={e => updateItem(idx, 'name', e.target.value)} className="w-full text-sm border border-gray-200 rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-jts-red bg-white" placeholder="Name" />
-                  <input
-                    type="number"
-                    min="1"
-                    value={item.qty || ''}
-                    onChange={e => updateItem(idx, 'qty', e.target.value === '' ? '' : parseInt(e.target.value, 10))}
-                    className="w-full text-sm text-center border border-gray-200 rounded-md px-1 py-1.5 focus:outline-none focus:ring-1 focus:ring-jts-red bg-white"
-                    placeholder="—"
-                  />
-                  <input type="number" value={item.price} onChange={e => updateItem(idx, 'price', e.target.value)} className="w-full text-sm border border-gray-200 rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-jts-red bg-white" placeholder="₹" />
-                  <input type="checkbox" checked={item.available} onChange={e => updateItem(idx, 'available', e.target.checked)} className="w-4 h-4 text-jts-red mx-auto" />
-                  <button onClick={() => removeItem(idx)} className="text-red-500 hover:text-red-700 font-bold flex items-center justify-center">✕</button>
-                </div>
-              );
-            })}
           </div>
         ) : (
           <p className="text-xs text-gray-400 italic text-center py-2">No Choviar items added.</p>
@@ -493,14 +554,17 @@ function MenuTab({ password, currentMenu, currentMetadata, onMenuSaved }) {
           {/* Price & Category */}
           <div className="flex items-center gap-3 flex-wrap">
             <div className="flex items-center gap-2">
-              <label className="text-xs font-medium text-gray-500">Price (₹)</label>
+              <label className="text-xs font-medium text-gray-500">Base Price (₹)</label>
               <input
                 type="number"
                 min="0"
-                value={item.price}
-                onChange={e => updateItem(idx, 'price', parseFloat(e.target.value) || 0)}
+                value={item.basePrice ?? item.price}
+                onChange={e => updateItem(idx, 'basePrice', parseFloat(e.target.value) || 0)}
                 className="w-20 text-sm border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-jts-red transition"
               />
+              {item.price !== (item.basePrice ?? item.price) && (
+                <span className="text-base font-black text-jts-red ml-2">Total: ₹{item.price}</span>
+              )}
             </div>
             <div className="flex items-center gap-2 ml-auto">
               <label className="text-xs font-medium text-gray-500">Category</label>
@@ -982,7 +1046,7 @@ function KitchenTab({ password }) {
                     <h4 className="text-sm font-bold text-gray-800 border-b pb-2 mb-4">📦 Packet Breakdown</h4>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       {/* Dal/Rice/Sabji Table */}
-                      <div>
+                      <div className="overflow-x-auto">
                         <table className="w-full text-center text-sm border-collapse border border-gray-200 bg-white">
                           <thead>
                             <tr className="bg-gray-100 text-gray-700">
@@ -1010,7 +1074,7 @@ function KitchenTab({ password }) {
                       </div>
 
                       {/* Bread Table */}
-                      <div>
+                      <div className="overflow-x-auto">
                         <table className="w-full text-center text-sm border-collapse border border-gray-200 bg-white max-w-[250px]">
                           <thead>
                             <tr className="bg-gray-100 text-gray-700">
@@ -1042,7 +1106,7 @@ function KitchenTab({ password }) {
 
                 {/* Orders Table */}
                 {summary.kitchenOrders && summary.kitchenOrders.length > 0 && (
-                  <div className="w-full">
+                  <div className="w-full overflow-x-auto">
                     <table className="w-full text-left text-xs leading-tight">
                       <thead>
                         <tr className="bg-gray-50 text-gray-500 text-[9px] uppercase tracking-tighter">
@@ -1065,7 +1129,6 @@ function KitchenTab({ password }) {
                             <td className="py-2 px-1 font-bold text-gray-800">#{order.serialNumber || '-'}</td>
                             <td className="py-2 px-1 text-gray-800 font-bold whitespace-normal min-w-[100px] leading-snug">
                               {order.name}
-                              {order.zone === 'outside' && <span className="ml-1 inline-block px-1 py-0.5 bg-orange-200 text-orange-900 text-[9px] font-black rounded">O</span>}
                             </td>
                             <td className="py-2 px-1 text-gray-600 text-[10px] whitespace-normal min-w-[80px] leading-snug">{order.locality || '-'}</td>
                             <td className="py-2 px-1 text-center text-gray-800 font-bold">{order.Roti || '-'}</td>
@@ -1102,7 +1165,7 @@ function KitchenTab({ password }) {
 
                     {/* Choviar Orders Table */}
                     {summary.choviarKitchenOrders && summary.choviarKitchenOrders.length > 0 && (
-                      <div className="w-full">
+                      <div className="w-full overflow-x-auto">
                         <table className="w-full text-left text-xs leading-tight">
                           <thead>
                             <tr className="bg-orange-50/50 text-gray-600 text-[9px] uppercase tracking-tighter">
@@ -1120,7 +1183,6 @@ function KitchenTab({ password }) {
                                 <td className="py-2 px-1 font-bold text-gray-800">#{order.serialNumber || '-'}</td>
                                 <td className="py-2 px-1 text-gray-800 font-bold whitespace-normal min-w-[100px] leading-snug">
                                   {order.name}
-                                  {order.zone === 'outside' && <span className="ml-1 inline-block px-1 py-0.5 bg-orange-200 text-orange-900 text-[9px] font-black rounded">O</span>}
                                 </td>
                                 <td className="py-2 px-1 text-gray-600 text-[10px] whitespace-normal min-w-[80px] leading-snug">{order.locality || '-'}</td>
                                 {Object.keys(summary.choviarGrandTotals || {}).map(item => (
@@ -1657,10 +1719,10 @@ function SettingsTab({ password, currentMetadata, onMetadataSaved }) {
     namkeenAvailable: 'No',
     saladAvailable: 'No',
     tiffinMatrix: {
-      "Mini Lunch": { Roti: 3, Paratha: 3, Puri: 3, Namkeen: 1, Salad: 1, Farsan: 1, Sweet: 1 },
-      "Brunch": { Roti: 6, Paratha: 4, Puri: 6, Namkeen: 1, Salad: 1, Farsan: 1, Sweet: 1 },
-      "Full Lunch": { Roti: 6, Paratha: 4, Puri: 6, Namkeen: 1, Salad: 1, Farsan: 1, Sweet: 1 },
-      "Family Meal": { Roti: 9, Paratha: 6, Puri: 9, Namkeen: 2, Salad: 2, Farsan: 2, Sweet: 2 }
+      "Mini Lunch": { Roti: 3, Paratha: 3, Puri: 3, Namkeen: 1, Salad: 1, Farsan: 1, Sweet: 1, Sabji: 0.5, Dal: 0.5, Rice: 0.5 },
+      "Brunch": { Roti: 6, Paratha: 4, Puri: 6, Namkeen: 1, Salad: 1, Farsan: 1, Sweet: 1, Sabji: 1, Dal: 0.5, Rice: 0.5 },
+      "Full Lunch": { Roti: 6, Paratha: 4, Puri: 6, Namkeen: 1, Salad: 1, Farsan: 1, Sweet: 1, Sabji: 1, Dal: 1, Rice: 1 },
+      "Family Meal": { Roti: 9, Paratha: 6, Puri: 9, Namkeen: 2, Salad: 2, Farsan: 2, Sweet: 2, Sabji: 1.5, Dal: 1.5, Rice: 1.5 }
     },
     ...currentMetadata
   });
@@ -1679,7 +1741,7 @@ function SettingsTab({ password, currentMetadata, onMetadataSaved }) {
       ...prev,
       tiffinMatrix: {
         ...prev.tiffinMatrix,
-        [tiffin]: { ...prev.tiffinMatrix[tiffin], [field]: parseInt(value, 10) || 0 }
+        [tiffin]: { ...prev.tiffinMatrix[tiffin], [field]: parseFloat(value) || 0 }
       }
     }));
   };
@@ -1780,34 +1842,39 @@ function SettingsTab({ password, currentMetadata, onMetadataSaved }) {
       </div>
 
       {/* Tiffin Matrix */}
-      <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm flex flex-col gap-4 overflow-x-auto">
+      <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm flex flex-col gap-4">
         <h3 className="text-sm font-bold text-gray-800 border-b pb-2">Tiffin Quantities Matrix</h3>
-        <table className="w-full text-center text-[10px] sm:text-xs min-w-[500px]">
-          <thead>
-            <tr className="bg-gray-100 text-gray-500 uppercase tracking-wide">
-              <th className="p-2 text-left">Tiffin</th>
-              <th className="p-2">Roti</th>
-              <th className="p-2">Paratha</th>
-              <th className="p-2">Puri</th>
-              <th className="p-2">Namkeen</th>
-              <th className="p-2">Salad</th>
-              <th className="p-2">Farsan</th>
-              <th className="p-2">Sweet</th>
-            </tr>
-          </thead>
-          <tbody>
-            {Object.keys(metadata.tiffinMatrix || {}).map(tiffin => (
-              <tr key={tiffin} className="border-t border-gray-100">
-                <td className="p-2 text-left font-bold text-gray-700">{tiffin}</td>
-                {['Roti', 'Paratha', 'Puri', 'Namkeen', 'Salad', 'Farsan', 'Sweet'].map(field => (
-                  <td key={field} className="p-1">
-                    <input type="number" min="0" value={metadata.tiffinMatrix[tiffin][field] || 0} onChange={e => updateMatrix(tiffin, field, e.target.value)} className="w-full max-w-[60px] text-center border border-gray-200 rounded px-1 py-1 focus:ring-1 focus:ring-jts-red" />
-                  </td>
-                ))}
+        <div className="overflow-x-auto">
+          <table className="w-full text-center text-[10px] sm:text-xs min-w-[500px]">
+            <thead>
+              <tr className="bg-gray-100 text-gray-500 uppercase tracking-wide">
+                <th className="p-2 text-left">Tiffin</th>
+                <th className="p-2">Roti</th>
+                <th className="p-2">Paratha</th>
+                <th className="p-2">Puri</th>
+                <th className="p-2">Namkeen</th>
+                <th className="p-2">Salad</th>
+                <th className="p-2">Farsan</th>
+                <th className="p-2">Sweet</th>
+                <th className="p-2">Sabji</th>
+                <th className="p-2">Dal</th>
+                <th className="p-2">Rice</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {Object.keys(metadata.tiffinMatrix || {}).map(tiffin => (
+                <tr key={tiffin} className="border-t border-gray-100">
+                  <td className="p-2 text-left font-bold text-gray-700">{tiffin}</td>
+                  {['Roti', 'Paratha', 'Puri', 'Namkeen', 'Salad', 'Farsan', 'Sweet', 'Sabji', 'Dal', 'Rice'].map(field => (
+                    <td key={field} className="p-1">
+                      <input type="number" min="0" step="0.5" value={metadata.tiffinMatrix[tiffin][field] || 0} onChange={e => updateMatrix(tiffin, field, e.target.value)} className="w-full min-w-[50px] text-center border border-gray-200 rounded px-1 py-1 focus:ring-1 focus:ring-jts-red" />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Save Button */}
@@ -1870,7 +1937,7 @@ export default function AdminPage() {
 
       {/* Tabs */}
       <div className="max-w-2xl mx-auto px-4 pt-4 pb-2">
-        <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+        <div className="flex gap-1 bg-gray-100 rounded-xl p-1 overflow-x-auto hide-scrollbar">
           <TabBtn active={activeTab === 'menu'}    onClick={() => setActiveTab('menu')}>🍽️ Tomorrow's Menu</TabBtn>
           <TabBtn active={activeTab === 'orders'}  onClick={() => setActiveTab('orders')}>📋 Orders</TabBtn>
           <TabBtn active={activeTab === 'kitchen'} onClick={() => setActiveTab('kitchen')}>👨‍🍳 Kitchen</TabBtn>

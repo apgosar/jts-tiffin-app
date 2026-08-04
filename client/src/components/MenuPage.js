@@ -139,7 +139,9 @@ function StepperItem({ title, name, price, subtitle, description, qty, cart, upd
     <div className="flex items-center justify-between py-3 border-b border-gray-100 last:border-0">
       <div>
         <div className="flex items-center gap-2">
-          <p className="font-bold text-gray-800 text-sm">{title}</p>
+          <p className="font-bold text-gray-800 text-sm">
+            {title} {subtitle && <span className="italic font-normal text-xs text-gray-500">({subtitle})</span>}
+          </p>
           {qty && Number(qty) > 0 && (
             <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-orange-100 text-orange-700 border border-orange-200">
               {qty} pcs/order
@@ -148,7 +150,7 @@ function StepperItem({ title, name, price, subtitle, description, qty, cart, upd
         </div>
         {description && <p className="text-xs text-gray-500 mt-0.5 leading-tight">{description}</p>}
         {category !== 'Individual' && (
-          <p className="text-xs text-gray-500 mt-0.5">₹{price}/- {subtitle && <span className="italic">({subtitle})</span>}</p>
+          <p className="text-xs text-gray-500 mt-0.5">₹{price}/-</p>
         )}
       </div>
       <QuantityStepper quantity={quantity} onIncrement={handleInc} onDecrement={handleDec} />
@@ -509,11 +511,23 @@ export default function MenuPage() {
                     <div className="flex-1 border-b-2 border-gray-300 mr-2"></div>
                   </div>
                 </div>
-                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mt-1 px-4 py-1 flex flex-col">
-                  {choviarMenu.map((item, idx) => (
-                    <StepperItem key={item.name} title={item.name} name={item.name} price={item.price} description={item.description} qty={item.qty} cart={cart} updateQuantity={updateQuantity} category="Choviar" />
-                  ))}
-                </div>
+                {choviarMenu.filter(item => ['Choviar Special', 'Full Choviar'].includes(item.name)).map((item, idx) => (
+                  <TiffinCard key={item.name} item={item} cart={cart} updateQuantity={updateQuantity} animDelay={idx * 70} />
+                ))}
+
+                {choviarMenu.filter(item => !['Choviar Special', 'Full Choviar'].includes(item.name)).length > 0 && (
+                  <>
+                    <div className="flex items-center gap-2 mb-1 mt-2">
+                      <h2 className="text-2xl font-bold text-gray-800 uppercase" style={{ fontFamily: "'Oswald', Impact, sans-serif" }}>Custom Choviar</h2>
+                      <div className="flex-1 border-b-2 border-gray-300"></div>
+                    </div>
+                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mt-1 px-4 py-1 flex flex-col">
+                      {choviarMenu.filter(item => !['Choviar Special', 'Full Choviar'].includes(item.name)).map((item, idx) => (
+                        <StepperItem key={item.name} title={item.name} name={item.name} price={item.price} description={item.description} qty={item.qty} cart={cart} updateQuantity={updateQuantity} category="Individual" />
+                      ))}
+                    </div>
+                  </>
+                )}
               </div>
             )}
 

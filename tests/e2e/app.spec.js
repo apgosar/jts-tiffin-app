@@ -12,8 +12,8 @@ test.describe('JTS Tiffin App End-to-End', () => {
   });
 
   test('should allow admin login with correct password', async ({ page }) => {
-    require('dotenv').config();
-    const adminPass = process.env.ADMIN_PASSWORD || 'changeme';
+    // webServer in playwright.config.js runs with ADMIN_PASSWORD='changeme'
+    const adminPass = 'changeme';
     await page.goto('/admin');
     
     // Fill the password input

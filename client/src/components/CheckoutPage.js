@@ -34,10 +34,10 @@ function TextInput({ id, value, onChange, placeholder, type = 'text', maxLength,
 }
 
 // ─── Zone Badge ───────────────────────────────────────────────────────────────
-function ZoneBadge({ zone, cartSubtotal }) {
+function ZoneBadge({ zone, surchargeTotal }) {
   if (!zone) return null;
   if (zone === 'borivali') {
-    const fee = cartSubtotal < 250 ? 30 : 0;
+    const fee = surchargeTotal;
     return (
       <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl px-3 py-2">
         <span className="text-green-600 text-base">✅</span>
@@ -234,8 +234,11 @@ export default function CheckoutPage() {
     lunchSurcharge = lunchItems.length > 0 ? 40 * lunchOutsideTiffins : 0;
     choviarSurcharge = choviarItems.length > 0 ? 40 * choviarOutsideTiffins : 0;
   } else if (zone === 'borivali') {
-    if (lunchItems.length > 0 && lunchSubtotal < 250) lunchSurcharge = 30;
-    if (choviarItems.length > 0 && choviarSubtotal < 250) choviarSurcharge = 30;
+    const hasLunchMeal = lunchItems.some(i => ['Mini Lunch', 'Brunch', 'Full Lunch', 'Family Meal'].includes(i.name));
+    const hasFullChoviar = choviarItems.some(i => ['Choviar Special', 'Full Choviar'].includes(i.name));
+    
+    if (lunchItems.length > 0 && !hasLunchMeal && lunchSubtotal < 250) lunchSurcharge = 30;
+    if (choviarItems.length > 0 && !hasFullChoviar && choviarSubtotal < 250) choviarSurcharge = 30;
   }
 
   const surchargeTotal = lunchSurcharge + choviarSurcharge;
@@ -634,7 +637,7 @@ export default function CheckoutPage() {
                   </Field>
 
                   {/* Zone Badge */}
-                  {form.pincode.length === 6 && zone && !isCustomOrder && <ZoneBadge zone={zone} cartSubtotal={cartSubtotal} />}
+                  {form.pincode.length === 6 && zone && !isCustomOrder && <ZoneBadge zone={zone} surchargeTotal={surchargeTotal} />}
 
                   <Field label="Special Instructions (Optional)" id="instructions" error={errors.instructions}>
                     <textarea 
@@ -653,7 +656,7 @@ export default function CheckoutPage() {
 
           {/* Show zone badge for selected profile */}
           {lookupState === 'done' && selectedProfile >= 0 && zone && !isCustomOrder && (
-            <ZoneBadge zone={zone} cartSubtotal={cartSubtotal} />
+            <ZoneBadge zone={zone} surchargeTotal={surchargeTotal} />
           )}
 
           {/* Special Instructions for Saved Profile */}
