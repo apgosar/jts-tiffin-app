@@ -128,9 +128,9 @@ function TiffinCard({ item, cart, updateQuantity, animDelay }) {
 }
 
 // ─── Stepper Item for Custom / Individual Orders ──────────────────────────────
-function StepperItem({ title, name, price, subtitle, description, qty, cart, updateQuantity, category = 'Lunch' }) {
+function StepperItem({ title, name, price, subtitle, description, qty, cart, updateQuantity, category = 'Lunch', isCustom = false }) {
   const quantity = cart[name]?.quantity || 0;
-  const handleInc = () => updateQuantity(name, 1, { name, price: Number(price), available: true, category });
+  const handleInc = () => updateQuantity(name, 1, { name, price: Number(price), available: true, category, isCustom });
   const handleDec = () => updateQuantity(name, -1);
   
   if (!Number(price)) return null;
@@ -149,7 +149,7 @@ function StepperItem({ title, name, price, subtitle, description, qty, cart, upd
           )}
         </div>
         {description && <p className="text-xs text-gray-500 mt-0.5 leading-tight">{description}</p>}
-        {category !== 'Individual' && (
+        {!isCustom && category !== 'Individual' && (
           <p className="text-xs text-gray-500 mt-0.5">₹{price}/-</p>
         )}
       </div>
@@ -350,7 +350,7 @@ export default function MenuPage() {
     ...baseChoviarMenu
   ] : [];
 
-  const isCustomOrder = Object.values(cart).some(i => i.quantity > 0 && i.category === 'Individual');
+  const isCustomOrder = Object.values(cart).some(i => i.quantity > 0 && (i.category === 'Individual' || i.isCustom));
 
   return (
     <div className="min-h-screen bg-jts-lcream" style={{ paddingBottom: cartCount > 0 ? '96px' : '24px' }}>
@@ -523,7 +523,7 @@ export default function MenuPage() {
                     </div>
                     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mt-1 px-4 py-1 flex flex-col">
                       {choviarMenu.filter(item => !['Choviar Special', 'Full Choviar'].includes(item.name)).map((item, idx) => (
-                        <StepperItem key={item.name} title={item.name} name={item.name} price={item.price} description={item.description} qty={item.qty} cart={cart} updateQuantity={updateQuantity} category="Individual" />
+                        <StepperItem key={item.name} title={item.name} name={item.name} price={item.price} description={item.description} qty={item.qty} cart={cart} updateQuantity={updateQuantity} category="Choviar" isCustom={true} />
                       ))}
                     </div>
                   </>

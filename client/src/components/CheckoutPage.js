@@ -203,11 +203,11 @@ export default function CheckoutPage() {
 
   // ── Ordering cutoffs ─────────────────────────────────────────────────────────
   const { status } = getOrderingState(metadata);
+  const cartItems = Object.values(cart).filter(i => i.quantity > 0);
   const hasLunch = cartItems.some(item => item.category === 'Lunch' || !item.category);
   const isCheckoutBlocked = status === 'CLOSED' || (status === 'LUNCH_CLOSED' && hasLunch);
   
-  // Custom Order flag
-  const isCustomOrder = cartItems.some(i => i.category === 'Individual');
+  const isCustomOrder = cartItems.some(i => i.category === 'Individual' || i.isCustom);
   
   // ── Derived zone / surcharge ─────────────────────────────────────────────────
   const lunchItems = cartItems.filter(i => i.category === 'Lunch' || i.category === 'Individual' || !i.category);
