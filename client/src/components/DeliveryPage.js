@@ -6,6 +6,11 @@ function DeliveryPage() {
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState('');
   const [savingOrderId, setSavingOrderId] = useState(null);
+  const [collapsedSections, setCollapsedSections] = useState({});
+
+  const toggleSection = (title) => {
+    setCollapsedSections(prev => ({ ...prev, [title]: !prev[title] }));
+  };
 
   useEffect(() => {
     fetchOrders();
@@ -117,19 +122,33 @@ function DeliveryPage() {
 
   const renderOrderTable = (ordersList, title) => {
     if (ordersList.length === 0) return null;
+    const isCollapsed = collapsedSections[title] || false;
+    const isAllDelivered = ordersList.every(o => o.paymentReceived);
+
     return (
       <div className="mb-6">
-        <h2 className="text-xl font-bold text-gray-800 mb-3 px-1 border-l-4 border-jts-red pl-2">{title}</h2>
-        <div className="overflow-x-auto bg-white rounded-xl shadow-sm border border-gray-300">
-          <table className="w-full text-xs text-left border-collapse">
-            <thead className="bg-gray-100 border-b border-gray-300 text-gray-800 uppercase tracking-wider">
-              <tr>
-                <th className="border-r border-gray-300 px-1 py-2 text-center w-10">SEQ/SR</th>
-                <th className="border-r border-gray-300 px-2 py-2 w-1/3">Details</th>
-                <th className="border-r border-gray-300 px-1 py-2 text-center w-12">Amt</th>
-                <th className="px-1 py-2 text-center">Collection</th>
-              </tr>
-            </thead>
+        <div 
+          className="flex justify-between items-center cursor-pointer mb-3 px-1 border-l-4 border-jts-red pl-2 hover:bg-gray-100 rounded transition"
+          onClick={() => toggleSection(title)}
+        >
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl font-bold text-gray-800">{title} <span className="text-sm font-normal text-gray-500">({ordersList.length})</span></h2>
+            {isAllDelivered && <span className="bg-green-100 text-green-700 text-[10px] px-2 py-0.5 rounded-full font-bold">All Delivered ✅</span>}
+          </div>
+          <span className="text-gray-500 font-bold px-2">{isCollapsed ? '▼ Show' : '▲ Hide'}</span>
+        </div>
+        
+        {!isCollapsed && (
+          <div className="overflow-x-auto bg-white rounded-xl shadow-sm border border-gray-300">
+            <table className="w-full text-xs text-left border-collapse">
+              <thead className="bg-gray-100 border-b border-gray-300 text-gray-800 uppercase tracking-wider">
+                <tr>
+                  <th className="border-r border-gray-300 px-1 py-2 text-center w-10">SEQ/SR</th>
+                  <th className="border-r border-gray-300 px-2 py-2 w-1/3">Details</th>
+                  <th className="border-r border-gray-300 px-1 py-2 text-center w-12">Amt</th>
+                  <th className="px-1 py-2 text-center">Collection</th>
+                </tr>
+              </thead>
             <tbody>
               {ordersList.map(order => (
                 <tr key={order.orderId} className={`border-b border-gray-300 transition ${order.paymentReceived ? 'bg-green-50/50' : 'hover:bg-gray-50'}`}>
@@ -216,6 +235,7 @@ function DeliveryPage() {
             </tbody>
           </table>
         </div>
+        )}
       </div>
     );
   };

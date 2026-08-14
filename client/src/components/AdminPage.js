@@ -956,7 +956,18 @@ function KitchenTab({ password }) {
     lines.push(`Total Sweet: ${summary.grandTotals?.Sweet || 0}`);
     lines.push(`Total Farsan: ${summary.grandTotals?.Farsan || 0}`);
     lines.push('');
-    lines.push(`Total Tiffins: ${summary.orderCount}`);
+    lines.push(`Total Lunch Tiffins: ${summary.orderCount || 0}`);
+
+    if (summary.choviarGrandTotals && Object.keys(summary.choviarGrandTotals).length > 0) {
+      lines.push('');
+      lines.push(`🌙 Choviar Order Summary`);
+      for (const [item, qty] of Object.entries(summary.choviarGrandTotals)) {
+        if (qty > 0) lines.push(`Total ${item}: ${qty}`);
+      }
+      lines.push('');
+      lines.push(`Total Choviar Orders: ${summary.choviarOrderCount || 0}`);
+    }
+
     return lines.join('\n');
   };
 
