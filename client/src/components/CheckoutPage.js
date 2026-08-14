@@ -345,7 +345,7 @@ export default function CheckoutPage() {
           address:  formattedAddress,
           instructions: form.instructions.trim(),
         },
-        items: cartItems.map(({ name, price, quantity }) => ({ name, price, quantity })),
+        items: cartItems.map(({ name, price, quantity, category, isCustom }) => ({ name, price, quantity, category, isCustom })),
         subtotal: cartSubtotal,
       };
 
