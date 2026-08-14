@@ -53,6 +53,8 @@ export default function ConfirmationPage() {
     if (choviarItems.length > 0 && choviarSubtotal < 250) choviarSurcharge = 30;
   }
 
+  const isCustomOrder = items.some(i => i.category === 'Individual' || i.isCustom);
+
   return (
     <div className="min-h-screen bg-jts-cream flex flex-col">
       <main className="max-w-md mx-auto w-full px-4 py-8 flex flex-col gap-5">
@@ -97,9 +99,11 @@ export default function ConfirmationPage() {
                       <span className="text-gray-700">
                         {item.name} <span className="text-gray-400">×{item.quantity}</span>
                       </span>
-                      <span className="font-semibold text-gray-800">
-                        ₹{(item.price * item.quantity).toLocaleString('en-IN')}/-
-                      </span>
+                      {!isCustomOrder && (
+                        <span className="font-semibold text-gray-800">
+                          ₹{(item.price * item.quantity).toLocaleString('en-IN')}/-
+                        </span>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -134,9 +138,11 @@ export default function ConfirmationPage() {
                       <span className="text-gray-700">
                         {item.name} <span className="text-gray-400">×{item.quantity}</span>
                       </span>
-                      <span className="font-semibold text-gray-800">
-                        ₹{(item.price * item.quantity).toLocaleString('en-IN')}/-
-                      </span>
+                      {!isCustomOrder && (
+                        <span className="font-semibold text-gray-800">
+                          ₹{(item.price * item.quantity).toLocaleString('en-IN')}/-
+                        </span>
+                      )}
                     </div>
                   ))}
                 </div>
