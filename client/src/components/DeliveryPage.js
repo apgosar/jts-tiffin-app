@@ -150,11 +150,11 @@ function DeliveryPage() {
                 </tr>
               </thead>
             <tbody>
-              {ordersList.map(order => (
+              {ordersList.map((order, idx) => (
                 <tr key={order.orderId} className={`border-b border-gray-300 transition ${order.paymentReceived ? 'bg-green-50/50' : 'hover:bg-gray-50'}`}>
                   <td className="border-r border-gray-300 px-1 py-2 text-center align-middle">
-                    <div className="font-bold text-gray-700 text-sm">#{order.routeOrder}</div>
-                    <div className="text-[9px] font-bold text-gray-400 mt-0.5">SR: {order.serialNumber || '-'}</div>
+                    <div className="text-xs font-bold text-gray-400 mb-0.5">{idx + 1}</div>
+                    <div className="font-black text-gray-900 text-lg leading-none">{order.serialNumber || '-'}</div>
                   </td>
                   <td className="border-r border-gray-300 px-2 py-2 align-middle">
                     <div className="flex justify-between items-start gap-1 mb-1">
