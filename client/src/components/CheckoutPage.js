@@ -203,7 +203,6 @@ export default function CheckoutPage() {
 
   // ── Ordering cutoffs ─────────────────────────────────────────────────────────
   const { status } = getOrderingState(metadata);
-  const cartItems = Object.values(cart).filter(i => i.quantity > 0);
   const hasLunch = cartItems.some(item => item.category === 'Lunch' || !item.category);
   const isCheckoutBlocked = status === 'CLOSED' || (status === 'LUNCH_CLOSED' && hasLunch);
   
