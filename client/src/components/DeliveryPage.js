@@ -143,7 +143,8 @@ function DeliveryPage() {
             <table className="w-full text-xs text-left border-collapse">
               <thead className="bg-gray-100 border-b border-gray-300 text-gray-800 uppercase tracking-wider">
                 <tr>
-                  <th className="border-r border-gray-300 px-1 py-2 text-center w-10">SEQ/SR</th>
+                  <th className="border-r border-gray-300 px-1 py-2 text-center w-8">SEQ</th>
+                  <th className="border-r border-gray-300 px-1 py-2 text-center w-10">SR</th>
                   <th className="border-r border-gray-300 px-2 py-2 w-1/3">Details</th>
                   <th className="border-r border-gray-300 px-1 py-2 text-center w-12">Amt</th>
                   <th className="px-1 py-2 text-center">Collection</th>
@@ -152,9 +153,11 @@ function DeliveryPage() {
             <tbody>
               {ordersList.map((order, idx) => (
                 <tr key={order.orderId} className={`border-b border-gray-300 transition ${order.paymentReceived ? 'bg-green-50/50' : 'hover:bg-gray-50'}`}>
-                  <td className="border-r border-gray-300 px-1 py-2 text-center align-middle">
-                    <div className="text-xs font-bold text-gray-400 mb-0.5">{idx + 1}</div>
-                    <div className="font-black text-gray-900 text-lg leading-none">{order.serialNumber || '-'}</div>
+                  <td className="border-r border-gray-300 px-1 py-2 text-center align-middle font-bold text-gray-500 text-sm">
+                    {idx + 1}
+                  </td>
+                  <td className="border-r border-gray-300 px-1 py-2 text-center align-middle font-black text-gray-900 text-xl">
+                    {order.serialNumber || '-'}
                   </td>
                   <td className="border-r border-gray-300 px-2 py-2 align-middle">
                     <div className="flex justify-between items-start gap-1 mb-1">
