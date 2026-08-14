@@ -377,8 +377,11 @@ app.post('/api/orders', orderLimiter, async (req, res) => {
     lunchSurcharge = lunchItems.length > 0 ? 40 * lunchOutsideTiffins : 0;
     choviarSurcharge = choviarItems.length > 0 ? 40 * choviarOutsideTiffins : 0;
   } else if (zone === 'borivali') {
-    if (lunchItems.length > 0 && lunchSubtotal < 250) lunchSurcharge = 30;
-    if (choviarItems.length > 0 && choviarSubtotal < 250) choviarSurcharge = 30;
+    const hasLunchMeal = lunchItems.some(i => ['Mini Lunch', 'Brunch', 'Full Lunch', 'Family Meal'].includes(i.name));
+    const hasFullChoviar = choviarItems.some(i => ['Choviar Special', 'Full Choviar'].includes(i.name));
+    
+    if (lunchItems.length > 0 && !hasLunchMeal && lunchSubtotal < 250) lunchSurcharge = 30;
+    if (choviarItems.length > 0 && !hasFullChoviar && choviarSubtotal < 250) choviarSurcharge = 30;
   }
 
   const totalSurcharge = lunchSurcharge + choviarSurcharge;
