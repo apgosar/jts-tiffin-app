@@ -154,7 +154,7 @@ function DeliveryPage() {
               {ordersList.map((order, idx) => (
                 <tr key={order.orderId} className={`border-b border-gray-300 transition ${order.paymentReceived ? 'bg-green-50/50' : 'hover:bg-gray-50'}`}>
                   <td className="border-r border-gray-300 px-1 py-2 text-center align-middle font-bold text-gray-500 text-sm">
-                    {idx + 1}
+                    {order.routeOrder}
                   </td>
                   <td className="border-r border-gray-300 px-1 py-2 text-center align-middle font-black text-gray-900 text-xl">
                     {order.serialNumber || '-'}
