@@ -130,7 +130,25 @@ async function getMenuForPricing() {
   return { menuItems, metadata };
 }
 
-function computeServerPrice(itemName, menuItems, metadata) {
+function computeServerPrice(itemObj, menuItems, metadata) {
+  const itemName = itemObj.name || '';
+  const clientCategory = itemObj.category;
+
+  // If the client explicitly says it's Choviar, prioritize Choviar menu items
+  if (clientCategory === 'Choviar') {
+    if (itemName === 'Full Choviar') {
+      const choviarItems = (menuItems || []).filter(m => m.category === 'Choviar' && m.name !== 'Full Choviar');
+      if (choviarItems.length > 0) {
+        const price = choviarItems.reduce((sum, item) => sum + (Number(item.price) || 0), 0);
+        return { price, category: 'Choviar' };
+      }
+      return { price: 150, category: 'Choviar' };
+    }
+
+    const chItem = menuItems.find(m => m.category === 'Choviar' && m.name === itemName);
+    if (chItem) return { price: chItem.price, category: 'Choviar' };
+  }
+
   // "Roti"
   if (itemName === 'Roti') return { price: parseFloat(metadata.rotiPrice) || 8, category: 'Individual' };
   
@@ -154,7 +172,7 @@ function computeServerPrice(itemName, menuItems, metadata) {
   if (itemName === farsanName) return { price: parseFloat(metadata.farsanPrice) || 0, category: 'Individual' };
   if (itemName === sweetName) return { price: parseFloat(metadata.sweetPrice) || 0, category: 'Individual' };
 
-  // Regular menu item (Lunch / Choviar)
+  // Regular menu item (Lunch / Choviar fallback)
   const item = menuItems.find(m => m.name === itemName);
   if (item) return { price: item.price, category: item.category || 'Lunch' };
 
@@ -276,7 +294,7 @@ app.post('/api/orders', orderLimiter, async (req, res) => {
 
   const validatedItems = [];
   for (const item of items) {
-    const serverData = computeServerPrice(item.name, menuItems, metadata);
+    const serverData = computeServerPrice(item, menuItems, metadata);
     if (!serverData) {
       return res.status(400).json({ error: `Unknown or invalid item: "${item.name}"` });
     }
@@ -510,7 +528,7 @@ app.post('/api/orders/recurring', orderLimiter, async (req, res) => {
 
   const validatedItems = [];
   for (const item of items) {
-    const serverData = computeServerPrice(item.name, menuItems, metadata);
+    const serverData = computeServerPrice(item, menuItems, metadata);
     if (!serverData) return res.status(400).json({ error: `Unknown item: ${item.name}` });
     validatedItems.push({ name: item.name, price: serverData.price, quantity: parseInt(item.quantity, 10), category: serverData.category });
   }
@@ -852,7 +870,7 @@ app.put('/api/orders/manage/:orderId', orderLimiter, async (req, res) => {
     
     const validatedItems = [];
     for (const item of items) {
-      const serverData = computeServerPrice(item.name, menuItems, metadata);
+      const serverData = computeServerPrice(item, menuItems, metadata);
       if (!serverData) return res.status(400).json({ error: `Unknown item: "${item.name}"` });
       
       if (serverData.category === 'Choviar' && orderData.category === 'Lunch') {
