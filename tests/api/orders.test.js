@@ -106,10 +106,10 @@ describe('Order Endpoints', () => {
       expect(res.statusCode).toEqual(200);
       expect(res.body.success).toBe(true);
       // For Borivali (400092) under 250:
-      // Lunch subtotal = 220 (surcharge +30)
-      // Choviar subtotal = 160 (surcharge +30)
-      // Exact = 220 + 30 + 160 + 30 = 440
-      expect(res.body.grandTotal).toBe(440);
+      // Lunch subtotal = 220 (no surcharge for full tiffins)
+      // Choviar subtotal = 160 (no surcharge for full tiffins)
+      // Exact = 220 + 160 = 380
+      expect(res.body.grandTotal).toBe(380);
     });
 
     it('should process Choviar order only', async () => {
@@ -149,15 +149,15 @@ describe('Order Endpoints', () => {
       const payload = {
         customer: { ...baseCustomer, pincode: '400092' }, // within borivali
         items: [
-          { name: 'Mini Lunch', quantity: 1, price: 140 } // under 250
+          { name: 'Roti', quantity: 10, price: 80 } // under 250
         ],
         paymentMode: 'Cash'
       };
       const res = await request(app).post('/api/orders').send(payload);
       expect(res.statusCode).toEqual(200);
-      // Lunch subtotal = 140, Surcharge = 30
-      // Exact total = 170
-      expect(res.body.grandTotal).toBe(170);
+      // Lunch subtotal = 80, Surcharge = 30
+      // Exact total = 110
+      expect(res.body.grandTotal).toBe(110);
       expect(res.body.surchargeTotal).toBe(30);
     });
 
@@ -165,15 +165,15 @@ describe('Order Endpoints', () => {
       const payload = {
         customer: { ...baseCustomer, pincode: '400001' }, // outside
         items: [
-          { name: 'Mini Lunch', quantity: 1, price: 140 } // under 250
+          { name: 'Roti', quantity: 10, price: 80 } // under 250
         ],
         paymentMode: 'Cash'
       };
       const res = await request(app).post('/api/orders').send(payload);
       expect(res.statusCode).toEqual(200);
-      // Lunch subtotal = 140, Surcharge = 40 (because outside borivali is 40 per tiffin, and it bypasses the < 250 rule)
-      // Exact total = 180
-      expect(res.body.grandTotal).toBe(180);
+      // Lunch subtotal = 80, Surcharge = 40 (because outside borivali is 40 per tiffin, and it bypasses the < 250 rule)
+      // Exact total = 120
+      expect(res.body.grandTotal).toBe(120);
       expect(res.body.surchargeTotal).toBe(40);
     });
 
