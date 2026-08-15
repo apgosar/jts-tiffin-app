@@ -136,8 +136,8 @@ function computeServerPrice(itemObj, menuItems, metadata) {
 
   // If the client explicitly says it's Choviar, prioritize Choviar menu items
   if (clientCategory === 'Choviar') {
-    if (itemName === 'Full Choviar') {
-      const choviarItems = (menuItems || []).filter(m => m.category === 'Choviar' && m.name !== 'Full Choviar');
+    if (itemName === 'Full Choviar' || itemName === 'Choviar') {
+      const choviarItems = (menuItems || []).filter(m => m.category === 'Choviar' && m.name !== 'Full Choviar' && m.name !== 'Choviar');
       if (choviarItems.length > 0) {
         const price = choviarItems.reduce((sum, item) => sum + (Number(item.price) || 0), 0);
         return { price, category: 'Choviar' };
@@ -176,8 +176,8 @@ function computeServerPrice(itemObj, menuItems, metadata) {
   const item = menuItems.find(m => m.name === itemName);
   if (item) return { price: item.price, category: item.category || 'Lunch' };
 
-  if (itemName === 'Full Choviar') {
-    const choviarItems = (menuItems || []).filter(m => m.category === 'Choviar' && m.name !== 'Full Choviar');
+  if (itemName === 'Full Choviar' || itemName === 'Choviar') {
+    const choviarItems = (menuItems || []).filter(m => m.category === 'Choviar' && m.name !== 'Full Choviar' && m.name !== 'Choviar');
     if (choviarItems.length > 0) {
       const price = choviarItems.reduce((sum, item) => sum + (Number(item.price) || 0), 0);
       return { price, category: 'Choviar' };
@@ -322,6 +322,13 @@ app.post('/api/orders', orderLimiter, async (req, res) => {
     const hasLunch = validatedItems.some(i => i.category !== 'Choviar');
     const hasChoviar = validatedItems.some(i => i.category === 'Choviar');
 
+    if (hasLunch && metadata.lunchClosed === 'Yes') {
+      return res.status(400).json({ error: 'Lunch orders are closed for tomorrow.' });
+    }
+    if (hasChoviar && metadata.choviarClosed === 'Yes') {
+      return res.status(400).json({ error: 'Choviar orders are closed for tomorrow.' });
+    }
+
     if (hasLunch) {
       const lunchCutoffHr = parseInt(metadata.lunchCutoff?.split(':')[0] || '5', 10);
       const lunchCutoffDay = metadata.lunchCutoffDay || 'Same Day';
@@ -378,7 +385,7 @@ app.post('/api/orders', orderLimiter, async (req, res) => {
     choviarSurcharge = choviarItems.length > 0 ? 40 * choviarOutsideTiffins : 0;
   } else if (zone === 'borivali') {
     const hasLunchMeal = lunchItems.some(i => ['Mini Lunch', 'Brunch', 'Full Lunch', 'Family Meal'].includes(i.name));
-    const hasFullChoviar = choviarItems.some(i => ['Choviar Special', 'Full Choviar'].includes(i.name));
+    const hasFullChoviar = choviarItems.some(i => ['Choviar Special', 'Full Choviar', 'Choviar'].includes(i.name));
     
     if (lunchItems.length > 0 && !hasLunchMeal && lunchSubtotal < 250) lunchSurcharge = 30;
     if (choviarItems.length > 0 && !hasFullChoviar && choviarSubtotal < 250) choviarSurcharge = 30;
@@ -581,8 +588,20 @@ app.post('/api/orders/recurring', orderLimiter, async (req, res) => {
 
     for (const d of deliveryDates) {
       const dateStr = typeof d === 'string' ? d : d.dateStr;
-      const skipLunch = typeof d === 'object' ? d.skipLunch : false;
-      const skipChoviar = typeof d === 'object' ? d.skipChoviar : false;
+      
+      const now = new Date();
+      const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+      const istTime = new Date(utc + (3600000 * 5.5));
+      istTime.setDate(istTime.getDate() + 1);
+      const tomorrowStr = `${String(istTime.getDate()).padStart(2, '0')}/${String(istTime.getMonth() + 1).padStart(2, '0')}/${istTime.getFullYear()}`;
+      
+      let skipLunch = typeof d === 'object' ? d.skipLunch : false;
+      let skipChoviar = typeof d === 'object' ? d.skipChoviar : false;
+
+      if (dateStr === tomorrowStr) {
+        if (metadata.lunchClosed === 'Yes') skipLunch = true;
+        if (metadata.choviarClosed === 'Yes') skipChoviar = true;
+      }
 
       const baseOrderId = uuidv4().slice(0, 8).toUpperCase();
       let roundOffApplied = false;
@@ -1092,6 +1111,29 @@ app.put('/api/admin/menu', adminLimiter, requireAdmin, async (req, res) => {
     if (metadata) {
       const metaRef = db.collection('metadata').doc('global');
       batch.set(metaRef, metadata);
+
+      if (metadata.lunchClosed === 'Yes' || metadata.choviarClosed === 'Yes') {
+        const now = new Date();
+        const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+        const istTime = new Date(utc + (3600000 * 5.5));
+        istTime.setDate(istTime.getDate() + 1);
+        const tomorrowStr = `${String(istTime.getDate()).padStart(2, '0')}/${String(istTime.getMonth() + 1).padStart(2, '0')}/${istTime.getFullYear()}`;
+
+        const ordersSnap = await db.collection('orders')
+          .where('date', '==', tomorrowStr)
+          .where('status', '==', 'ACTIVE')
+          .get();
+          
+        ordersSnap.forEach(doc => {
+          const order = doc.data();
+          if (metadata.lunchClosed === 'Yes' && order.category === 'Lunch') {
+             batch.update(doc.ref, { status: 'CANCELLED', cancelledAt: FieldValue.serverTimestamp(), cancelReason: 'Lunch Closed by Admin' });
+          }
+          if (metadata.choviarClosed === 'Yes' && order.category === 'Choviar') {
+             batch.update(doc.ref, { status: 'CANCELLED', cancelledAt: FieldValue.serverTimestamp(), cancelReason: 'Choviar Closed by Admin' });
+          }
+        });
+      }
     }
 
     await batch.commit();
@@ -1104,7 +1146,7 @@ app.put('/api/admin/menu', adminLimiter, requireAdmin, async (req, res) => {
 
 function getRawComponents(items, metadata) {
   const meta = metadata || MOCK_METADATA;
-  const comp = { Roti: 0, Paratha: 0, Puri: 0, Sabji: 0, Dal: 0, Rice: 0, Sweet: 0, Farsan: 0, Namkeen: 0, Salad: 0 };
+  const comp = { Roti: 0, Paratha: 0, Puri: 0, Sabji: 0, Dal: 0, Rice: 0, Sweet: 0, Farsan: 0, Namkeen: 0, Salad: 0, Tiffins: 0 };
   
   const sweetOn = meta.sweetAvailable === 'Yes';
   const farsanOn = meta.farsanAvailable === 'Yes';
@@ -1128,6 +1170,8 @@ function getRawComponents(items, metadata) {
       const dbMatrix = matrix[tiffinName] || matrix['Full Lunch'];
       const defaultMatrix = MOCK_METADATA.tiffinMatrix[tiffinName] || MOCK_METADATA.tiffinMatrix['Full Lunch'];
       const tMatrix = { ...defaultMatrix, ...dbMatrix };
+      
+      comp.Tiffins += q;
       
       // Bread
       comp[breadType] += (tMatrix[breadType] || 0) * q;
@@ -1307,6 +1351,7 @@ app.get('/api/admin/kitchen', adminLimiter, requireAdmin, async (req, res) => {
       grandTotals.Farsan += comp.Farsan;
       grandTotals.Namkeen = (grandTotals.Namkeen || 0) + comp.Namkeen;
       grandTotals.Salad = (grandTotals.Salad || 0) + comp.Salad;
+      grandTotals.Tiffins = (grandTotals.Tiffins || 0) + comp.Tiffins;
 
       kitchenOrders.push({
         orderId: order.orderId,
@@ -1357,14 +1402,14 @@ app.get('/api/admin/kitchen', adminLimiter, requireAdmin, async (req, res) => {
 
     if (choviarItems.length > 0) {
       const comp = {};
-      const baseChoviarItems = (menuItems || []).filter(m => m.category === 'Choviar' && m.name !== 'Full Choviar');
+      const baseChoviarItems = (menuItems || []).filter(m => m.category === 'Choviar' && m.name !== 'Full Choviar' && m.name !== 'Choviar');
       
       choviarItems.forEach(item => {
         const n = (item.name || '').trim();
         const orderQty = item.quantity || 0;
         if (orderQty <= 0) return;
 
-        if (n === 'Full Choviar') {
+        if (n === 'Full Choviar' || n === 'Choviar') {
           baseChoviarItems.forEach(bm => {
              const bName = (bm.name || '').trim();
              const multiplier = choviarMenuQtyMap[bName] || 1;

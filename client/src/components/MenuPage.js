@@ -338,15 +338,18 @@ export default function MenuPage() {
   }, [setMenu, setMetadata]);
 
   const lunchMenu = menu.filter(m => m.category === 'Lunch' || !m.category).map(m => {
-    if (status === 'LUNCH_CLOSED') return { ...m, available: false };
+    if (status === 'LUNCH_CLOSED' || metadata.lunchClosed === 'Yes') return { ...m, available: false };
     return m;
   });
-  const baseChoviarMenu = menu.filter(m => m.category === 'Choviar' && m.name !== 'Full Choviar');
+  const baseChoviarMenu = menu.filter(m => m.category === 'Choviar' && m.name !== 'Full Choviar' && m.name !== 'Choviar').map(m => {
+    if (metadata.choviarClosed === 'Yes') return { ...m, available: false };
+    return m;
+  });
   const fullChoviarPrice = baseChoviarMenu.reduce((sum, item) => sum + (Number(item.price) || 0), 0);
   const fullChoviarDesc = baseChoviarMenu.map(item => item.qty && Number(item.qty) > 0 ? `${item.name} (${item.qty})` : item.name).join(', ');
   
   const choviarMenu = baseChoviarMenu.length > 0 ? [
-    { name: 'Full Choviar', description: fullChoviarDesc, price: fullChoviarPrice, category: 'Choviar', available: true },
+    { name: 'Choviar', description: fullChoviarDesc, price: fullChoviarPrice, category: 'Choviar', available: metadata.choviarClosed !== 'Yes' },
     ...baseChoviarMenu
   ] : [];
 
@@ -458,11 +461,11 @@ export default function MenuPage() {
                   <div className="flex-1 border-b-2 border-gray-300"></div>
                 </div>
                 
-                {status === 'LUNCH_CLOSED' ? (
+                {status === 'LUNCH_CLOSED' || metadata.lunchClosed === 'Yes' ? (
                   <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-col items-center justify-center opacity-70">
                     <span className="text-xl mb-1">🚫</span>
-                    <p className="text-sm font-bold text-gray-600">Lunch: Unavailable</p>
-                    <p className="text-xs text-gray-500 mt-0.5">Orders closed at 5 AM</p>
+                    <p className="text-sm font-bold text-gray-600">No Lunch tomorrow</p>
+                    <p className="text-xs text-gray-500 mt-0.5">Orders closed</p>
                   </div>
                 ) : (
                   <>
@@ -492,7 +495,7 @@ export default function MenuPage() {
             )}
 
             {/* ── Custom Order Section ── */}
-            {status !== 'LUNCH_CLOSED' && (
+            {status !== 'LUNCH_CLOSED' && metadata.lunchClosed !== 'Yes' && (
               <div className="flex flex-col gap-4 mt-2">
                 <div className="flex items-center gap-2 mb-1">
                   <h2 className="text-2xl font-bold text-gray-800 uppercase" style={{ fontFamily: "'Oswald', Impact, sans-serif" }}>Custom Order</h2>
@@ -511,22 +514,32 @@ export default function MenuPage() {
                     <div className="flex-1 border-b-2 border-gray-300 mr-2"></div>
                   </div>
                 </div>
-                {choviarMenu.filter(item => ['Choviar Special', 'Full Choviar'].includes(item.name)).map((item, idx) => (
+                {metadata.choviarClosed === 'Yes' ? (
+                  <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-col items-center justify-center opacity-70">
+                    <span className="text-xl mb-1">🚫</span>
+                    <p className="text-sm font-bold text-gray-600">No Choviar tomorrow</p>
+                    <p className="text-xs text-gray-500 mt-0.5">Orders closed</p>
+                  </div>
+                ) : (
+                  <>
+                {choviarMenu.filter(item => ['Choviar Special', 'Choviar', 'Full Choviar'].includes(item.name)).map((item, idx) => (
                   <TiffinCard key={item.name} item={item} cart={cart} updateQuantity={updateQuantity} animDelay={idx * 70} />
                 ))}
 
-                {choviarMenu.filter(item => !['Choviar Special', 'Full Choviar'].includes(item.name)).length > 0 && (
+                {choviarMenu.filter(item => !['Choviar Special', 'Choviar', 'Full Choviar'].includes(item.name)).length > 0 && (
                   <>
                     <div className="flex items-center gap-2 mb-1 mt-2">
                       <h2 className="text-2xl font-bold text-gray-800 uppercase" style={{ fontFamily: "'Oswald', Impact, sans-serif" }}>Custom Choviar</h2>
                       <div className="flex-1 border-b-2 border-gray-300"></div>
                     </div>
                     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mt-1 px-4 py-1 flex flex-col">
-                      {choviarMenu.filter(item => !['Choviar Special', 'Full Choviar'].includes(item.name)).map((item, idx) => (
+                      {choviarMenu.filter(item => !['Choviar Special', 'Choviar', 'Full Choviar'].includes(item.name)).map((item, idx) => (
                         <StepperItem key={item.name} title={item.name} name={item.name} price={item.price} description={item.description} qty={item.qty} cart={cart} updateQuantity={updateQuantity} category="Choviar" isCustom={true} />
                       ))}
                     </div>
                   </>
+                )}
+                </>
                 )}
               </div>
             )}

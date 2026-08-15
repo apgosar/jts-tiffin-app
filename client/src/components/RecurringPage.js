@@ -191,7 +191,7 @@ export default function RecurringPage() {
     }
     
     if (selectedItems.choviar) {
-      items.push({ name: 'Full Choviar', quantity: 1 });
+      items.push({ name: 'Choviar', quantity: 1 });
     }
 
     try {
@@ -496,7 +496,7 @@ export default function RecurringPage() {
                       ${selectedItems.choviar ? 'border-jts-red bg-red-50' : 'border-transparent hover:bg-gray-50'}`}
                   >
                     <div>
-                      <p className={`font-bold ${selectedItems.choviar ? 'text-jts-red' : 'text-gray-800'}`}>Full Choviar</p>
+                      <p className={`font-bold ${selectedItems.choviar ? 'text-jts-red' : 'text-gray-800'}`}>Choviar</p>
                       <p className="text-xs text-gray-500 mt-0.5">Standard Choviar tiffin</p>
                     </div>
                     <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center
@@ -549,7 +549,7 @@ export default function RecurringPage() {
                   )}
                   {selectedItems.choviar && (
                     <li className="text-sm font-bold text-gray-800 flex justify-between">
-                      <span>• Full Choviar</span>
+                      <span>• Choviar</span>
                       <span className="text-gray-500">{deliveryDates.filter(d => !d.skipChoviar).length} days</span>
                     </li>
                   )}

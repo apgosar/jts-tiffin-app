@@ -455,6 +455,18 @@ function MenuTab({ password, currentMenu, currentMetadata, onMenuSaved }) {
           </div>
         </div>
 
+        {/* Closed Status */}
+        <div className="col-span-1 sm:col-span-2 pt-2 border-t border-gray-100 mt-2 flex flex-wrap gap-4">
+          <label className="flex items-center gap-2 cursor-pointer text-sm font-bold text-red-600 bg-red-50 border border-red-200 px-3 py-2 rounded-xl flex-1 justify-center transition hover:bg-red-100">
+            <input type="checkbox" checked={metadata.lunchClosed === 'Yes'} onChange={e => updateMeta('lunchClosed', e.target.checked ? 'Yes' : 'No')} className="w-4 h-4 text-red-600" />
+            Close Lunch Tomorrow
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer text-sm font-bold text-red-600 bg-red-50 border border-red-200 px-3 py-2 rounded-xl flex-1 justify-center transition hover:bg-red-100">
+            <input type="checkbox" checked={metadata.choviarClosed === 'Yes'} onChange={e => updateMeta('choviarClosed', e.target.checked ? 'Yes' : 'No')} className="w-4 h-4 text-red-600" />
+            Close Choviar Tomorrow
+          </label>
+        </div>
+
         {/* Namkeen and Salad Checkboxes */}
         <div className="flex gap-4">
           <label className="flex items-center gap-1.5 cursor-pointer text-xs font-bold text-gray-700">
@@ -787,8 +799,9 @@ function OrdersTab({ password }) {
       )}
 
       {!loading && orders.length > 0 && (() => {
-        const lunchOrders = orders.filter(o => o.items.some(i => i.category !== 'Choviar'));
-        const choviarOrders = orders.filter(o => o.items.every(i => i.category === 'Choviar'));
+        const activeOrdersList = orders.filter(o => o.status !== 'CANCELLED');
+        const lunchOrders = activeOrdersList.filter(o => o.items.some(i => i.category !== 'Choviar'));
+        const choviarOrders = activeOrdersList.filter(o => o.items.every(i => i.category === 'Choviar'));
         
         const sortByRoute = (a, b) => {
           const rA = parseInt(assignments[a.orderId]?.routeOrder, 10) || 9999;
@@ -1033,6 +1046,7 @@ function KitchenTab({ password }) {
                 <h4 className="text-sm font-bold text-gray-800 border-b pb-2 mb-3 print:hidden">🔢 Grand Totals (Bulk Quantities)</h4>
                 <div className="grid grid-cols-3 gap-3 mb-6 print:hidden">
                   {[
+                    { label: 'Tiffins', val: summary.grandTotals?.Tiffins },
                     { label: 'Roti', val: summary.grandTotals?.Roti },
                     { label: 'Paratha', val: summary.grandTotals?.Paratha },
                     { label: 'Puri', val: summary.grandTotals?.Puri },
@@ -1124,6 +1138,7 @@ function KitchenTab({ password }) {
                           <th className="py-1.5 px-1 rounded-l-lg font-bold">SR NO</th>
                           <th className="py-1.5 px-1 font-bold">Name</th>
                           <th className="py-1.5 px-1 font-bold">Locality</th>
+                          {summary.grandTotals?.Tiffins > 0 && <th className="py-1.5 px-1 text-center font-bold">Tiffins</th>}
                           <th className="py-1.5 px-1 text-center font-bold">Roti</th>
                           <th className="py-1.5 px-1 text-center font-bold">Sabji</th>
                           <th className="py-1.5 px-1 text-center font-bold">Dal</th>
@@ -1142,6 +1157,7 @@ function KitchenTab({ password }) {
                               {order.name}
                             </td>
                             <td className="py-2 px-1 text-gray-600 text-[10px] whitespace-normal min-w-[80px] leading-snug">{order.locality || '-'}</td>
+                            {summary.grandTotals?.Tiffins > 0 && <td className="py-2 px-1 text-center text-gray-800 font-bold">{order.Tiffins || '-'}</td>}
                             <td className="py-2 px-1 text-center text-gray-800 font-bold">{order.Roti || '-'}</td>
                             <td className="py-2 px-1 text-center text-gray-800 font-bold">{order.Sabji || '-'}</td>
                             <td className="py-2 px-1 text-center text-gray-800 font-bold">{order.Dal || '-'}</td>
