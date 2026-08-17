@@ -152,7 +152,7 @@ function StepperItem({ title, name, price, subtitle, description, qty, cart, upd
           <p className="font-bold text-gray-800 text-sm">
             {title} {subtitle && <span className="italic font-normal text-xs text-gray-500">({subtitle})</span>}
           </p>
-          {qty && Number(qty) > 0 && (
+          {qty && Number(qty) > 0 && !(category === 'Choviar' && isCustom) && (
             <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-orange-100 text-orange-700 border border-orange-200">
               {qty} pcs/order
             </span>

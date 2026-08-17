@@ -134,12 +134,15 @@ function computeServerPrice(itemObj, menuItems, metadata) {
   const itemName = itemObj.name || '';
   const clientCategory = itemObj.category;
 
-  // If the client explicitly says it's Choviar, prioritize Choviar menu items
   if (clientCategory === 'Choviar') {
-    if (itemName === 'Full Choviar' || itemName === 'Choviar') {
-      const choviarItems = (menuItems || []).filter(m => m.category === 'Choviar' && m.name !== 'Full Choviar' && m.name !== 'Choviar');
+    if (itemName === 'Full Choviar' || itemName === 'Choviar' || itemName === 'Choviar Special') {
+      const choviarItems = (menuItems || []).filter(m => m.category === 'Choviar' && m.name !== 'Full Choviar' && m.name !== 'Choviar' && m.name !== 'Choviar Special');
       if (choviarItems.length > 0) {
-        const price = choviarItems.reduce((sum, item) => sum + (Number(item.price) || 0), 0);
+        const price = choviarItems.reduce((sum, item) => {
+          const qty = Number(item.qty) || 1;
+          const rate = Number(item.price) || 0;
+          return sum + (qty * rate);
+        }, 0);
         return { price, category: 'Choviar' };
       }
       return { price: 150, category: 'Choviar' };
@@ -176,10 +179,14 @@ function computeServerPrice(itemObj, menuItems, metadata) {
   const item = menuItems.find(m => m.name === itemName);
   if (item) return { price: item.price, category: item.category || 'Lunch' };
 
-  if (itemName === 'Full Choviar' || itemName === 'Choviar') {
-    const choviarItems = (menuItems || []).filter(m => m.category === 'Choviar' && m.name !== 'Full Choviar' && m.name !== 'Choviar');
+  if (itemName === 'Full Choviar' || itemName === 'Choviar' || itemName === 'Choviar Special') {
+    const choviarItems = (menuItems || []).filter(m => m.category === 'Choviar' && m.name !== 'Full Choviar' && m.name !== 'Choviar' && m.name !== 'Choviar Special');
     if (choviarItems.length > 0) {
-      const price = choviarItems.reduce((sum, item) => sum + (Number(item.price) || 0), 0);
+      const price = choviarItems.reduce((sum, item) => {
+        const qty = Number(item.qty) || 1;
+        const rate = Number(item.price) || 0;
+        return sum + (qty * rate);
+      }, 0);
       return { price, category: 'Choviar' };
     }
     return { price: 150, category: 'Choviar' }; // Fallback
