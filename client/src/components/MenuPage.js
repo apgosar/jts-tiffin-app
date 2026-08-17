@@ -355,7 +355,12 @@ export default function MenuPage() {
     if (metadata.choviarClosed === 'Yes') return { ...m, available: false };
     return m;
   });
-  const fullChoviarPrice = baseChoviarMenu.reduce((sum, item) => sum + (Number(item.price) || 0), 0);
+  const exactChoviarPrice = baseChoviarMenu.reduce((sum, item) => {
+    const qty = Number(item.qty) || 1;
+    const rate = Number(item.price) || 0;
+    return sum + (qty * rate);
+  }, 0);
+  const fullChoviarPrice = Math.round(exactChoviarPrice / 5) * 5;
   const fullChoviarDesc = baseChoviarMenu.map(item => item.qty && Number(item.qty) > 0 ? `${item.name} (${item.qty})` : item.name).join(', ');
   
   const choviarMenu = baseChoviarMenu.length > 0 ? [
