@@ -464,12 +464,16 @@ export default function MenuPage() {
             {lunchMenu.length > 0 && (
               <div className="flex flex-col gap-4">
                 <div>
-                  <div className="flex items-center gap-2 mb-1">
+                  <div className="flex items-center gap-2 mb-2">
                     <h2 className="text-2xl font-bold text-gray-800 uppercase" style={{ fontFamily: "'Oswald', Impact, sans-serif" }}>Lunch</h2>
                     <div className="flex-1 border-b-2 border-gray-300"></div>
                   </div>
                   {metadata.lunchCutoff && (
-                    <p className="text-[10px] font-bold text-jts-red uppercase tracking-wider">{formatCutoffTime(metadata.lunchCutoff, metadata.lunchCutoffDay)}</p>
+                    <div className="bg-red-50 border border-red-100 rounded-lg py-2 px-3 flex items-center justify-center shadow-sm">
+                      <p className="text-sm font-extrabold text-jts-red uppercase tracking-wide">
+                        ⏰ {formatCutoffTime(metadata.lunchCutoff, metadata.lunchCutoffDay)}
+                      </p>
+                    </div>
                   )}
                 </div>
                 
@@ -521,14 +525,18 @@ export default function MenuPage() {
             {choviarMenu.length > 0 && (
               <div className="flex flex-col gap-4 mt-2">
                 <div>
-                  <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2 flex-1">
                       <h2 className="text-2xl font-bold text-gray-800 uppercase" style={{ fontFamily: "'Oswald', Impact, sans-serif" }}>Choviar</h2>
                       <div className="flex-1 border-b-2 border-gray-300 mr-2"></div>
                     </div>
                   </div>
                   {metadata.choviarCutoff && (
-                    <p className="text-[10px] font-bold text-jts-red uppercase tracking-wider">{formatCutoffTime(metadata.choviarCutoff, metadata.choviarCutoffDay)}</p>
+                    <div className="bg-red-50 border border-red-100 rounded-lg py-2 px-3 flex items-center justify-center shadow-sm">
+                      <p className="text-sm font-extrabold text-jts-red uppercase tracking-wide">
+                        ⏰ {formatCutoffTime(metadata.choviarCutoff, metadata.choviarCutoffDay)}
+                      </p>
+                    </div>
                   )}
                 </div>
                 {metadata.choviarClosed === 'Yes' ? (
