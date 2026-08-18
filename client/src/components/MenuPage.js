@@ -6,15 +6,51 @@ import LoadingSpinner from './LoadingSpinner';
 import JtsLogo from './JtsLogo';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-function formatCutoffTime(timeStr, dayStr) {
-  if (!timeStr) return '';
-  const [hh, mm] = timeStr.split(':');
-  let h = parseInt(hh, 10);
-  const ampm = h >= 12 ? 'PM' : 'AM';
-  h = h % 12 || 12;
-  const timeFormatted = `${h}:${mm} ${ampm}`;
-  const dayFormatted = dayStr === 'Previous Day' ? 'Today' : 'Tomorrow';
-  return `Orders till ${timeFormatted} ${dayFormatted}`;
+function CountdownBanner({ cutoffTime, targetDate }) {
+  const [timeLeft, setTimeLeft] = useState('');
+
+  useEffect(() => {
+    if (!cutoffTime) return;
+
+    const calculateTimeLeft = () => {
+      const now = new Date();
+      const diff = cutoffTime - now;
+
+      if (diff <= 0) {
+        return 'Orders Closed';
+      }
+
+      const hours = Math.floor(diff / (1000 * 60 * 60));
+      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+      const hDisplay = hours > 0 ? `${hours}h ` : '';
+      const mDisplay = (minutes > 0 || hours > 0) ? `${minutes}m ` : '';
+      const sDisplay = `${seconds}s`;
+
+      return `Closes in ${hDisplay}${mDisplay}${sDisplay}`;
+    };
+
+    setTimeLeft(calculateTimeLeft());
+    const interval = setInterval(() => {
+      setTimeLeft(calculateTimeLeft());
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [cutoffTime]);
+
+  if (!cutoffTime || !targetDate) return null;
+
+  return (
+    <div className="bg-red-50 border border-red-100 rounded-lg py-2 px-3 flex flex-col items-center justify-center shadow-sm">
+      <p className="text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-0.5">
+        For: {targetDate.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short' })}
+      </p>
+      <p className="text-sm font-extrabold text-jts-red uppercase tracking-wide flex items-center gap-1.5">
+        ⏰ {timeLeft}
+      </p>
+    </div>
+  );
 }
 
 // ─── Quantity Stepper ─────────────────────────────────────────────────────────
@@ -328,7 +364,7 @@ export default function MenuPage() {
   const [error, setError]       = useState(null);
   
   // Use ordering state helper
-  const { status, isMenuLive, targetDateLabel } = getOrderingState(metadata);
+  const { status, isMenuLive, targetDateLabel, targetDate, lunchCutoffTime, choviarCutoffTime } = getOrderingState(metadata);
 
   useEffect(() => {
     let cancelled = false;
@@ -474,19 +510,14 @@ export default function MenuPage() {
                     <div className="flex-1 border-b-2 border-gray-300"></div>
                   </div>
                   {metadata.lunchCutoff && (
-                    <div className="bg-red-50 border border-red-100 rounded-lg py-2 px-3 flex items-center justify-center shadow-sm">
-                      <p className="text-sm font-extrabold text-jts-red uppercase tracking-wide">
-                        ⏰ {formatCutoffTime(metadata.lunchCutoff, metadata.lunchCutoffDay)}
-                      </p>
-                    </div>
+                    <CountdownBanner cutoffTime={lunchCutoffTime} targetDate={targetDate} />
                   )}
                 </div>
                 
                 {status === 'LUNCH_CLOSED' || metadata.lunchClosed === 'Yes' ? (
                   <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-col items-center justify-center opacity-70">
                     <span className="text-xl mb-1">🚫</span>
-                    <p className="text-sm font-bold text-gray-600">No Lunch tomorrow</p>
-                    <p className="text-xs text-gray-500 mt-0.5">Orders closed</p>
+                    <p className="text-sm font-bold text-gray-600 text-center">Orders closed for {targetDateLabel}</p>
                   </div>
                 ) : (
                   <>
@@ -537,18 +568,13 @@ export default function MenuPage() {
                     </div>
                   </div>
                   {metadata.choviarCutoff && (
-                    <div className="bg-red-50 border border-red-100 rounded-lg py-2 px-3 flex items-center justify-center shadow-sm">
-                      <p className="text-sm font-extrabold text-jts-red uppercase tracking-wide">
-                        ⏰ {formatCutoffTime(metadata.choviarCutoff, metadata.choviarCutoffDay)}
-                      </p>
-                    </div>
+                    <CountdownBanner cutoffTime={choviarCutoffTime} targetDate={targetDate} />
                   )}
                 </div>
                 {metadata.choviarClosed === 'Yes' ? (
                   <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-col items-center justify-center opacity-70">
                     <span className="text-xl mb-1">🚫</span>
-                    <p className="text-sm font-bold text-gray-600">No Choviar tomorrow</p>
-                    <p className="text-xs text-gray-500 mt-0.5">Orders closed</p>
+                    <p className="text-sm font-bold text-gray-600 text-center">Orders closed for {targetDateLabel}</p>
                   </div>
                 ) : (
                   <>

@@ -103,6 +103,8 @@ export function getOrderingState(metadata = {}) {
     status,
     isMenuLive,
     targetDate,
+    lunchCutoffTime,
+    choviarCutoffTime,
     targetDateLabel: targetDate.toLocaleDateString('en-IN', {
       weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
     })

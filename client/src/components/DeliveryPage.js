@@ -113,12 +113,17 @@ function DeliveryPage() {
 
   const todayStr = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' });
   
-  const totalCash = activeOrders.reduce((sum, order) => {
-    if (order.paymentReceived && order.paymentMethod === 'Cash' && order.amountReceived) {
+  const getCollection = (list, method) => list.reduce((sum, order) => {
+    if (order.paymentReceived && order.paymentMethod === method && order.amountReceived) {
       return sum + parseInt(order.amountReceived, 10);
     }
     return sum;
   }, 0);
+
+  const lunchCash = getCollection(lunchOrders, 'Cash');
+  const lunchGpay = getCollection(lunchOrders, 'GPay');
+  const choviarCash = getCollection(choviarOrders, 'Cash');
+  const choviarGpay = getCollection(choviarOrders, 'GPay');
 
   const renderOrderTable = (ordersList, title) => {
     if (ordersList.length === 0) return null;
@@ -283,8 +288,24 @@ function DeliveryPage() {
       )}
 
       {riders.length > 0 && (
-        <div className="bg-green-100 text-green-900 px-4 py-3 text-center font-bold text-lg shadow-sm border-b border-green-200 sticky top-[118px] z-10">
-          Total Cash Received : ₹{totalCash}
+        <div className="bg-green-50 text-green-900 px-4 py-2 text-sm font-bold shadow-sm border-b border-green-200 sticky top-[118px] z-10 flex flex-col gap-1">
+          <div className="flex justify-around items-center">
+            <div className="text-center">
+              <span className="block text-gray-500 uppercase text-[10px] tracking-wider mb-0.5">Lunch Collection</span>
+              <div className="flex gap-4 justify-center">
+                <span className="text-gray-700">Cash: <span className="text-green-700">₹{lunchCash}</span></span>
+                <span className="text-gray-700">GPay: <span className="text-green-700">₹{lunchGpay}</span></span>
+              </div>
+            </div>
+            <div className="w-px h-8 bg-green-200"></div>
+            <div className="text-center">
+              <span className="block text-gray-500 uppercase text-[10px] tracking-wider mb-0.5">Choviar Collection</span>
+              <div className="flex gap-4 justify-center">
+                <span className="text-gray-700">Cash: <span className="text-green-700">₹{choviarCash}</span></span>
+                <span className="text-gray-700">GPay: <span className="text-green-700">₹{choviarGpay}</span></span>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
