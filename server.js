@@ -180,18 +180,23 @@ function computeServerPrice(itemObj, menuItems, metadata) {
   const item = menuItems.find(m => m.name === itemName);
   if (item) return { price: item.price, category: item.category || 'Lunch' };
 
-  if (itemName === 'Full Choviar' || itemName === 'Choviar' || itemName === 'Choviar Special') {
-    const choviarItems = (menuItems || []).filter(m => m.category === 'Choviar' && m.name !== 'Full Choviar' && m.name !== 'Choviar' && m.name !== 'Choviar Special');
+  if (itemName === 'Full Choviar' || itemName === 'Choviar' || itemName === 'Choviar Special' || itemName === 'Family Choviar') {
+    const choviarItems = (menuItems || []).filter(m => m.category === 'Choviar' && m.name !== 'Full Choviar' && m.name !== 'Choviar' && m.name !== 'Choviar Special' && m.name !== 'Family Choviar');
     if (choviarItems.length > 0) {
       const exactPrice = choviarItems.reduce((sum, item) => {
         const qty = Number(item.qty) || 1;
         const rate = Number(item.price) || 0;
         return sum + (qty * rate);
       }, 0);
-      const price = Math.round(exactPrice / 5) * 5;
-      return { price, category: 'Choviar' };
+      if (itemName === 'Family Choviar') {
+        const price = Math.round((exactPrice * 1.5) / 5) * 5;
+        return { price, category: 'Choviar' };
+      } else {
+        const price = Math.round(exactPrice / 5) * 5;
+        return { price, category: 'Choviar' };
+      }
     }
-    return { price: 150, category: 'Choviar' }; // Fallback
+    return { price: itemName === 'Family Choviar' ? 225 : 150, category: 'Choviar' }; // Fallback
   }
   return null;
 }

@@ -172,7 +172,7 @@ export default function App() {
 
   // ── Derived cart values ──────────────────────────────────────────────────────
   const cartItems    = Object.values(cart).filter(i => i.quantity > 0);
-  const cartCount    = cartItems.reduce((s, i) => s + i.quantity, 0);
+  const cartCount    = cartItems.length;
   const cartSubtotal = cartItems.reduce((s, i) => s + i.price * i.quantity, 0);
 
   return (

@@ -387,7 +387,7 @@ export default function MenuPage() {
     if (status === 'LUNCH_CLOSED' || metadata.lunchClosed === 'Yes') return { ...m, available: false };
     return m;
   });
-  const baseChoviarMenu = menu.filter(m => m.category === 'Choviar' && m.name !== 'Full Choviar' && m.name !== 'Choviar').map(m => {
+  const baseChoviarMenu = menu.filter(m => m.category === 'Choviar' && !['Full Choviar', 'Choviar', 'Choviar Special', 'Family Choviar'].includes(m.name)).map(m => {
     if (metadata.choviarClosed === 'Yes') return { ...m, available: false };
     return m;
   });
@@ -399,8 +399,15 @@ export default function MenuPage() {
   const fullChoviarPrice = Math.round(exactChoviarPrice / 5) * 5;
   const fullChoviarDesc = baseChoviarMenu.map(item => item.qty && Number(item.qty) > 0 ? `${item.name} (${item.qty})` : item.name).join(', ');
   
+  const familyChoviarPrice = Math.round((exactChoviarPrice * 1.5) / 5) * 5;
+  const familyChoviarDesc = baseChoviarMenu.map(item => {
+    const qty = item.qty && Number(item.qty) > 0 ? Number(item.qty) * 1.5 : 1.5;
+    return `${qty} ${item.name}`;
+  }).join(', ');
+
   const choviarMenu = baseChoviarMenu.length > 0 ? [
     { name: 'Choviar', description: fullChoviarDesc, price: fullChoviarPrice, category: 'Choviar', available: metadata.choviarClosed !== 'Yes' },
+    { name: 'Family Choviar', description: familyChoviarDesc, price: familyChoviarPrice, category: 'Choviar', available: metadata.choviarClosed !== 'Yes' },
     ...baseChoviarMenu
   ] : [];
 
@@ -578,18 +585,18 @@ export default function MenuPage() {
                   </div>
                 ) : (
                   <>
-                {choviarMenu.filter(item => ['Choviar Special', 'Choviar', 'Full Choviar'].includes(item.name)).map((item, idx) => (
+                {choviarMenu.filter(item => ['Choviar Special', 'Choviar', 'Full Choviar', 'Family Choviar'].includes(item.name)).map((item, idx) => (
                   <TiffinCard key={item.name} item={item} cart={cart} updateQuantity={updateQuantity} animDelay={idx * 70} />
                 ))}
 
-                {choviarMenu.filter(item => !['Choviar Special', 'Choviar', 'Full Choviar'].includes(item.name)).length > 0 && (
+                {choviarMenu.filter(item => !['Choviar Special', 'Choviar', 'Full Choviar', 'Family Choviar'].includes(item.name)).length > 0 && (
                   <>
                     <div className="flex items-center gap-2 mb-1 mt-2">
                       <h2 className="text-2xl font-bold text-gray-800 uppercase" style={{ fontFamily: "'Oswald', Impact, sans-serif" }}>Custom Choviar</h2>
                       <div className="flex-1 border-b-2 border-gray-300"></div>
                     </div>
                     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mt-1 px-4 py-1 flex flex-col">
-                      {choviarMenu.filter(item => !['Choviar Special', 'Choviar', 'Full Choviar'].includes(item.name)).map((item, idx) => (
+                      {choviarMenu.filter(item => !['Choviar Special', 'Choviar', 'Full Choviar', 'Family Choviar'].includes(item.name)).map((item, idx) => (
                         <StepperItem key={item.name} title={item.name} name={item.name} price={item.price} description={item.description} qty={item.qty} cart={cart} updateQuantity={updateQuantity} category="Choviar" isCustom={true} />
                       ))}
                     </div>
