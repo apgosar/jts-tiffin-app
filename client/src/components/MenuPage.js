@@ -614,8 +614,15 @@ export default function MenuPage() {
         {status !== 'CLOSED' && !loading && !error && menu.length > 0 && (
           <div className="mt-8 bg-jts-navy rounded-2xl p-4 text-center">
             <p className="text-white font-bold text-base" style={{ fontFamily: "'Oswald', sans-serif" }}>Keyur Shah</p>
-            <a href="tel:+918779084488" className="text-jts-gold font-semibold text-lg tracking-wide hover:underline">📞 87790 84488</a>
-            <p className="text-jts-gold text-xs mt-1 font-medium">₹40 extra per tiffin for delivery outside Borivali</p>
+            <a href="tel:+918779084488" className="text-jts-gold font-semibold text-lg tracking-wide hover:underline mb-1 inline-block">📞 87790 84488</a>
+            <p className="text-jts-gold text-xs font-medium">₹40 extra per tiffin for delivery outside Borivali</p>
+            
+            <div className="mt-4 pt-3 border-t border-blue-900/50 text-gray-300 text-xs flex flex-col gap-1.5 font-medium">
+              <p>📞 Calling time: 10 AM – 10 PM</p>
+              <p>💳 Send payment screenshot if paying online</p>
+              <p>❗ Kindly avoid repeated calls – will call back!</p>
+              <p>✉️ Message if urgent</p>
+            </div>
           </div>
         )}
       </main>
