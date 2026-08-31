@@ -1423,18 +1423,20 @@ app.get('/api/admin/kitchen', adminLimiter, requireAdmin, async (req, res) => {
         const orderQty = item.quantity || 0;
         if (orderQty <= 0) return;
 
-        if (n === 'Full Choviar' || n === 'Choviar') {
+        if (n === 'Full Choviar' || n === 'Choviar' || n === 'Choviar Special' || n === 'Family Choviar') {
           baseChoviarItems.forEach(bm => {
              const bName = (bm.name || '').trim();
-             const multiplier = choviarMenuQtyMap[bName] || 1;
+             let multiplier = choviarMenuQtyMap[bName] || 1;
+             if (n === 'Family Choviar') {
+                 multiplier *= 1.5;
+             }
              const kitchenQty = orderQty * multiplier;
              comp[bName] = (comp[bName] || 0) + kitchenQty;
              choviarGrandTotals[bName] = (choviarGrandTotals[bName] || 0) + kitchenQty;
           });
         } else {
-          // If the menu defines a per-order qty for this item, multiply it
-          const multiplier = choviarMenuQtyMap[n] || 1;
-          const kitchenQty = orderQty * multiplier;
+          // Custom order item: user specifies exact quantity. Do not multiply by menu qty.
+          const kitchenQty = orderQty;
 
           comp[n] = (comp[n] || 0) + kitchenQty;
           choviarGrandTotals[n] = (choviarGrandTotals[n] || 0) + kitchenQty;
