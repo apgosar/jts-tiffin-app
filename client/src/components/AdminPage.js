@@ -1795,7 +1795,7 @@ function SettingsTab({ password, currentMetadata, onMetadataSaved }) {
       {/* Cutoff Times */}
       <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm flex flex-col gap-4">
         <h3 className="text-sm font-bold text-gray-800 border-b pb-2">Cutoff Times (24hr format)</h3>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide block mb-1">Lunch Cutoff Time</label>
             <div className="flex gap-2">
