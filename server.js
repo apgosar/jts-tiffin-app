@@ -1216,9 +1216,9 @@ function getRawComponents(items, metadata) {
         comp.Dal += 0.5 * q;
       } else if (n.toLowerCase().includes('dal (full)')) {
         comp.Dal += 1 * q;
-      } else if (n === 'Rice (Half)') {
+      } else if (n.toLowerCase().includes('rice (half)')) {
         comp.Rice += 0.5 * q;
-      } else if (n === 'Rice (Full)' || n === 'Rice') {
+      } else if (n.toLowerCase().includes('rice (full)') || n.toLowerCase() === 'rice') {
         comp.Rice += 1 * q;
       } else if (n.toLowerCase().includes('sweet')) {
         comp.Sweet += 1 * q;
