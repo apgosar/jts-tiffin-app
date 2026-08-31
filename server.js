@@ -542,6 +542,9 @@ app.post('/api/orders/recurring', orderLimiter, async (req, res) => {
       return res.status(400).json({ error: `Missing customer field: ${f}` });
     }
   }
+  if (!/^\d{6}$/.test(customer.pincode.trim())) {
+    return res.status(400).json({ error: 'Invalid PINCODE' });
+  }
 
   let menuItems, metadata;
   try {

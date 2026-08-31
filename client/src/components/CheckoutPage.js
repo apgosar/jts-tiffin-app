@@ -282,7 +282,10 @@ export default function CheckoutPage() {
   };
 
   const handleFormChange = (field) => (e) => {
-    const val = e.target.value;
+    let val = e.target.value;
+    if (field === 'pincode') {
+      val = val.replace(/\D/g, '').slice(0, 6);
+    }
     setForm(prev => ({ ...prev, [field]: val }));
     if (errors[field]) setErrors(prev => ({ ...prev, [field]: '' }));
     if (field === 'pincode') computeZone(val);
@@ -637,8 +640,9 @@ export default function CheckoutPage() {
                       value={form.pincode}
                       onChange={handleFormChange('pincode')}
                       placeholder="6-digit PINCODE"
-                      inputMode="numeric"
                       maxLength={6}
+                      inputMode="numeric"
+                      pattern="[0-9]*"
                     />
                   </Field>
 
