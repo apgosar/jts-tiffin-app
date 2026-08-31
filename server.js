@@ -405,38 +405,37 @@ app.post('/api/orders', orderLimiter, async (req, res) => {
     if (choviarItems.length > 0 && !hasFullChoviar && choviarSubtotal < 250) choviarSurcharge = 30;
   }
 
-  const totalSurcharge = lunchSurcharge + choviarSurcharge;
-  const exactTotal = subtotal + totalSurcharge;
-  const grandTotalRounded = Math.round(exactTotal / 5) * 5;
-  const roundOffAmount = grandTotalRounded - exactTotal;
+  const exactLunchTotal = lunchItems.length > 0 ? lunchSubtotal + lunchSurcharge : 0;
+  const exactChoviarTotal = choviarItems.length > 0 ? choviarSubtotal + choviarSurcharge : 0;
+
+  const roundedLunchTotal = Math.round(exactLunchTotal / 5) * 5;
+  const roundedChoviarTotal = Math.round(exactChoviarTotal / 5) * 5;
+
+  const lunchRoundOff = roundedLunchTotal - exactLunchTotal;
+  const choviarRoundOff = roundedChoviarTotal - exactChoviarTotal;
 
   const subOrders = [];
-  let roundOffApplied = false;
   
   if (lunchItems.length > 0) {
-    const isFirst = !roundOffApplied;
-    roundOffApplied = true;
     subOrders.push({
       orderId: choviarItems.length > 0 ? `${baseOrderId}-L` : baseOrderId,
       items: lunchItems,
       subtotal: lunchSubtotal,
       surchargeTotal: lunchSurcharge,
-      roundOffAmount: isFirst ? roundOffAmount : 0,
-      grandTotal: lunchSubtotal + lunchSurcharge + (isFirst ? roundOffAmount : 0),
+      roundOffAmount: lunchRoundOff,
+      grandTotal: roundedLunchTotal,
       category: 'Lunch'
     });
   }
 
   if (choviarItems.length > 0) {
-    const isFirst = !roundOffApplied;
-    roundOffApplied = true;
     subOrders.push({
       orderId: lunchItems.length > 0 ? `${baseOrderId}-C` : baseOrderId,
       items: choviarItems,
       subtotal: choviarSubtotal,
       surchargeTotal: choviarSurcharge,
-      roundOffAmount: isFirst ? roundOffAmount : 0,
-      grandTotal: choviarSubtotal + choviarSurcharge + (isFirst ? roundOffAmount : 0),
+      roundOffAmount: choviarRoundOff,
+      grandTotal: roundedChoviarTotal,
       category: 'Choviar'
     });
   }

@@ -240,10 +240,17 @@ export default function CheckoutPage() {
     if (choviarItems.length > 0 && !hasFullChoviar && choviarSubtotal < 250) choviarSurcharge = 30;
   }
 
+  const exactLunchTotal = lunchItems.length > 0 ? lunchSubtotal + lunchSurcharge : 0;
+  const roundedLunchTotal = Math.round(exactLunchTotal / 5) * 5;
+  const lunchRoundOff = roundedLunchTotal - exactLunchTotal;
+
+  const exactChoviarTotal = choviarItems.length > 0 ? choviarSubtotal + choviarSurcharge : 0;
+  const roundedChoviarTotal = Math.round(exactChoviarTotal / 5) * 5;
+  const choviarRoundOff = roundedChoviarTotal - exactChoviarTotal;
+
   const surchargeTotal = lunchSurcharge + choviarSurcharge;
-  const exactTotal = cartSubtotal + surchargeTotal;
-  const grandTotal = Math.round(exactTotal / 5) * 5;
-  const roundOffAmount = grandTotal - exactTotal;
+  const grandTotal = roundedLunchTotal + roundedChoviarTotal;
+  const roundOffAmount = lunchRoundOff + choviarRoundOff;
 
   // ── Redirect if cart empty ───────────────────────────────────────────────────
   if (cartItems.length === 0 && !submitting) {
