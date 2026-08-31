@@ -1160,7 +1160,14 @@ app.put('/api/admin/menu', adminLimiter, requireAdmin, async (req, res) => {
 
 function getRawComponents(items, metadata) {
   const meta = metadata || MOCK_METADATA;
-  const comp = { Roti: 0, Paratha: 0, Puri: 0, Sabji: 0, Dal: 0, Rice: 0, Sweet: 0, Farsan: 0, Namkeen: 0, Salad: 0, Tiffins: 0 };
+  const comp = { 
+    Roti: 0, Paratha: 0, Puri: 0, 
+    Sabji: 0, Dal: 0, Rice: 0, 
+    SabjiFull: 0, SabjiHalf: 0,
+    DalFull: 0, DalHalf: 0,
+    RiceFull: 0, RiceHalf: 0,
+    Sweet: 0, Farsan: 0, Namkeen: 0, Salad: 0, Tiffins: 0 
+  };
   
   const sweetOn = meta.sweetAvailable === 'Yes';
   const farsanOn = meta.farsanAvailable === 'Yes';
@@ -1191,13 +1198,15 @@ function getRawComponents(items, metadata) {
       comp[breadType] += (tMatrix[breadType] || 0) * q;
       // Fixed sides for tiffins
       if (tiffinName === 'Mini Lunch') {
-        comp.Sabji += 0.5 * q; comp.Dal += 0.5 * q; comp.Rice += 0.5 * q;
+        comp.SabjiHalf += q; comp.DalHalf += q; comp.RiceHalf += q;
       } else if (tiffinName === 'Brunch') {
-        comp.Sabji += 1 * q; comp.Dal += 0.5 * q; comp.Rice += 0.5 * q;
+        comp.SabjiFull += q; comp.DalHalf += q; comp.RiceHalf += q;
       } else if (tiffinName === 'Full Lunch') {
-        comp.Sabji += 1 * q; comp.Dal += 1 * q; comp.Rice += 1 * q;
+        comp.SabjiFull += q; comp.DalFull += q; comp.RiceFull += q;
       } else if (tiffinName === 'Family Meal') {
-        comp.Sabji += 1.5 * q; comp.Dal += 1.5 * q; comp.Rice += 1.5 * q;
+        comp.SabjiFull += q; comp.SabjiHalf += q;
+        comp.DalFull += q; comp.DalHalf += q;
+        comp.RiceFull += q; comp.RiceHalf += q;
       }
       // Addons
       if (sweetOn) comp.Sweet += (tMatrix.Sweet || 0) * q;
@@ -1209,17 +1218,17 @@ function getRawComponents(items, metadata) {
       if (n.toLowerCase() === breadType.toLowerCase()) {
         comp[breadType] += 1 * q;
       } else if (n.toLowerCase().includes('sabji (half)')) {
-        comp.Sabji += 0.5 * q;
+        comp.SabjiHalf += q;
       } else if (n.toLowerCase().includes('sabji (full)')) {
-        comp.Sabji += 1 * q;
+        comp.SabjiFull += q;
       } else if (n.toLowerCase().includes('dal (half)')) {
-        comp.Dal += 0.5 * q;
+        comp.DalHalf += q;
       } else if (n.toLowerCase().includes('dal (full)')) {
-        comp.Dal += 1 * q;
+        comp.DalFull += q;
       } else if (n.toLowerCase().includes('rice (half)')) {
-        comp.Rice += 0.5 * q;
+        comp.RiceHalf += q;
       } else if (n.toLowerCase().includes('rice (full)') || n.toLowerCase() === 'rice') {
-        comp.Rice += 1 * q;
+        comp.RiceFull += q;
       } else if (n.toLowerCase().includes('sweet')) {
         comp.Sweet += 1 * q;
       } else if (n.toLowerCase().includes('farsan')) {
@@ -1227,6 +1236,23 @@ function getRawComponents(items, metadata) {
       }
     }
   });
+
+  comp.Sabji = comp.SabjiFull + 0.5 * comp.SabjiHalf;
+  comp.Dal = comp.DalFull + 0.5 * comp.DalHalf;
+  comp.Rice = comp.RiceFull + 0.5 * comp.RiceHalf;
+
+  const formatStr = (full, half) => {
+     let parts = [];
+     if (full > 0) parts.push(`${full}F`);
+     if (half > 0) parts.push(`${half}H`);
+     if (parts.length === 0) return 0;
+     if (parts.length === 1 && full > 0) return full;
+     return parts.join(' ');
+  };
+  comp.SabjiStr = formatStr(comp.SabjiFull, comp.SabjiHalf);
+  comp.DalStr = formatStr(comp.DalFull, comp.DalHalf);
+  comp.RiceStr = formatStr(comp.RiceFull, comp.RiceHalf);
+
   return comp;
 }
 

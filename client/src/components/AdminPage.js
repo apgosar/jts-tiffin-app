@@ -1159,9 +1159,9 @@ function KitchenTab({ password }) {
                             <td className="py-2 px-1 text-gray-600 text-[10px] whitespace-normal min-w-[80px] leading-snug">{order.locality || '-'}</td>
                             {summary.grandTotals?.Tiffins > 0 && <td className="py-2 px-1 text-center text-gray-800 font-bold">{order.Tiffins || '-'}</td>}
                             <td className="py-2 px-1 text-center text-gray-800 font-bold">{order.Roti || '-'}</td>
-                            <td className="py-2 px-1 text-center text-gray-800 font-bold">{order.Sabji || '-'}</td>
-                            <td className="py-2 px-1 text-center text-gray-800 font-bold">{order.Dal || '-'}</td>
-                            <td className="py-2 px-1 text-center text-gray-800 font-bold">{order.Rice || '-'}</td>
+                            <td className="py-2 px-1 text-center text-gray-800 font-bold">{order.SabjiStr || order.Sabji || '-'}</td>
+                            <td className="py-2 px-1 text-center text-gray-800 font-bold">{order.DalStr || order.Dal || '-'}</td>
+                            <td className="py-2 px-1 text-center text-gray-800 font-bold">{order.RiceStr || order.Rice || '-'}</td>
                             {summary.grandTotals?.Namkeen > 0 && <td className="py-2 px-1 text-center text-gray-800 font-bold">{order.Namkeen || '-'}</td>}
                             {summary.grandTotals?.Salad > 0 && <td className="py-2 px-1 text-center text-gray-800 font-bold">{order.Salad || '-'}</td>}
                             {summary.grandTotals?.Sweet > 0 && <td className="py-2 px-1 text-center text-gray-800 font-bold">{order.Sweet || '-'}</td>}
