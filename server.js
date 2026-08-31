@@ -414,6 +414,9 @@ app.post('/api/orders', orderLimiter, async (req, res) => {
   const lunchRoundOff = roundedLunchTotal - exactLunchTotal;
   const choviarRoundOff = roundedChoviarTotal - exactChoviarTotal;
 
+  const totalSurcharge = lunchSurcharge + choviarSurcharge;
+  const grandTotalRounded = roundedLunchTotal + roundedChoviarTotal;
+
   const subOrders = [];
   
   if (lunchItems.length > 0) {
