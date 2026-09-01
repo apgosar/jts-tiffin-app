@@ -43,9 +43,10 @@ function CountdownBanner({ cutoffTime, targetDate }) {
 
   return (
     <div className="bg-red-50 border border-red-100 rounded-lg py-2 px-3 flex flex-col items-center justify-center shadow-sm">
-      <p className="text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-0.5">
-        For: {targetDate.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short' })}
-      </p>
+      <div className="flex flex-col items-center mb-1 text-[11px] font-bold text-gray-500 uppercase tracking-widest text-center">
+        <span>For: {targetDate.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}</span>
+        <span>Cutoff: {cutoffTime.toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true })}</span>
+      </div>
       <p className="text-sm font-extrabold text-jts-red uppercase tracking-wide flex items-center gap-1.5">
         ⏰ {timeLeft}
       </p>
