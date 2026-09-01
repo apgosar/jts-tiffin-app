@@ -1167,6 +1167,7 @@ function getRawComponents(items, metadata) {
   const meta = metadata || MOCK_METADATA;
   const comp = { 
     Roti: 0, Paratha: 0, Puri: 0, 
+    RotiPacks: [], ParathaPacks: [], PuriPacks: [],
     Sabji: 0, Dal: 0, Rice: 0, 
     SabjiFull: 0, SabjiHalf: 0,
     DalFull: 0, DalHalf: 0,
@@ -1200,7 +1201,12 @@ function getRawComponents(items, metadata) {
       comp.Tiffins += q;
       
       // Bread
-      comp[breadType] += (tMatrix[breadType] || 0) * q;
+      const bCount = tMatrix[breadType] || 0;
+      if (bCount > 0) {
+        comp[breadType] += bCount * q;
+        for (let i = 0; i < q; i++) comp[`${breadType}Packs`].push(bCount);
+      }
+
       // Fixed sides for tiffins
       if (tiffinName === 'Mini Lunch') {
         comp.SabjiHalf += q; comp.DalHalf += q; comp.RiceHalf += q;
@@ -1222,6 +1228,7 @@ function getRawComponents(items, metadata) {
       // Individual items
       if (n.toLowerCase() === breadType.toLowerCase()) {
         comp[breadType] += 1 * q;
+        comp[`${breadType}Packs`].push(1 * q);
       } else if (n.toLowerCase().includes('sabji (half)')) {
         comp.SabjiHalf += q;
       } else if (n.toLowerCase().includes('sabji (full)')) {
@@ -1257,6 +1264,15 @@ function getRawComponents(items, metadata) {
   comp.SabjiStr = formatStr(comp.SabjiFull, comp.SabjiHalf);
   comp.DalStr = formatStr(comp.DalFull, comp.DalHalf);
   comp.RiceStr = formatStr(comp.RiceFull, comp.RiceHalf);
+
+  const formatPacks = (packs) => {
+    if (packs.length === 0) return 0;
+    if (packs.length === 1) return packs[0];
+    return packs.join(' + ');
+  };
+  comp.RotiStr = formatPacks(comp.RotiPacks);
+  comp.ParathaStr = formatPacks(comp.ParathaPacks);
+  comp.PuriStr = formatPacks(comp.PuriPacks);
 
   return comp;
 }

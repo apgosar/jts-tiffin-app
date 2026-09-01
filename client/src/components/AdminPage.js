@@ -855,10 +855,11 @@ function OrdersTab({ password }) {
                       <tr key={order.orderId} className="border-b border-gray-300 hover:bg-gray-50 transition">
                         <td className="border-r border-gray-300 px-1 py-1 text-center align-middle">
                           <input
-                            type="number"
-                            min="1"
+                            type="text"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
                             value={assignments[order.orderId]?.routeOrder || ''}
-                            onChange={e => handleUpdateAssignment(order.orderId, 'routeOrder', e.target.value)}
+                            onChange={e => handleUpdateAssignment(order.orderId, 'routeOrder', e.target.value.replace(/\D/g, ''))}
                             className="w-12 px-1 py-1 text-center border border-gray-300 focus:outline-none focus:border-jts-red font-semibold text-sm rounded-none"
                           />
                         </td>
@@ -1158,7 +1159,7 @@ function KitchenTab({ password }) {
                             </td>
                             <td className="py-2 px-1 text-gray-600 text-[10px] whitespace-normal min-w-[80px] leading-snug">{order.locality || '-'}</td>
                             {summary.grandTotals?.Tiffins > 0 && <td className="py-2 px-1 text-center text-gray-800 font-bold">{order.Tiffins || '-'}</td>}
-                            <td className="py-2 px-1 text-center text-gray-800 font-bold">{order.Roti || '-'}</td>
+                            <td className="py-2 px-1 text-center text-gray-800 font-bold">{order.RotiStr || order.Roti || '-'}</td>
                             <td className="py-2 px-1 text-center text-gray-800 font-bold">{order.SabjiStr || order.Sabji || '-'}</td>
                             <td className="py-2 px-1 text-center text-gray-800 font-bold">{order.DalStr || order.Dal || '-'}</td>
                             <td className="py-2 px-1 text-center text-gray-800 font-bold">{order.RiceStr || order.Rice || '-'}</td>
