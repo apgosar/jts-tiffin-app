@@ -111,6 +111,9 @@ function OrderModal({ order, onClose }) {
               {order.zone === 'outside' ? '🚚 Outside Borivali' : '📍 Borivali'}
             </span>
             <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full">{order.createdAtStr || `${order.date} ${order.time}`}</span>
+            {order.isRecurring && (
+              <span className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded-full font-semibold">🔄 Recurring</span>
+            )}
           </div>
           <div className="space-y-3">
             <section>
@@ -864,9 +867,10 @@ function OrdersTab({ password }) {
                           />
                         </td>
                         <td className="border-r border-gray-300 px-2 py-1 align-middle cursor-pointer" onClick={() => setModalOrder(order)}>
-                          <div className="font-bold text-gray-900 flex items-center gap-1.5">
+                          <div className="font-bold text-gray-900 flex items-center gap-1.5 flex-wrap">
                             {order.name}
                             {order.zone === 'outside' && <span className="text-[9px] bg-amber-100 text-amber-800 px-1 py-0.5 rounded font-bold uppercase tracking-widest border border-amber-200">Out</span>}
+                            {order.isRecurring && <span className="text-[9px] bg-purple-100 text-purple-800 px-1 py-0.5 rounded font-bold uppercase tracking-widest border border-purple-200">Recurring</span>}
                           </div>
                           <div className="text-xs text-gray-500">{order.phone}</div>
                         </td>

@@ -634,6 +634,7 @@ app.post('/api/orders/recurring', orderLimiter, async (req, res) => {
         const subId = (choviarItems.length > 0 && !skipChoviar) ? `${baseOrderId}-L` : baseOrderId;
         batch.set(db.collection('orders').doc(subId), {
           orderId: subId, date: dateStr, time: '12:00', createdAt: FieldValue.serverTimestamp(),
+          isRecurring: true,
           ...customerRecord, zone, items: lunchItems,
           itemsSummary: lunchItems.map(i => `${i.name}×${i.quantity}`).join(', '),
           surchargeTotal: lunchSurcharge, grandTotal: lunchSubtotal + lunchSurcharge + (isFirst ? roundOffAmount : 0),
@@ -647,6 +648,7 @@ app.post('/api/orders/recurring', orderLimiter, async (req, res) => {
         const subId = (lunchItems.length > 0 && !skipLunch) ? `${baseOrderId}-C` : baseOrderId;
         batch.set(db.collection('orders').doc(subId), {
           orderId: subId, date: dateStr, time: '12:00', createdAt: FieldValue.serverTimestamp(),
+          isRecurring: true,
           ...customerRecord, zone, items: choviarItems,
           itemsSummary: choviarItems.map(i => `${i.name}×${i.quantity}`).join(', '),
           surchargeTotal: choviarSurcharge, grandTotal: choviarSubtotal + choviarSurcharge + (isFirst ? roundOffAmount : 0),
