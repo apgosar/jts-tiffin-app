@@ -575,10 +575,12 @@ export default function MenuPage() {
                       <div className="flex-1 border-b-2 border-gray-300 mr-2"></div>
                     </div>
                   </div>
-                  <div className="mb-3">
-                    <span className="bg-amber-100 border border-amber-200 text-amber-800 text-[11px] font-bold uppercase tracking-wide px-2.5 py-0.5 rounded-full inline-flex items-center gap-1 shadow-sm">
-                      📍 Choviar delivery only in Borivali
-                    </span>
+                  <div className="mb-4">
+                    <div className="bg-gradient-to-r from-amber-100 to-yellow-50 border-l-4 border-amber-400 p-3 rounded-r shadow-sm">
+                      <p className="text-amber-900 text-xs font-black uppercase tracking-wider flex items-center gap-2">
+                        <span className="text-base">📍</span> Choviar delivery only in Borivali
+                      </p>
+                    </div>
                   </div>
                   {metadata.choviarCutoff && (
                     <CountdownBanner cutoffTime={choviarCutoffTime} targetDate={targetDate} />

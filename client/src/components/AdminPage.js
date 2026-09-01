@@ -804,8 +804,8 @@ function OrdersTab({ password }) {
         const choviarOrders = activeOrdersList.filter(o => o.items.every(i => i.category === 'Choviar'));
         
         const sortByRoute = (a, b) => {
-          const rA = parseInt(assignments[a.orderId]?.routeOrder, 10) || 9999;
-          const rB = parseInt(assignments[b.orderId]?.routeOrder, 10) || 9999;
+          const rA = parseInt(a.routeOrder, 10) || 9999;
+          const rB = parseInt(b.routeOrder, 10) || 9999;
           if (rA !== rB) return rA - rB;
           // At equal sequence, show outside orders first
           const aOut = a.zone === 'outside' ? 0 : 1;
@@ -815,8 +815,8 @@ function OrdersTab({ password }) {
 
         // Sort each group: outside orders first (among those with no seq), then by routeOrder
         const sortGroupWithOutsideFirst = (list) => {
-          const assigned = list.filter(o => assignments[o.orderId]?.routeOrder && assignments[o.orderId]?.routeOrder !== 9999);
-          const unassigned = list.filter(o => !assignments[o.orderId]?.routeOrder || assignments[o.orderId]?.routeOrder === 9999);
+          const assigned = list.filter(o => o.routeOrder && o.routeOrder !== 9999);
+          const unassigned = list.filter(o => !o.routeOrder || o.routeOrder === 9999);
           const outsideUnassigned = unassigned.filter(o => o.zone === 'outside');
           const borivaliUnassigned = unassigned.filter(o => o.zone !== 'outside');
           return [...assigned.sort(sortByRoute), ...outsideUnassigned, ...borivaliUnassigned];
