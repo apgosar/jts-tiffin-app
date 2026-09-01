@@ -568,11 +568,16 @@ export default function MenuPage() {
             {choviarMenu.length > 0 && (
               <div className="flex flex-col gap-4 mt-2">
                 <div>
-                  <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center justify-between mb-0.5">
                     <div className="flex items-center gap-2 flex-1">
                       <h2 className="text-2xl font-bold text-gray-800 uppercase" style={{ fontFamily: "'Oswald', Impact, sans-serif" }}>Choviar</h2>
                       <div className="flex-1 border-b-2 border-gray-300 mr-2"></div>
                     </div>
+                  </div>
+                  <div className="mb-3">
+                    <span className="bg-amber-100 border border-amber-200 text-amber-800 text-[11px] font-bold uppercase tracking-wide px-2.5 py-0.5 rounded-full inline-flex items-center gap-1 shadow-sm">
+                      📍 Choviar delivery only in Borivali
+                    </span>
                   </div>
                   {metadata.choviarCutoff && (
                     <CountdownBanner cutoffTime={choviarCutoffTime} targetDate={targetDate} />
