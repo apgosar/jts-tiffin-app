@@ -870,7 +870,7 @@ function OrdersTab({ password }) {
                           <div className="font-bold text-gray-900 flex items-center gap-1.5 flex-wrap">
                             {order.name}
                             {order.zone === 'outside' && <span className="text-[9px] bg-amber-100 text-amber-800 px-1 py-0.5 rounded font-bold uppercase tracking-widest border border-amber-200">Out</span>}
-                            {order.isRecurring && <span className="text-[9px] bg-purple-100 text-purple-800 px-1 py-0.5 rounded font-bold uppercase tracking-widest border border-purple-200">Recurring</span>}
+                            {order.isRecurring && <span className="text-[9px] bg-purple-100 text-purple-800 px-1 py-0.5 rounded font-bold uppercase border border-purple-200">R</span>}
                           </div>
                           <div className="text-xs text-gray-500">{order.phone}</div>
                         </td>
