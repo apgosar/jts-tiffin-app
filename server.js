@@ -399,7 +399,7 @@ app.post('/api/orders', orderLimiter, async (req, res) => {
     choviarSurcharge = choviarItems.length > 0 ? 40 * choviarOutsideTiffins : 0;
   } else if (zone === 'borivali') {
     const hasLunchMeal = lunchItems.some(i => ['Mini Lunch', 'Brunch', 'Full Lunch', 'Family Meal'].includes(i.name));
-    const hasFullChoviar = choviarItems.some(i => ['Choviar Special', 'Full Choviar', 'Choviar'].includes(i.name));
+    const hasFullChoviar = choviarItems.some(i => ['Choviar Special', 'Full Choviar', 'Choviar', 'Family Choviar'].includes(i.name));
     
     if (lunchItems.length > 0 && !hasLunchMeal && lunchSubtotal < 250) lunchSurcharge = 30;
     if (choviarItems.length > 0 && !hasFullChoviar && choviarSubtotal < 250) choviarSurcharge = 30;
@@ -583,8 +583,11 @@ app.post('/api/orders/recurring', orderLimiter, async (req, res) => {
     lunchSurcharge = lunchItems.length > 0 ? 40 * lunchOutsideTiffins : 0;
     choviarSurcharge = choviarItems.length > 0 ? 40 * choviarOutsideTiffins : 0;
   } else if (zone === 'borivali') {
-    if (lunchItems.length > 0 && lunchSubtotal < 250) lunchSurcharge = 30;
-    if (choviarItems.length > 0 && choviarSubtotal < 250) choviarSurcharge = 30;
+    const hasLunchMeal = lunchItems.some(i => ['Mini Lunch', 'Brunch', 'Full Lunch', 'Family Meal'].includes(i.name));
+    const hasFullChoviar = choviarItems.some(i => ['Choviar Special', 'Full Choviar', 'Choviar', 'Family Choviar'].includes(i.name));
+    
+    if (lunchItems.length > 0 && !hasLunchMeal && lunchSubtotal < 250) lunchSurcharge = 30;
+    if (choviarItems.length > 0 && !hasFullChoviar && choviarSubtotal < 250) choviarSurcharge = 30;
   }
 
   const totalSurcharge = lunchSurcharge + choviarSurcharge;
@@ -934,8 +937,11 @@ app.put('/api/orders/manage/:orderId', orderLimiter, async (req, res) => {
       let tiffins = validatedItems.filter(i => i.name.includes('Lunch') || i.name.includes('Meal') || i.name.includes('Brunch') || i.name.includes('Choviar')).reduce((s, i) => s + i.quantity, 0);
       if (tiffins === 0) tiffins = 1;
       surcharge = 40 * tiffins;
-    } else if (zone === 'borivali' && subtotal < 250) {
-      surcharge = 30;
+    } else if (zone === 'borivali') {
+      const hasMeal = validatedItems.some(i => ['Mini Lunch', 'Brunch', 'Full Lunch', 'Family Meal', 'Choviar Special', 'Full Choviar', 'Choviar', 'Family Choviar'].includes(i.name));
+      if (!hasMeal && subtotal < 250) {
+        surcharge = 30;
+      }
     }
 
     const exactTotal = subtotal + surcharge;
@@ -1016,7 +1022,18 @@ app.get('/api/admin/orders', adminLimiter, requireAdmin, async (req, res) => {
       // For now, if someone wants a month view, we'll fetch all and filter in memory to keep it simple.
       snapshot = await db.collection('orders').get();
     }
-    let orders = snapshot.docs.map(doc => doc.data());
+    let orders = snapshot.docs.map(doc => {
+      let data = doc.data();
+      if (data.createdAt && data.createdAt.toDate) {
+        try {
+          data.createdAtStr = data.createdAt.toDate().toLocaleString('en-IN', {
+            day: '2-digit', month: '2-digit', year: 'numeric',
+            hour: '2-digit', minute: '2-digit', hour12: true
+          }).toUpperCase();
+        } catch(e) {}
+      }
+      return data;
+    });
     
     if (month) {
       orders = orders.filter(o => o.date && o.date.substring(3) === month);

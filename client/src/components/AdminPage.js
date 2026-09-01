@@ -110,7 +110,7 @@ function OrderModal({ order, onClose }) {
               ${order.zone === 'outside' ? 'bg-amber-100 text-amber-800' : 'bg-green-100 text-green-800'}`}>
               {order.zone === 'outside' ? '🚚 Outside Borivali' : '📍 Borivali'}
             </span>
-            <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full">{order.date} {order.time}</span>
+            <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full">{order.createdAtStr || `${order.date} ${order.time}`}</span>
           </div>
           <div className="space-y-3">
             <section>
