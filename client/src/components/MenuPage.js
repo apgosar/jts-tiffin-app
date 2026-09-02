@@ -243,7 +243,8 @@ const VariantItem = ({ title, subtitle, namePrefix, halfPrice, fullPrice, cart, 
 };
 
 const RotiItem = ({ metadata, cart, updateQuantity }) => {
-  const name = metadata?.breadType || 'Roti';
+  const breadType = metadata?.breadType || 'Roti';
+  const name = `Extra ${breadType}`;
   const price = Number(metadata?.rotiPrice) || 8;
   const quantity = cart[name]?.quantity || 0;
   
@@ -258,6 +259,7 @@ const RotiItem = ({ metadata, cart, updateQuantity }) => {
     <div className="flex items-center justify-between py-3 border-b border-gray-100 last:border-0">
       <div>
         <p className="font-bold text-gray-800 text-sm">{name}</p>
+        <p className="text-[10px] text-gray-500 mt-0.5 font-bold uppercase tracking-wider">₹{price} / pc</p>
       </div>
       <div className="flex items-center gap-2">
         <input 
@@ -604,9 +606,17 @@ export default function MenuPage() {
                       <div className="flex-1 border-b-2 border-gray-300"></div>
                     </div>
                     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mt-1 px-4 py-1 flex flex-col">
-                      {choviarMenu.filter(item => !['Choviar Special', 'Choviar', 'Full Choviar', 'Family Choviar'].includes(item.name)).map((item, idx) => (
-                        <StepperItem key={item.name} title={item.name} name={item.name} price={item.price} description={item.description} qty={item.qty} cart={cart} updateQuantity={updateQuantity} category="Choviar" isCustom={true} />
-                      ))}
+                      {choviarMenu.filter(item => !['Choviar Special', 'Choviar', 'Full Choviar', 'Family Choviar'].includes(item.name)).map((item, idx) => {
+                        if (item.qty && Number(item.qty) > 1) {
+                          return (
+                            <React.Fragment key={item.name}>
+                              <StepperItem title={`${item.name} (Single)`} name={`${item.name} (Single)`} price={Number(item.price)} description={`1 pc${item.description ? ` (${item.description})` : ''}`} qty={1} cart={cart} updateQuantity={updateQuantity} category="Choviar" isCustom={true} />
+                              <StepperItem title={`${item.name} (Full Plate)`} name={`${item.name} (Full Plate)`} price={Number(item.price) * Number(item.qty)} description={`${item.qty} pcs${item.description ? ` (${item.description})` : ''}`} qty={item.qty} cart={cart} updateQuantity={updateQuantity} category="Choviar" isCustom={true} />
+                            </React.Fragment>
+                          );
+                        }
+                        return <StepperItem key={item.name} title={item.name} name={item.name} price={item.price} description={item.description} qty={item.qty} cart={cart} updateQuantity={updateQuantity} category="Choviar" isCustom={true} />;
+                      })}
                     </div>
                   </>
                 )}

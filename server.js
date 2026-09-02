@@ -149,13 +149,29 @@ function computeServerPrice(itemObj, menuItems, metadata) {
       return { price: 150, category: 'Choviar' };
     }
 
-    const chItem = menuItems.find(m => m.category === 'Choviar' && m.name === itemName);
-    if (chItem) return { price: chItem.price, category: 'Choviar' };
+    let matchName = itemName;
+    let isSingle = false;
+    if (itemName.endsWith(' (Single)')) {
+      matchName = itemName.replace(' (Single)', '');
+      isSingle = true;
+    } else if (itemName.endsWith(' (Full Plate)')) {
+      matchName = itemName.replace(' (Full Plate)', '');
+    }
+
+    const chItem = menuItems.find(m => m.category === 'Choviar' && m.name === matchName);
+    if (chItem) {
+      if (!isSingle && chItem.qty > 1) {
+        return { price: Number(chItem.price) * Number(chItem.qty), category: 'Choviar' };
+      }
+      return { price: Number(chItem.price), category: 'Choviar' };
+    }
   }
 
-  // "Roti"
-  if (itemName === 'Roti') return { price: parseFloat(metadata.rotiPrice) || 8, category: 'Individual' };
-  
+  const breadType = metadata.breadType || 'Roti';
+  if (itemName === breadType || itemName === 'Roti' || itemName === `Extra ${breadType}` || itemName === 'Extra Roti') {
+    return { price: parseFloat(metadata.rotiPrice) || 8, category: 'Individual' };
+  }
+
   // Custom Order Items
   const sabjiNameHalf = metadata.sabji ? `Sabji (Half) - ${metadata.sabji}` : 'Sabji (Half)';
   const sabjiNameFull = metadata.sabji ? `Sabji (Full) - ${metadata.sabji}` : 'Sabji (Full)';
@@ -560,6 +576,45 @@ app.post('/api/orders/recurring', orderLimiter, async (req, res) => {
     const serverData = computeServerPrice(item, menuItems, metadata);
     if (!serverData) return res.status(400).json({ error: `Unknown item: ${item.name}` });
     validatedItems.push({ name: item.name, price: serverData.price, quantity: parseInt(item.quantity, 10), category: serverData.category });
+  }
+
+  const now = new Date();
+  const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+  const istTime = new Date(utc + (3600000 * 5.5));
+  const betaTesting = metadata.betaTesting === 'Yes';
+
+  if (!betaTesting && deliveryDates.length > 0) {
+    const firstDay = deliveryDates[0];
+    const [d, m, y] = firstDay.dateStr.split('/');
+    const firstDeliveryTime = new Date(parseInt(y, 10), parseInt(m, 10) - 1, parseInt(d, 10));
+    
+    // Check if Lunch is ordered on the very first day
+    const hasLunch = validatedItems.some(i => i.category !== 'Choviar') && !firstDay.skipLunch;
+    const hasChoviar = validatedItems.some(i => i.category === 'Choviar') && !firstDay.skipChoviar;
+
+    if (hasLunch) {
+      const lunchCutoffHr = parseInt(metadata.lunchCutoff?.split(':')[0] || '5', 10);
+      const lunchCutoffDay = metadata.lunchCutoffDay || 'Same Day';
+      const lunchCutoffTime = new Date(firstDeliveryTime);
+      if (lunchCutoffDay === 'Previous Day') lunchCutoffTime.setDate(lunchCutoffTime.getDate() - 1);
+      lunchCutoffTime.setHours(lunchCutoffHr, 0, 0, 0);
+
+      if (istTime >= lunchCutoffTime) {
+        return res.status(400).json({ error: `Lunch order cutoff (${lunchCutoffHr}:00) has passed for the first selected delivery date (${firstDay.dateStr}).` });
+      }
+    }
+
+    if (hasChoviar) {
+      const choviarCutoffHr = parseInt(metadata.choviarCutoff?.split(':')[0] || '11', 10);
+      const choviarCutoffDay = metadata.choviarCutoffDay || 'Same Day';
+      const choviarCutoffTime = new Date(firstDeliveryTime);
+      if (choviarCutoffDay === 'Previous Day') choviarCutoffTime.setDate(choviarCutoffTime.getDate() - 1);
+      choviarCutoffTime.setHours(choviarCutoffHr, 0, 0, 0);
+
+      if (istTime >= choviarCutoffTime) {
+        return res.status(400).json({ error: `Choviar order cutoff (${choviarCutoffHr}:00) has passed for the first selected delivery date (${firstDay.dateStr}).` });
+      }
+    }
   }
 
   const zone = getZone(customer.pincode.trim());
@@ -1223,7 +1278,6 @@ function getRawComponents(items, metadata) {
       const bCount = tMatrix[breadType] || 0;
       if (bCount > 0) {
         comp[breadType] += bCount * q;
-        for (let i = 0; i < q; i++) comp[`${breadType}Packs`].push(bCount);
       }
 
       // Fixed sides for tiffins
@@ -1245,9 +1299,8 @@ function getRawComponents(items, metadata) {
       if (saladOn) comp.Salad += (tMatrix.Salad || 0) * q;
     } else {
       // Individual items
-      if (n.toLowerCase() === breadType.toLowerCase()) {
+      if (n.toLowerCase() === breadType.toLowerCase() || n.toLowerCase() === `extra ${breadType.toLowerCase()}` || n.toLowerCase() === 'extra roti' || n.toLowerCase() === 'roti') {
         comp[breadType] += 1 * q;
-        comp[`${breadType}Packs`].push(1 * q);
       } else if (n.toLowerCase().includes('sabji (half)')) {
         comp.SabjiHalf += q;
       } else if (n.toLowerCase().includes('sabji (full)')) {
@@ -1284,14 +1337,9 @@ function getRawComponents(items, metadata) {
   comp.DalStr = formatStr(comp.DalFull, comp.DalHalf);
   comp.RiceStr = formatStr(comp.RiceFull, comp.RiceHalf);
 
-  const formatPacks = (packs) => {
-    if (packs.length === 0) return 0;
-    if (packs.length === 1) return packs[0];
-    return packs.join(' + ');
-  };
-  comp.RotiStr = formatPacks(comp.RotiPacks);
-  comp.ParathaStr = formatPacks(comp.ParathaPacks);
-  comp.PuriStr = formatPacks(comp.PuriPacks);
+  if (comp.Roti > 0) comp.RotiPacks = [comp.Roti];
+  if (comp.Paratha > 0) comp.ParathaPacks = [comp.Paratha];
+  if (comp.Puri > 0) comp.PuriPacks = [comp.Puri];
 
   return comp;
 }
@@ -1433,6 +1481,10 @@ app.get('/api/admin/kitchen', adminLimiter, requireAdmin, async (req, res) => {
       grandTotals.Salad = (grandTotals.Salad || 0) + comp.Salad;
       grandTotals.Tiffins = (grandTotals.Tiffins || 0) + comp.Tiffins;
 
+      (comp[`${breadType}Packs`] || []).forEach(packSize => {
+        packetSummary.Bread[packSize] = (packetSummary.Bread[packSize] || 0) + 1;
+      });
+
       kitchenOrders.push({
         orderId: order.orderId,
         name: order.name,
@@ -1449,24 +1501,18 @@ app.get('/api/admin/kitchen', adminLimiter, requireAdmin, async (req, res) => {
         if (q <= 0) return;
 
         if (n === 'Mini Lunch') {
-          packetSummary.Bread['3'] = (packetSummary.Bread['3'] || 0) + q;
           packetSummary.Dal.Half += q; packetSummary.Rice.Half += q; packetSummary.Sabji.Half += q;
         } else if (n.toLowerCase().includes('brunch')) {
-          const bQty = metadata?.tiffinMatrix?.Brunch?.[breadType] || 6;
-          packetSummary.Bread[bQty] = (packetSummary.Bread[bQty] || 0) + q;
           packetSummary.Dal.Half += q; packetSummary.Rice.Half += q; packetSummary.Sabji.Full += q;
         } else if (n.toLowerCase().includes('full lunch')) {
-          const bQty = metadata?.tiffinMatrix?.['Full Lunch']?.[breadType] || 6;
-          packetSummary.Bread[bQty] = (packetSummary.Bread[bQty] || 0) + q;
           packetSummary.Dal.Full += q; packetSummary.Rice.Full += q; packetSummary.Sabji.Full += q;
         } else if (n === 'Family Meal') {
-          const bQty = metadata?.tiffinMatrix?.['Family Meal']?.[breadType] || 9;
-          packetSummary.Bread[bQty] = (packetSummary.Bread[bQty] || 0) + q;
           packetSummary.Dal.Full += q; packetSummary.Dal.Half += q;
           packetSummary.Rice.Full += q; packetSummary.Rice.Half += q;
           packetSummary.Sabji.Full += q; packetSummary.Sabji.Half += q;
-        } else if (n.toLowerCase() === breadType.toLowerCase()) {
-          packetSummary.Bread[q] = (packetSummary.Bread[q] || 0) + 1;
+        } else if (n.toLowerCase() === breadType.toLowerCase() || n.toLowerCase() === `extra ${breadType.toLowerCase()}` || n.toLowerCase() === 'extra roti' || n.toLowerCase() === 'roti') {
+          // Roti totals handled by grandTotals now
+
         } else if (n.startsWith('Sabji')) {
           if (n.includes('(Half)')) packetSummary.Sabji.Half += q;
           else packetSummary.Sabji.Full += q;
@@ -1501,11 +1547,19 @@ app.get('/api/admin/kitchen', adminLimiter, requireAdmin, async (req, res) => {
              choviarGrandTotals[bName] = (choviarGrandTotals[bName] || 0) + kitchenQty;
           });
         } else {
-          // Custom order item: user specifies exact quantity. Do not multiply by menu qty.
-          const kitchenQty = orderQty;
+          // Custom order item: user specifies exact quantity.
+          let kitchenQty = orderQty;
+          let baseName = n;
 
-          comp[n] = (comp[n] || 0) + kitchenQty;
-          choviarGrandTotals[n] = (choviarGrandTotals[n] || 0) + kitchenQty;
+          if (n.endsWith(' (Single)')) {
+            baseName = n.replace(' (Single)', '');
+          } else if (n.endsWith(' (Full Plate)')) {
+            baseName = n.replace(' (Full Plate)', '');
+            kitchenQty = orderQty * (choviarMenuQtyMap[baseName] || 1);
+          }
+
+          comp[baseName] = (comp[baseName] || 0) + kitchenQty;
+          choviarGrandTotals[baseName] = (choviarGrandTotals[baseName] || 0) + kitchenQty;
         }
       });
 

@@ -32,7 +32,8 @@ export default function RecurringPage() {
   
   const [selectedItems, setSelectedItems] = useState({
     lunch: null,    // 'Full Lunch' | 'Family Meal' | null
-    choviar: false  // true | false
+    choviar: false, // true | false
+    extraRoti: 0    // quantity of extra roti
   });
 
   // Derived state
@@ -52,6 +53,40 @@ export default function RecurringPage() {
   const [lookupState, setLookupState] = useState('idle');
   const [savedProfiles, setSavedProfiles] = useState([]);
   const [selectedProfile, setSelectedProfile] = useState(null);
+  
+  const [orderStatus, setOrderStatus] = useState('OPEN');
+  
+  const [minStartDate, setMinStartDate] = useState(() => {
+    const d = new Date();
+    d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+    return d.toISOString().split('T')[0];
+  });
+
+  useEffect(() => {
+    // Fetch metadata to enforce cutoff
+    import('../services/api').then(({ getMenu }) => {
+      getMenu().then(data => {
+        if (data && data.metadata) {
+          import('../App').then(({ getOrderingState }) => {
+            const { targetDate, status } = getOrderingState(data.metadata);
+            setOrderStatus(status);
+            
+            // Adjust to local timezone before converting to ISO string
+            const localTarget = new Date(targetDate);
+            localTarget.setMinutes(localTarget.getMinutes() - localTarget.getTimezoneOffset());
+            const iso = localTarget.toISOString().split('T')[0];
+            
+            setMinStartDate(iso);
+            // Auto-bump startDate if it's before cutoff
+            setDateRange(prev => {
+              if (!prev.startDate || prev.startDate < iso) return { ...prev, startDate: iso };
+              return prev;
+            });
+          });
+        }
+      }).catch(() => {});
+    });
+  }, []);
 
   // Fetch address from existing database when phone number is 10 digits
   useEffect(() => {
@@ -151,6 +186,25 @@ export default function RecurringPage() {
       if (!dateRange.startDate || !dateRange.endDate) {
         return setError('Please select a start and end date');
       }
+
+      const sIso = dateRange.startDate;
+      const today = new Date();
+      today.setMinutes(today.getMinutes() - today.getTimezoneOffset());
+      const todayIso = today.toISOString().split('T')[0];
+
+      if (sIso < minStartDate) {
+         return setError(`The earliest available start date is ${minStartDate.split('-').reverse().join('/')}. Order cutoff has passed.`);
+      }
+
+      if (sIso === todayIso) {
+         if (orderStatus === 'LUNCH_CLOSED' && selectedItems.lunch) {
+           return setError('Lunch cutoff for today has passed. Please select a later start date or remove Lunch.');
+         }
+         if (orderStatus === 'CHOVIAR_CLOSED' && selectedItems.choviar) {
+           return setError('Choviar cutoff for today has passed. Please select a later start date or remove Choviar.');
+         }
+      }
+
       const s = new Date(dateRange.startDate);
       const e = new Date(dateRange.endDate);
       if (e < s) return setError('End date must be after start date');
@@ -192,6 +246,10 @@ export default function RecurringPage() {
     
     if (selectedItems.choviar) {
       items.push({ name: 'Choviar', quantity: 1 });
+    }
+    
+    if (selectedItems.extraRoti > 0) {
+      items.push({ name: 'Extra Roti', quantity: selectedItems.extraRoti });
     }
 
     try {
@@ -425,11 +483,11 @@ export default function RecurringPage() {
               <div className="grid grid-cols-2 gap-4 mb-4">
                 <div>
                   <label className="block text-xs font-bold text-gray-500 mb-1">Start Date</label>
-                  <input type="date" min={new Date().toISOString().split('T')[0]} value={dateRange.startDate} onChange={(e) => setDateRange({ ...dateRange, startDate: e.target.value })} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" />
+                  <input type="date" min={minStartDate} value={dateRange.startDate} onChange={(e) => setDateRange({ ...dateRange, startDate: e.target.value })} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-gray-500 mb-1">End Date</label>
-                  <input type="date" min={dateRange.startDate || new Date().toISOString().split('T')[0]} value={dateRange.endDate} onChange={(e) => setDateRange({ ...dateRange, endDate: e.target.value })} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" />
+                  <input type="date" min={dateRange.startDate || minStartDate} value={dateRange.endDate} onChange={(e) => setDateRange({ ...dateRange, endDate: e.target.value })} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" />
                 </div>
               </div>
 
@@ -506,6 +564,36 @@ export default function RecurringPage() {
                   </div>
                 </div>
               </div>
+              
+              {/* Extra Roti Option */}
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mt-4">
+                <div className="bg-gray-50 px-4 py-2 border-b border-gray-100">
+                  <h3 className="font-bold text-gray-800">Extras</h3>
+                </div>
+                <div className="p-2">
+                  <div className="p-3 rounded-xl flex items-center justify-between border border-transparent">
+                    <div>
+                      <p className="font-bold text-gray-800">Extra Roti</p>
+                      <p className="text-xs text-gray-500 mt-0.5">Additional roti added to each day's meal</p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <button 
+                        onClick={() => setSelectedItems({ ...selectedItems, extraRoti: Math.max(0, selectedItems.extraRoti - 1) })}
+                        className="w-8 h-8 rounded-full border border-gray-300 flex items-center justify-center text-gray-600 hover:bg-gray-100"
+                      >
+                        -
+                      </button>
+                      <span className="font-bold text-gray-800 w-4 text-center">{selectedItems.extraRoti}</span>
+                      <button 
+                        onClick={() => setSelectedItems({ ...selectedItems, extraRoti: selectedItems.extraRoti + 1 })}
+                        className="w-8 h-8 rounded-full border border-jts-red flex items-center justify-center text-jts-red hover:bg-red-50"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -545,6 +633,12 @@ export default function RecurringPage() {
                     <li className="text-sm font-bold text-gray-800 flex justify-between">
                       <span>• {selectedItems.lunch}</span>
                       <span className="text-gray-500">{deliveryDates.filter(d => !d.skipLunch).length} days</span>
+                    </li>
+                  )}
+                  {selectedItems.extraRoti > 0 && (
+                    <li className="text-sm font-bold text-gray-800 flex justify-between">
+                      <span>• Extra Roti × {selectedItems.extraRoti}</span>
+                      <span className="text-gray-500">{deliveryDates.length} days</span>
                     </li>
                   )}
                   {selectedItems.choviar && (

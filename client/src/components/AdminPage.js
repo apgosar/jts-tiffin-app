@@ -1108,8 +1108,8 @@ function KitchenTab({ password }) {
                         <table className="w-full text-center text-sm border-collapse border border-gray-200 bg-white max-w-[250px]">
                           <thead>
                             <tr className="bg-gray-100 text-gray-700">
-                              <th className="border border-gray-200 p-2">Bread</th>
-                              <th className="border border-gray-200 p-2">Pkt</th>
+                              <th className="border border-gray-200 p-2">Pkt Size</th>
+                              <th className="border border-gray-200 p-2">Total Pkts</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -1117,7 +1117,7 @@ function KitchenTab({ password }) {
                               .sort((a, b) => Number(a[0]) - Number(b[0]))
                               .map(([breadCount, pktCount], i) => (
                                 <tr key={breadCount} className={i % 2 === 1 ? "bg-red-50/50" : ""}>
-                                  <td className="border border-gray-200 p-2 text-gray-800">{breadCount}</td>
+                                  <td className="border border-gray-200 p-2 text-gray-800">{breadCount} pc pkt</td>
                                   <td className="border border-gray-200 p-2 font-bold">{pktCount}</td>
                                 </tr>
                               ))
@@ -1127,6 +1127,10 @@ function KitchenTab({ password }) {
                                 <td colSpan={2} className="border border-gray-200 p-4 text-gray-400 italic">No breads</td>
                               </tr>
                             )}
+                            <tr className="bg-gray-50 border-t-2 border-gray-300">
+                              <td className="border border-gray-200 p-2 text-gray-800 text-left font-bold">Grand Total ({summary.metadata?.breadType || 'Roti'})</td>
+                              <td className="border border-gray-200 p-2 font-bold text-jts-red">{summary.grandTotals?.[summary.metadata?.breadType || 'Roti'] || summary.grandTotals?.Roti || 0}</td>
+                            </tr>
                           </tbody>
                         </table>
                       </div>
