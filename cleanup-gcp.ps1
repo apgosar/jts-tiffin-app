@@ -20,8 +20,8 @@ Log-Step "Cleaning up old Cloud Run revisions for $SERVICE_NAME..."
 # Get all revisions sorted by creation time (descending)
 $revisionsJson = gcloud run revisions list --service $SERVICE_NAME --region $REGION --format="json" | ConvertFrom-Json
 
-if ($revisionsJson.Count -le 1) {
-    Log-OK "Only $($revisionsJson.Count) revision found. Nothing to delete."
+if ($revisionsJson.Count -le 2) {
+    Log-OK "Only $($revisionsJson.Count) revision(s) found. Nothing to delete."
 } else {
     # Find active revisions (ones with traffic allocation)
     $activeRevisions = @()
@@ -32,8 +32,11 @@ if ($revisionsJson.Count -le 1) {
     
     Log-OK "Active Revision(s): $($activeRevisions -join ', ')"
     
+    # Keep the most recent 2 revisions (plus any active ones)
+    $revisionsToDelete = $revisionsJson | Select-Object -Skip 2
+    
     $deletedCount = 0
-    foreach ($rev in $revisionsJson) {
+    foreach ($rev in $revisionsToDelete) {
         $revName = $rev.metadata.name
         if ($activeRevisions -notcontains $revName) {
             Write-Host "   Deleting revision: $revName..." -ForegroundColor Gray
@@ -56,11 +59,11 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 $images = $imagesJson | ConvertFrom-Json
-if ($images.Count -le 1) {
-    Log-OK "Only $($images.Count) image found. Nothing to delete."
+if ($images.Count -le 2) {
+    Log-OK "Only $($images.Count) image(s) found. Nothing to delete."
 } else {
-    # Keep the most recent 1 image (which corresponds to active deployment)
-    $imagesToDelete = $images | Select-Object -Skip 1
+    # Keep the most recent 2 images (which corresponds to active and previous deployment)
+    $imagesToDelete = $images | Select-Object -Skip 2
     
     $deletedImages = 0
     foreach ($img in $imagesToDelete) {
