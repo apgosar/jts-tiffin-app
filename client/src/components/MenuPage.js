@@ -521,7 +521,7 @@ export default function MenuPage() {
                     <h2 className="text-2xl font-bold text-gray-800 uppercase" style={{ fontFamily: "'Oswald', Impact, sans-serif" }}>Lunch</h2>
                     <div className="flex-1 border-b-2 border-gray-300"></div>
                   </div>
-                  {metadata.lunchCutoff && (
+                  {metadata.lunchCutoff && metadata.lunchClosed !== 'Yes' && status !== 'LUNCH_CLOSED' && (
                     <CountdownBanner cutoffTime={lunchCutoffTime} targetDate={targetDate} />
                   )}
                 </div>
@@ -529,7 +529,7 @@ export default function MenuPage() {
                 {status === 'LUNCH_CLOSED' || metadata.lunchClosed === 'Yes' ? (
                   <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-col items-center justify-center opacity-70">
                     <span className="text-xl mb-1">🚫</span>
-                    <p className="text-sm font-bold text-gray-600 text-center">Orders closed for {targetDateLabel}</p>
+                    <p className="text-sm font-bold text-gray-600 text-center">No Lunch for {targetDateLabel}</p>
                   </div>
                 ) : (
                   <>
@@ -586,14 +586,14 @@ export default function MenuPage() {
                       </p>
                     </div>
                   </div>
-                  {metadata.choviarCutoff && (
+                  {metadata.choviarCutoff && metadata.choviarClosed !== 'Yes' && status !== 'CHOVIAR_CLOSED' && (
                     <CountdownBanner cutoffTime={choviarCutoffTime} targetDate={targetDate} />
                   )}
                 </div>
-                {metadata.choviarClosed === 'Yes' ? (
+                {status === 'CHOVIAR_CLOSED' || metadata.choviarClosed === 'Yes' ? (
                   <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-col items-center justify-center opacity-70">
                     <span className="text-xl mb-1">🚫</span>
-                    <p className="text-sm font-bold text-gray-600 text-center">Orders closed for {targetDateLabel}</p>
+                    <p className="text-sm font-bold text-gray-600 text-center">No Choviar for {targetDateLabel}</p>
                   </div>
                 ) : (
                   <>
