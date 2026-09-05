@@ -147,6 +147,25 @@ describe('POST /api/orders — Item Quantity Validation', () => {
     expect(res.statusCode).not.toEqual(400);
   });
 
+  it('should return 400 when Extra Roti quantity exceeds 50', async () => {
+    const res = await request(app).post('/api/orders').send({
+      customer: baseCustomer,
+      items: [{ name: 'Extra Roti', quantity: 51, price: 8 }],
+      paymentMode: 'Cash',
+    });
+    expect(res.statusCode).toEqual(400);
+    expect(res.body.error).toContain('Invalid quantity');
+  });
+
+  it('should accept Extra Roti quantity up to 50', async () => {
+    const res = await request(app).post('/api/orders').send({
+      customer: baseCustomer,
+      items: [{ name: 'Extra Roti', quantity: 50, price: 8 }],
+      paymentMode: 'Cash',
+    });
+    expect(res.statusCode).not.toEqual(400);
+  });
+
   it('should return 400 when items array is empty', async () => {
     const res = await request(app).post('/api/orders').send({
       customer: baseCustomer,

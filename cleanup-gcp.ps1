@@ -3,7 +3,7 @@
 # ============================================================
 
 $PROJECT_ID   = "jts-ordering-app"
-$SERVICE_NAME = "jts-ordering-app"
+$SERVICE_NAME = "jts-tiffin-app"
 $REGION       = "asia-south1"
 
 function Log-Step($msg)  { Write-Host "`n- $msg" -ForegroundColor Cyan }

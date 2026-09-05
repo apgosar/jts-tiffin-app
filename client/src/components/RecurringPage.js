@@ -585,7 +585,7 @@ export default function RecurringPage() {
                       </button>
                       <span className="font-bold text-gray-800 w-4 text-center">{selectedItems.extraRoti}</span>
                       <button 
-                        onClick={() => setSelectedItems({ ...selectedItems, extraRoti: selectedItems.extraRoti + 1 })}
+                        onClick={() => setSelectedItems({ ...selectedItems, extraRoti: Math.min(50, selectedItems.extraRoti + 1) })}
                         className="w-8 h-8 rounded-full border border-jts-red flex items-center justify-center text-jts-red hover:bg-red-50"
                       >
                         +

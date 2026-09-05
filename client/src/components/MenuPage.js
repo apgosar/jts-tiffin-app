@@ -249,7 +249,8 @@ const RotiItem = ({ metadata, cart, updateQuantity }) => {
   const quantity = cart[name]?.quantity || 0;
   
   const handleSetQuantity = (val) => {
-    const diff = val - quantity;
+    const clamped = Math.min(50, Math.max(0, val));
+    const diff = clamped - quantity;
     if (diff !== 0) {
       updateQuantity(name, diff, { name, price, available: true, category: 'Individual' });
     }
@@ -265,8 +266,9 @@ const RotiItem = ({ metadata, cart, updateQuantity }) => {
         <input 
           type="number" 
           min="0"
+          max="50"
           value={quantity || ''}
-          onChange={(e) => handleSetQuantity(Math.max(0, parseInt(e.target.value) || 0))}
+          onChange={(e) => handleSetQuantity(parseInt(e.target.value, 10) || 0)}
           className="w-16 text-center text-sm font-bold border border-gray-300 rounded-lg px-2 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none"
           placeholder="0"
         />

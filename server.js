@@ -79,11 +79,11 @@ const lookupLimiter   = process.env.NODE_ENV === 'test' ? noopMiddleware : rateL
 
 // ─── Mock data ────────────────────────────────────────────────────────────────
 let MOCK_MENU = [
-  { name: 'Mini Lunch',  description: '3 Roti, Sabji, Dal, Rice, Salad / Sweet / Namkeen / Farsan', price: 140, available: true, category: 'Lunch' },
-  { name: 'Brunch',      description: '6 Roti, Sabji, 1/2 Dal, 1/2 Rice, Salad / Sweet / Namkeen / Farsan', price: 180, available: true, category: 'Lunch' },
-  { name: 'Full Lunch',  description: '6 Roti, Sabji, Dal, Rice, Salad / Sweet / Namkeen / Farsan', price: 220, available: true, category: 'Lunch' },
-  { name: 'Family Meal', description: '9 Roti, Sabji, Dal, Rice, Salad / Sweet / Namkeen / Farsan', price: 320, available: true, category: 'Lunch' },
-  { name: 'Choviar Special', description: 'Ragdo, 4 Kelawada, Dal Khichdi', price: 160, available: true, category: 'Choviar', qty: 4 },
+  { name: 'Mini Lunch',  description: '3 Roti, Sabji, Dal, Rice, Salad / Sweet / Namkeen / Farsan', price: 140, available: true, category: 'Lunch', order: 0 },
+  { name: 'Brunch',      description: '6 Roti, Sabji, 1/2 Dal, 1/2 Rice, Salad / Sweet / Namkeen / Farsan', price: 180, available: true, category: 'Lunch', order: 1 },
+  { name: 'Full Lunch',  description: '6 Roti, Sabji, Dal, Rice, Salad / Sweet / Namkeen / Farsan', price: 220, available: true, category: 'Lunch', order: 2 },
+  { name: 'Family Meal', description: '9 Roti, Sabji, Dal, Rice, Salad / Sweet / Namkeen / Farsan', price: 320, available: true, category: 'Lunch', order: 3 },
+  { name: 'Choviar Special', description: 'Ragdo, 4 Kelawada, Dal Khichdi', price: 160, available: true, category: 'Choviar', qty: 4, order: 4 },
 ];
 let MOCK_METADATA = { 
   sabji: 'Bhindi', sweet: 'Aamras', dal: 'Gujarati Dal', farsan: 'Dhokla', 
@@ -113,7 +113,7 @@ async function getMenuForPricing() {
   const menuSnap = await db.collection('menu').get();
   let menuItems = menuSnap.docs.map(doc => doc.data());
   
-  // Sort menu items in specific order
+  // Sort menu items in specific order: Lunch meals first, then remaining items by their order
   const orderList = ['Mini Lunch', 'Brunch', 'Full Lunch', 'Family Meal'];
   menuItems.sort((a, b) => {
     const idxA = orderList.indexOf(a.name);
@@ -121,7 +121,12 @@ async function getMenuForPricing() {
     if (idxA !== -1 && idxB !== -1) return idxA - idxB;
     if (idxA !== -1) return -1;
     if (idxB !== -1) return 1;
-    return a.name.localeCompare(b.name);
+    if (typeof a.order === 'number' && typeof b.order === 'number') {
+      return a.order - b.order;
+    }
+    if (typeof a.order === 'number') return -1;
+    if (typeof b.order === 'number') return 1;
+    return 0;
   });
   
   const metaDoc = await db.collection('metadata').doc('global').get();
@@ -299,6 +304,7 @@ app.post('/api/orders', orderLimiter, async (req, res) => {
   }
 
   const MAX_QTY_PER_ITEM = 20;
+  const MAX_EXTRA_ROTI_QTY = 50;
   const MAX_ROTI_QTY = 200;
   const MAX_ITEM_TYPES   = 50;
   if (items.length > MAX_ITEM_TYPES) {
@@ -306,7 +312,12 @@ app.post('/api/orders', orderLimiter, async (req, res) => {
   }
   for (const item of items) {
     const qty = parseInt(item.quantity, 10);
-    const limit = item.name === 'Roti' ? MAX_ROTI_QTY : MAX_QTY_PER_ITEM;
+    let limit = MAX_QTY_PER_ITEM;
+    if (item.name === 'Roti') {
+      limit = MAX_ROTI_QTY;
+    } else if (/^(extra\s+)?(roti|paratha|puri)$/i.test((item.name || '').trim()) || (item.name || '').toLowerCase().startsWith('extra ')) {
+      limit = MAX_EXTRA_ROTI_QTY;
+    }
     if (!qty || qty < 1 || qty > limit) {
       return res.status(400).json({ error: `Invalid quantity for "${item.name}". Must be 1–${limit}.` });
     }
@@ -575,7 +586,15 @@ app.post('/api/orders/recurring', orderLimiter, async (req, res) => {
   for (const item of items) {
     const serverData = computeServerPrice(item, menuItems, metadata);
     if (!serverData) return res.status(400).json({ error: `Unknown item: ${item.name}` });
-    validatedItems.push({ name: item.name, price: serverData.price, quantity: parseInt(item.quantity, 10), category: serverData.category });
+    const qty = parseInt(item.quantity, 10);
+    let limit = 20;
+    if (item.name === 'Roti') {
+      limit = 200;
+    } else if (/^(extra\s+)?(roti|paratha|puri)$/i.test((item.name || '').trim()) || (item.name || '').toLowerCase().startsWith('extra ')) {
+      limit = 50;
+    }
+    if (!qty || qty < 1 || qty > limit) return res.status(400).json({ error: `Invalid quantity for "${item.name}". Must be 1–${limit}.` });
+    validatedItems.push({ name: item.name, price: serverData.price, quantity: qty, category: serverData.category });
   }
 
   const now = new Date();
@@ -896,12 +915,18 @@ app.put('/api/orders/manage/:orderId', orderLimiter, async (req, res) => {
 
   // Validate items
   const MAX_QTY_PER_ITEM = 20;
+  const MAX_EXTRA_ROTI_QTY = 50;
   const MAX_ROTI_QTY = 200;
   const MAX_ITEM_TYPES = 50;
   if (items.length > MAX_ITEM_TYPES) return res.status(400).json({ error: 'Too many items' });
   for (const item of items) {
     const qty = parseInt(item.quantity, 10);
-    const limit = item.name === 'Roti' ? MAX_ROTI_QTY : MAX_QTY_PER_ITEM;
+    let limit = MAX_QTY_PER_ITEM;
+    if (item.name === 'Roti') {
+      limit = MAX_ROTI_QTY;
+    } else if (/^(extra\s+)?(roti|paratha|puri)$/i.test((item.name || '').trim()) || (item.name || '').toLowerCase().startsWith('extra ')) {
+      limit = MAX_EXTRA_ROTI_QTY;
+    }
     if (!qty || qty < 1 || qty > limit) return res.status(400).json({ error: `Invalid quantity for ${item.name}` });
   }
 
@@ -1033,7 +1058,17 @@ app.put('/api/orders/manage/:orderId', orderLimiter, async (req, res) => {
       await orderRef.update(updatedData);
     }
     
-    res.json({ success: true, message: 'Order updated successfully', orderId, zone, surchargeTotal: surcharge, grandTotal: grandTotalRounded, date: orderData.date });
+    res.json({ 
+      success: true, 
+      message: 'Order updated successfully', 
+      orderId, 
+      zone, 
+      surchargeTotal: surcharge, 
+      grandTotal: grandTotalRounded, 
+      date: orderData.date,
+      items: validatedItems,
+      itemsSummary: updatedData.itemsSummary
+    });
   } catch (err) {
     console.error('Error updating order:', err.message);
     res.status(500).json({ error: 'Failed to update order.' });
@@ -1115,6 +1150,189 @@ app.get('/api/admin/orders', adminLimiter, requireAdmin, async (req, res) => {
   }
 });
 
+// POST /api/admin/orders - Admin placing order after cut-off or on-demand
+app.post('/api/admin/orders', adminLimiter, requireAdmin, express.json(), async (req, res) => {
+  const { customer, items, date: customDate, deliveryPerson, paymentMethod } = req.body;
+
+  if (!customer || !customer.phone || !customer.name || !customer.pincode) {
+    return res.status(400).json({ error: 'Customer name, phone and pincode are required.' });
+  }
+  if (!items || !Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ error: 'At least one item is required.' });
+  }
+
+  let menuItems, metadata;
+  try {
+    const result = await getMenuForPricing();
+    menuItems = result.menuItems;
+    metadata = result.metadata;
+  } catch (err) {
+    console.error('[INTERNAL] Failed to fetch menu for pricing:', err.message);
+    return res.status(500).json({ error: 'Failed to validate order pricing.' });
+  }
+
+  const validatedItems = [];
+  for (const item of items) {
+    const qty = parseInt(item.quantity, 10);
+    if (!qty || qty < 1) return res.status(400).json({ error: `Invalid quantity for "${item.name}".` });
+    const serverData = computeServerPrice(item, menuItems, metadata);
+    if (!serverData) {
+      return res.status(400).json({ error: `Unknown or invalid item: "${item.name}"` });
+    }
+    validatedItems.push({
+      name: item.name,
+      price: serverData.price,
+      quantity: qty,
+      category: serverData.category
+    });
+  }
+
+  const now = new Date();
+  const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+  const istTime = new Date(utc + (3600000 * 5.5));
+
+  let targetDate = customDate;
+  if (!targetDate) {
+    targetDate = `${String(istTime.getDate()).padStart(2, '0')}/${String(istTime.getMonth() + 1).padStart(2, '0')}/${istTime.getFullYear()}`;
+  }
+
+  const zone = getZone(customer.pincode.trim());
+  const subtotal = validatedItems.reduce((s, i) => s + i.price * i.quantity, 0);
+
+  const lunchItems = validatedItems.filter(i => i.category !== 'Choviar');
+  const choviarItems = validatedItems.filter(i => i.category === 'Choviar');
+
+  const lunchSubtotal = lunchItems.reduce((s, i) => s + i.price * i.quantity, 0);
+  const choviarSubtotal = choviarItems.reduce((s, i) => s + i.price * i.quantity, 0);
+
+  let lunchSurcharge = 0;
+  let choviarSurcharge = 0;
+
+  if (zone === 'outside') {
+    let lunchOutsideTiffins = lunchItems.filter(i => i.name.includes('Lunch') || i.name.includes('Meal') || i.name.includes('Brunch')).reduce((s, i) => s + i.quantity, 0);
+    if (lunchOutsideTiffins === 0 && lunchItems.length > 0) lunchOutsideTiffins = 1;
+
+    let choviarOutsideTiffins = choviarItems.filter(i => i.name.includes('Choviar') || i.name.includes('Meal')).reduce((s, i) => s + i.quantity, 0);
+    if (choviarOutsideTiffins === 0 && choviarItems.length > 0) choviarOutsideTiffins = 1;
+
+    lunchSurcharge = lunchItems.length > 0 ? 40 * lunchOutsideTiffins : 0;
+    choviarSurcharge = choviarItems.length > 0 ? 40 * choviarOutsideTiffins : 0;
+  } else if (zone === 'borivali') {
+    const hasLunchMeal = lunchItems.some(i => ['Mini Lunch', 'Brunch', 'Full Lunch', 'Family Meal'].includes(i.name));
+    const hasFullChoviar = choviarItems.some(i => ['Choviar Special', 'Full Choviar', 'Choviar', 'Family Choviar'].includes(i.name));
+
+    if (lunchItems.length > 0 && !hasLunchMeal && lunchSubtotal < 250) lunchSurcharge = 30;
+    if (choviarItems.length > 0 && !hasFullChoviar && choviarSubtotal < 250) choviarSurcharge = 30;
+  }
+
+  const exactLunchTotal = lunchItems.length > 0 ? lunchSubtotal + lunchSurcharge : 0;
+  const exactChoviarTotal = choviarItems.length > 0 ? choviarSubtotal + choviarSurcharge : 0;
+
+  const roundedLunchTotal = Math.round(exactLunchTotal / 5) * 5;
+  const roundedChoviarTotal = Math.round(exactChoviarTotal / 5) * 5;
+
+  const lunchRoundOff = roundedLunchTotal - exactLunchTotal;
+  const choviarRoundOff = roundedChoviarTotal - exactChoviarTotal;
+
+  const customerRecord = {
+    name:     customer.name.trim(),
+    phone:    customer.phone.trim(),
+    wingFlat: (customer.wingFlat || '').trim(),
+    building: (customer.building || '').trim(),
+    street:   (customer.street || '').trim(),
+    landmark: (customer.landmark || '').trim(),
+    locality: (customer.locality || '').trim(),
+    pincode:  customer.pincode.trim(),
+    address:  customer.address || `${customer.wingFlat || ''}, ${customer.building || ''}, ${customer.street || ''}${customer.landmark ? `, ${customer.landmark}` : ''}, ${customer.locality || ''}`.trim(),
+    lastOrderDate: targetDate,
+    instructions: (customer.instructions || '').trim(),
+  };
+
+  const baseOrderId = uuidv4().slice(0, 8).toUpperCase();
+  const time = formatTime(now);
+  const dp = deliveryPerson ? String(deliveryPerson).trim() : '';
+  const pm = paymentMethod ? String(paymentMethod).trim() : 'Cash';
+
+  const createdOrderIds = [];
+  const subOrders = [];
+
+  if (lunchItems.length > 0) {
+    const subId = choviarItems.length > 0 ? `${baseOrderId}-L` : baseOrderId;
+    subOrders.push({
+      orderId: subId,
+      date: targetDate,
+      time,
+      createdAt: USE_MOCK ? new Date().toISOString() : FieldValue.serverTimestamp(),
+      ...customerRecord,
+      zone,
+      items: lunchItems,
+      itemsSummary: lunchItems.map(i => `${i.name}×${i.quantity}`).join(', '),
+      subtotal: lunchSubtotal,
+      surchargeTotal: lunchSurcharge,
+      roundOffAmount: lunchRoundOff,
+      grandTotal: roundedLunchTotal,
+      deliveryPerson: dp,
+      routeOrder: 9999,
+      paymentReceived: false,
+      paymentMethod: pm,
+      amountReceived: '',
+      status: 'ACTIVE',
+      category: 'Lunch',
+      adminPlaced: true
+    });
+    createdOrderIds.push(subId);
+  }
+
+  if (choviarItems.length > 0) {
+    const subId = lunchItems.length > 0 ? `${baseOrderId}-C` : baseOrderId;
+    subOrders.push({
+      orderId: subId,
+      date: targetDate,
+      time,
+      createdAt: USE_MOCK ? new Date().toISOString() : FieldValue.serverTimestamp(),
+      ...customerRecord,
+      zone,
+      items: choviarItems,
+      itemsSummary: choviarItems.map(i => `${i.name}×${i.quantity}`).join(', '),
+      subtotal: choviarSubtotal,
+      surchargeTotal: choviarSurcharge,
+      roundOffAmount: choviarRoundOff,
+      grandTotal: roundedChoviarTotal,
+      deliveryPerson: dp,
+      routeOrder: 9999,
+      paymentReceived: false,
+      paymentMethod: pm,
+      amountReceived: '',
+      status: 'ACTIVE',
+      category: 'Choviar',
+      adminPlaced: true
+    });
+    createdOrderIds.push(subId);
+  }
+
+  if (USE_MOCK) {
+    subOrders.forEach(so => MOCK_ORDERS.push(so));
+    const cIdx = MOCK_CUSTOMERS.findIndex(c => c.phone === customerRecord.phone);
+    if (cIdx >= 0) Object.assign(MOCK_CUSTOMERS[cIdx], customerRecord);
+    else MOCK_CUSTOMERS.push(customerRecord);
+    return res.json({ success: true, orderIds: createdOrderIds, grandTotal: roundedLunchTotal + roundedChoviarTotal });
+  }
+
+  try {
+    const batch = db.batch();
+    subOrders.forEach(so => {
+      batch.set(db.collection('orders').doc(so.orderId), so);
+    });
+    batch.set(db.collection('customers').doc(customer.phone.trim()), customerRecord, { merge: true });
+    await batch.commit();
+
+    res.json({ success: true, orderIds: createdOrderIds, grandTotal: roundedLunchTotal + roundedChoviarTotal });
+  } catch (err) {
+    console.error('Error creating admin order:', err.message);
+    res.status(500).json({ error: 'Failed to create order.' });
+  }
+});
+
 app.put('/api/admin/orders/delivery/batch', adminLimiter, requireAdmin, express.json(), async (req, res) => {
   const { updates } = req.body;
   if (!Array.isArray(updates) || updates.length === 0) return res.status(400).json({ error: 'updates array required' });
@@ -1162,13 +1380,14 @@ app.put('/api/admin/menu', adminLimiter, requireAdmin, async (req, res) => {
   }
 
   if (USE_MOCK) {
-    MOCK_MENU = items.map(item => ({
+    MOCK_MENU = items.map((item, index) => ({
       name:        String(item.name || '').trim(),
       description: String(item.description || '').trim(),
       price:       parseFloat(item.price) || 0,
       available:   item.available !== false,
       category:    String(item.category || 'Lunch').trim(),
       qty:         item.qty ? parseInt(item.qty, 10) : null,
+      order:       index,
     }));
     if (metadata) MOCK_METADATA = { ...metadata };
     return res.json({ success: true });
@@ -1184,7 +1403,7 @@ app.put('/api/admin/menu', adminLimiter, requireAdmin, async (req, res) => {
     });
 
     // Add new menu docs
-    items.forEach(item => {
+    items.forEach((item, index) => {
       const docRef = db.collection('menu').doc();
       const docData = {
         name:        String(item.name || '').trim(),
@@ -1192,6 +1411,7 @@ app.put('/api/admin/menu', adminLimiter, requireAdmin, async (req, res) => {
         price:       parseFloat(item.price) || 0,
         available:   item.available !== false,
         category:    String(item.category || 'Lunch').trim(),
+        order:       index,
       };
       // Only persist qty when it is a positive integer (Choviar qty-per-order)
       if (item.qty && parseInt(item.qty, 10) > 0) {
@@ -1341,15 +1561,38 @@ function getRawComponents(items, metadata) {
   if (comp.Paratha > 0) comp.ParathaPacks = [comp.Paratha];
   if (comp.Puri > 0) comp.PuriPacks = [comp.Puri];
 
+  comp.Bread = comp[breadType] || 0;
+  comp.breadType = breadType;
+
   return comp;
 }
 
-function computeSerialNumbers(orders, metadata) {
+function computeSerialNumbers(orders, metadata, menuItems = []) {
   const lunchMap = {};
   const choviarMap = {};
 
   const lunchOrders = [];
   const choviarOrders = [];
+
+  const isChoviarCombo = (name) => {
+    const n = (name || '').trim().toLowerCase();
+    return n === 'full choviar' || n === 'choviar' || n === 'choviar special' || n === 'family choviar';
+  };
+
+  const choviarMenuQtyMap = {};
+  let choviarQtyItemName = null;
+  (menuItems || []).forEach(m => {
+    if (m.category === 'Choviar' && m.qty && Number(m.qty) > 0) {
+      choviarMenuQtyMap[m.name] = Number(m.qty);
+      if (!isChoviarCombo(m.name) && !choviarQtyItemName) {
+        choviarQtyItemName = m.name.trim();
+      }
+    }
+  });
+  if (!choviarQtyItemName) {
+    const fallbackItem = (menuItems || []).find(m => m.category === 'Choviar' && m.qty && Number(m.qty) > 0);
+    if (fallbackItem) choviarQtyItemName = fallbackItem.name.trim();
+  }
 
   orders.forEach(o => {
     if (o.status === 'CANCELLED') return;
@@ -1366,10 +1609,38 @@ function computeSerialNumbers(orders, metadata) {
       });
     }
     if (choviarItems.length > 0) {
+      let qtyVal = 0;
+      if (choviarQtyItemName) {
+        choviarItems.forEach(item => {
+          const n = (item.name || '').trim();
+          const orderQty = item.quantity || 0;
+          if (orderQty <= 0) return;
+
+          if (isChoviarCombo(n)) {
+            let mult = choviarMenuQtyMap[choviarQtyItemName] || 1;
+            if (n === 'Family Choviar') mult *= 1.5;
+            qtyVal += orderQty * mult;
+          } else {
+            let baseName = n;
+            let mult = 1;
+            if (n.endsWith(' (Single)')) {
+              baseName = n.replace(' (Single)', '').trim();
+            } else if (n.endsWith(' (Full Plate)')) {
+              baseName = n.replace(' (Full Plate)', '').trim();
+              mult = choviarMenuQtyMap[baseName] || 1;
+            }
+            if (baseName === choviarQtyItemName) {
+              qtyVal += orderQty * mult;
+            }
+          }
+        });
+      }
+
       choviarOrders.push({ 
         orderId: o.orderId, 
         zone: o.zone || 'borivali', 
-        routeOrder: typeof o.routeOrder === 'number' ? o.routeOrder : 9999 
+        routeOrder: typeof o.routeOrder === 'number' ? o.routeOrder : 9999,
+        qtyVal
       });
     }
   });
@@ -1393,8 +1664,14 @@ function computeSerialNumbers(orders, metadata) {
 
   const outsideChoviar = choviarOrders.filter(o => o.zone === 'outside');
   const borivaliChoviar = choviarOrders.filter(o => o.zone !== 'outside');
-  outsideChoviar.sort((a, b) => a.routeOrder - b.routeOrder);
-  borivaliChoviar.sort((a, b) => a.routeOrder - b.routeOrder);
+  outsideChoviar.sort((a, b) => {
+    if (a.qtyVal !== b.qtyVal) return a.qtyVal - b.qtyVal;
+    return a.routeOrder - b.routeOrder;
+  });
+  borivaliChoviar.sort((a, b) => {
+    if (a.qtyVal !== b.qtyVal) return a.qtyVal - b.qtyVal;
+    return a.routeOrder - b.routeOrder;
+  });
   [...outsideChoviar, ...borivaliChoviar].forEach((o, idx) => {
     choviarMap[o.orderId] = idx + 1;
   });
@@ -1441,6 +1718,20 @@ app.get('/api/admin/kitchen', adminLimiter, requireAdmin, async (req, res) => {
       choviarMenuQtyMap[m.name] = Number(m.qty);
     }
   });
+
+  const isChoviarCombo = (name) => {
+    const n = (name || '').trim().toLowerCase();
+    return n === 'full choviar' || n === 'choviar' || n === 'choviar special' || n === 'family choviar';
+  };
+
+  const choviarQtyItem = (menuItems || []).find(m => 
+    m.category === 'Choviar' && 
+    !isChoviarCombo(m.name) && 
+    m.qty && 
+    Number(m.qty) > 0
+  ) || (menuItems || []).find(m => m.category === 'Choviar' && m.qty && Number(m.qty) > 0);
+  const choviarQtyItemName = choviarQtyItem ? choviarQtyItem.name.trim() : null;
+  const choviarPacketSummary = {};
 
   const grandTotals = { Roti: 0, Sabji: 0, Dal: 0, Rice: 0, Sweet: 0, Farsan: 0 };
   const kitchenOrders = [];
@@ -1563,6 +1854,11 @@ app.get('/api/admin/kitchen', adminLimiter, requireAdmin, async (req, res) => {
         }
       });
 
+      if (choviarQtyItemName && comp[choviarQtyItemName] > 0) {
+        const pSize = comp[choviarQtyItemName];
+        choviarPacketSummary[pSize] = (choviarPacketSummary[pSize] || 0) + 1;
+      }
+
       choviarKitchenOrders.push({
         orderId: order.orderId,
         name: order.name,
@@ -1575,7 +1871,7 @@ app.get('/api/admin/kitchen', adminLimiter, requireAdmin, async (req, res) => {
     }
   });
 
-  const { lunchMap, choviarMap } = computeSerialNumbers(orders, metadata);
+  const { lunchMap, choviarMap } = computeSerialNumbers(orders, metadata, menuItems);
 
   kitchenOrders.forEach(o => { o.serialNumber = lunchMap[o.orderId] || 0; });
   choviarKitchenOrders.forEach(o => { o.serialNumber = choviarMap[o.orderId] || 0; });
@@ -1593,7 +1889,11 @@ app.get('/api/admin/kitchen', adminLimiter, requireAdmin, async (req, res) => {
     outsideOrders,
     choviarOrderCount: choviarKitchenOrders.length,
     choviarGrandTotals,
-    choviarKitchenOrders
+    choviarKitchenOrders,
+    choviarPacketSummary,
+    choviarQtyItemName,
+    breadType,
+    metadata
   });
 });
 
@@ -1622,7 +1922,17 @@ app.get('/api/delivery/orders', publicLimiter, async (req, res) => {
       metadata = metaSnap.data();
     }
     
-    const { lunchMap, choviarMap } = computeSerialNumbers(rows, metadata);
+    let menuItems = MOCK_MENU;
+    try {
+      const menuSnap = await db.collection('menu').get();
+      if (!menuSnap.empty) {
+        menuItems = menuSnap.docs.map(doc => doc.data());
+      }
+    } catch (mErr) {
+      console.error('Error fetching menu in delivery orders:', mErr.message);
+    }
+
+    const { lunchMap, choviarMap } = computeSerialNumbers(rows, metadata, menuItems);
 
     const orders = [];
 

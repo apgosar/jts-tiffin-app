@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCart } from '../App';
-import { ChevronLeft, LogIn, Calendar, XCircle, Search, Edit3 } from 'lucide-react';
+import { ChevronLeft, LogIn, Calendar, XCircle, Search, Edit3, CheckCircle } from 'lucide-react';
 import LoadingSpinner from './LoadingSpinner';
 
 export default function MyOrdersPage() {
@@ -62,10 +62,115 @@ export default function MyOrdersPage() {
     }
   };
 
-  const handleEdit = (order) => {
-    loadCartFromItems(order.items || []);
-    setEditOrder(order);
-    navigate('/');
+const DEFAULT_LUNCH_OPTIONS = [
+  { name: 'Mini Lunch', desc: '3 Roti, Sabji, Dal, Rice' },
+  { name: 'Brunch', desc: '6 Roti, Sabji, 1/2 Dal, 1/2 Rice' },
+  { name: 'Full Lunch', desc: '6 Roti, Sabji, Dal, Rice' },
+  { name: 'Family Meal', desc: '9 Roti, Sabji, Dal, Rice' }
+];
+
+  const [editingOrder, setEditingOrder] = useState(null);
+  const [modalLoading, setModalLoading] = useState(false);
+  const [modalError, setModalError] = useState(null);
+  const [menuItems, setMenuItems] = useState([]);
+
+  const handleEdit = async (order) => {
+    if (!order.isRecurring) {
+      loadCartFromItems(order.items || []);
+      setEditOrder(order);
+      navigate('/');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await fetch('/api/menu');
+      const data = await res.json();
+      const list = data.menu || data.items || [];
+      setMenuItems(list);
+
+      let lunch = null;
+      let choviar = false;
+      let extraRoti = 0;
+
+      (order.items || []).forEach(i => {
+        if (['Full Lunch', 'Family Meal', 'Mini Lunch', 'Brunch'].includes(i.name)) {
+          lunch = i.name;
+        } else if (i.name === 'Choviar' || i.category === 'Choviar') {
+          choviar = true;
+        } else if (i.name === 'Extra Roti' || i.name === 'Roti') {
+          extraRoti = i.quantity;
+        }
+      });
+
+      const isChov = order.category === 'Choviar' || (order.items || []).some(i => i.name === 'Choviar' || i.category === 'Choviar');
+      if (isChov && !choviar) {
+        choviar = true;
+      }
+
+      setEditingOrder({ ...order, lunch, choviar, extraRoti });
+      setModalError(null);
+    } catch (err) {
+      setError('Failed to load menu for editing');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingOrder) return;
+    setModalLoading(true);
+    setModalError(null);
+
+    const isChoviarOrder = editingOrder.category === 'Choviar' || (editingOrder.items || []).some(i => i.name === 'Choviar' || i.category === 'Choviar');
+
+    const items = [];
+    if (!isChoviarOrder && editingOrder.lunch) {
+      items.push({ name: editingOrder.lunch, quantity: 1 });
+    }
+    if (isChoviarOrder && editingOrder.choviar) {
+      items.push({ name: 'Choviar', quantity: 1 });
+    }
+    if (editingOrder.extraRoti > 0) {
+      items.push({ name: 'Extra Roti', quantity: editingOrder.extraRoti });
+    }
+
+    if (items.length === 0) {
+      setModalError(!isChoviarOrder ? 'Please select a lunch option or extra roti' : 'Please select at least one item');
+      setModalLoading(false);
+      return;
+    }
+
+    try {
+      const { updateOrder } = await import('../services/api');
+      const payload = {
+        customer: { ...editingOrder },
+        items,
+        subtotal: 0 // Server recalculates
+      };
+      const res = await updateOrder(editingOrder.id, phone, payload);
+      
+      const newItems = res.data?.items || items;
+      const newSummary = res.data?.itemsSummary || newItems.map(i => `${i.name}×${i.quantity}`).join(', ');
+      const newGrandTotal = res.data?.grandTotal ?? editingOrder.grandTotal;
+      const newSurcharge = res.data?.surchargeTotal ?? editingOrder.surchargeTotal;
+
+      // Update local state
+      setOrders(orders.map(o => o.id === editingOrder.id ? {
+        ...o,
+        items: newItems,
+        itemsSummary: newSummary,
+        grandTotal: newGrandTotal,
+        surchargeTotal: newSurcharge
+      } : o));
+
+      setEditingOrder(null);
+    } catch (err) {
+      const errMsg = err.response?.data?.error || err.message || 'Failed to update order';
+      setModalError(errMsg);
+    } finally {
+      setModalLoading(false);
+    }
   };
 
   return (
@@ -147,7 +252,12 @@ export default function MyOrdersPage() {
                       <Calendar size={14} className="text-jts-navy" />
                       <span className="font-bold text-gray-800 text-sm">{order.date}</span>
                     </div>
-                    <span className="text-xs text-gray-500 font-medium text-right">Order #{order.id}</span>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${order.isRecurring ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+                        {order.isRecurring ? 'Recurring' : 'One-off'}
+                      </span>
+                      <span className="text-xs text-gray-500 font-medium text-right">#{order.id}</span>
+                    </div>
                   </div>
                   <div className="p-4">
                     <p className="text-sm font-medium text-gray-800 mb-2">{order.itemsSummary}</p>
@@ -185,6 +295,131 @@ export default function MyOrdersPage() {
           </div>
         ) : null}
       </main>
+
+      {/* EDIT MODAL */}
+      {editingOrder && (() => {
+        const isChoviarOrder = editingOrder.category === 'Choviar' || (editingOrder.items || []).some(i => i.name === 'Choviar' || i.category === 'Choviar');
+        const lunchOptionsToDisplay = DEFAULT_LUNCH_OPTIONS.map(opt => {
+          const match = menuItems.find(m => m.name === opt.name);
+          return {
+            ...opt,
+            price: match ? match.price : null,
+            desc: match?.description || opt.desc
+          };
+        });
+
+        return (
+          <div className="fixed inset-0 z-[100] flex flex-col justify-end bg-black/50 animate-fade-in" onClick={() => setEditingOrder(null)}>
+            <div className="bg-white rounded-t-3xl p-6 w-full max-w-md mx-auto animate-slide-up max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+              <div className="flex justify-between items-center mb-5">
+                <div>
+                  <h3 className="text-xl font-bold text-gray-800">Edit Recurring Order</h3>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="text-sm font-semibold text-gray-500">{editingOrder.date}</span>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${isChoviarOrder ? 'bg-orange-100 text-orange-700' : 'bg-green-100 text-green-700'}`}>
+                      {isChoviarOrder ? 'Choviar' : 'Lunch'}
+                    </span>
+                  </div>
+                </div>
+                <button onClick={() => setEditingOrder(null)} className="p-2 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100">
+                  <XCircle size={24} />
+                </button>
+              </div>
+
+              {modalError && (
+                <div className="mb-4 bg-red-50 border border-red-200 rounded-xl p-3 text-sm text-red-700 font-medium">
+                  {modalError}
+                </div>
+              )}
+
+              <div className="space-y-5 mb-8">
+                {/* LUNCH OPTIONS (Only if Lunch order) */}
+                {!isChoviarOrder && (
+                  <div>
+                    <p className="text-xs text-gray-500 font-bold uppercase tracking-wider mb-2">Lunch Options</p>
+                    <div className="space-y-2">
+                      {lunchOptionsToDisplay.map(opt => {
+                        const isSelected = editingOrder.lunch === opt.name;
+                        return (
+                          <div 
+                            key={opt.name}
+                            onClick={() => setEditingOrder({ ...editingOrder, lunch: opt.name })}
+                            className={`p-3 rounded-xl border-2 transition-all cursor-pointer flex items-center justify-between
+                              ${isSelected ? 'border-jts-red bg-red-50' : 'border-gray-200 hover:bg-gray-50'}`}
+                          >
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <p className={`font-bold text-sm ${isSelected ? 'text-jts-red' : 'text-gray-800'}`}>{opt.name}</p>
+                                {opt.price && <span className="text-xs font-semibold text-gray-500">₹{opt.price}</span>}
+                              </div>
+                              <p className="text-xs text-gray-500 mt-0.5">{opt.desc}</p>
+                            </div>
+                            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0
+                              ${isSelected ? 'border-jts-red bg-jts-red' : 'border-gray-300'}`}>
+                              {isSelected && <CheckCircle size={14} className="text-white" />}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* CHOVIAR (Only if Choviar order) */}
+                {isChoviarOrder && (
+                  <div>
+                    <p className="text-xs text-gray-500 font-bold uppercase tracking-wider mb-2">Choviar Option</p>
+                    <div 
+                      onClick={() => setEditingOrder({ ...editingOrder, choviar: !editingOrder.choviar })}
+                      className={`p-3 rounded-xl border-2 transition-all cursor-pointer flex items-center justify-between
+                        ${editingOrder.choviar ? 'border-jts-red bg-red-50' : 'border-gray-200 hover:bg-gray-50'}`}
+                    >
+                      <div>
+                        <p className={`font-bold text-sm ${editingOrder.choviar ? 'text-jts-red' : 'text-gray-800'}`}>Choviar Meal</p>
+                        <p className="text-xs text-gray-500 mt-0.5">Includes evening snacks and delicacies</p>
+                      </div>
+                      <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0
+                        ${editingOrder.choviar ? 'border-jts-red bg-jts-red' : 'border-gray-300'}`}>
+                        {editingOrder.choviar && <CheckCircle size={14} className="text-white" />}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* ROTI */}
+                <div>
+                  <p className="text-xs text-gray-500 font-bold uppercase tracking-wider mb-2">Add-ons</p>
+                  <div className="flex items-center justify-between p-3.5 border border-gray-200 rounded-xl bg-white">
+                    <div>
+                      <span className="font-bold text-gray-800 text-sm">Extra Roti</span>
+                      <p className="text-xs text-gray-400">Additional rotis with order</p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <button 
+                        onClick={() => setEditingOrder({ ...editingOrder, extraRoti: Math.max(0, editingOrder.extraRoti - 1) })}
+                        className="w-8 h-8 rounded-full border border-gray-300 flex items-center justify-center text-gray-600 hover:bg-gray-100 font-bold"
+                      >-</button>
+                      <span className="font-bold text-gray-800 w-4 text-center">{editingOrder.extraRoti}</span>
+                      <button 
+                        onClick={() => setEditingOrder({ ...editingOrder, extraRoti: Math.min(50, (editingOrder.extraRoti || 0) + 1) })}
+                        className="w-8 h-8 rounded-full border border-jts-red flex items-center justify-center text-jts-red hover:bg-red-50 font-bold"
+                      >+</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <button 
+                onClick={handleSaveEdit}
+                disabled={modalLoading}
+                className="w-full py-3.5 bg-jts-red text-white font-bold rounded-xl shadow-lg hover:bg-jts-crimson active:scale-95 transition-all flex items-center justify-center"
+              >
+                {modalLoading ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

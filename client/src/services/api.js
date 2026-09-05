@@ -29,3 +29,7 @@ export const getKitchenSummary = (date, password) =>
 
 export const updateAdminDeliveryBatch = (updates, password) =>
   API.put('/api/admin/orders/delivery/batch', { updates }, adminHeaders(password));
+
+export const createAdminOrder = (data, password) =>
+  API.post('/api/admin/orders', data, adminHeaders(password));
+

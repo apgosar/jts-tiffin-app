@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import JtsLogo from './JtsLogo';
-import { getAdminOrders, updateAdminMenu, getKitchenSummary, updateAdminDeliveryBatch } from '../services/api';
+import { getAdminOrders, updateAdminMenu, getKitchenSummary, updateAdminDeliveryBatch, createAdminOrder, lookupCustomer } from '../services/api';
 import { toBlob } from 'html-to-image';
 
 // ─── Login ────────────────────────────────────────────────────────────────────
@@ -154,6 +154,526 @@ function OrderModal({ order, onClose }) {
             </section>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Admin New Order Modal (Post-Cutoff / Manual Entry) ───────────────────────
+function AdminNewOrderModal({ password, currentMetadata, currentMenu, onClose, onOrderCreated }) {
+  const getTodayDate = () => {
+    const d = new Date();
+    const offset = d.getTimezoneOffset();
+    const local = new Date(d.getTime() - (offset * 60 * 1000));
+    return local.toISOString().split('T')[0];
+  };
+
+  const [date, setDate] = useState(getTodayDate());
+  const [phone, setPhone] = useState('');
+  const [lookupLoading, setLookupLoading] = useState(false);
+  const [lookupStatus, setLookupStatus] = useState(null);
+  const [form, setForm] = useState({
+    name: '',
+    wingFlat: '',
+    building: '',
+    street: '',
+    landmark: '',
+    locality: '',
+    pincode: '',
+    instructions: ''
+  });
+  const [zone, setZone] = useState(null);
+  const [deliveryPerson, setDeliveryPerson] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('Cash');
+
+  // Meal selections
+  const [selectedLunch, setSelectedLunch] = useState('Full Lunch');
+  const [lunchQty, setLunchQty] = useState(1);
+  const [hasChoviar, setHasChoviar] = useState(false);
+  const [choviarQty, setChoviarQty] = useState(1);
+  const [extraBreadQty, setExtraBreadQty] = useState(0);
+
+  // Custom Items
+  const [customItems, setCustomItems] = useState([]);
+  const [selectedCustomItem, setSelectedCustomItem] = useState('');
+  const [customItemQty, setCustomItemQty] = useState(1);
+
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  const breadType = currentMetadata?.breadType || 'Roti';
+
+  const checkPincode = (pin) => {
+    if (/^\d{6}$/.test(pin)) {
+      fetch(`/api/check-pincode?pincode=${pin}`)
+        .then(r => r.json())
+        .then(d => setZone(d.zone || null))
+        .catch(() => setZone(null));
+    } else {
+      setZone(null);
+    }
+  };
+
+  const handlePhoneChange = async (val) => {
+    setPhone(val);
+    if (/^[6-9]\d{9}$/.test(val)) {
+      setLookupLoading(true);
+      try {
+        const res = await lookupCustomer(val);
+        const profiles = res.data?.profiles || [];
+        if (profiles.length > 0) {
+          const p = profiles[0];
+          setForm({
+            name: p.name || '',
+            wingFlat: p.wingFlat || '',
+            building: p.building || '',
+            street: p.street || '',
+            landmark: p.landmark || '',
+            locality: p.locality || '',
+            pincode: p.pincode || '',
+            instructions: p.instructions || ''
+          });
+          setLookupStatus({ found: true, name: p.name });
+          if (p.pincode) checkPincode(p.pincode);
+        } else {
+          setLookupStatus({ found: false });
+        }
+      } catch (err) {
+        setLookupStatus({ found: false });
+      } finally {
+        setLookupLoading(false);
+      }
+    } else {
+      setLookupStatus(null);
+    }
+  };
+
+  const getItemPrice = (name) => {
+    const item = (currentMenu || []).find(m => m.name === name);
+    if (item && Number(item.price)) return Number(item.price);
+    if (name === 'Mini Lunch') return 140;
+    if (name === 'Brunch') return 180;
+    if (name === 'Full Lunch') return 220;
+    if (name === 'Family Meal') return 320;
+    if (name === 'Choviar Special' || name === 'Choviar' || name === 'Full Choviar') return 160;
+    if (name === `Extra ${breadType}` || name === 'Extra Roti' || name === 'Roti') {
+      return parseFloat(currentMetadata?.rotiPrice) || 8;
+    }
+    return 0;
+  };
+
+  const buildItemsList = () => {
+    const items = [];
+    if (selectedLunch && selectedLunch !== 'None' && lunchQty > 0) {
+      items.push({ name: selectedLunch, quantity: lunchQty, price: getItemPrice(selectedLunch) });
+    }
+    if (hasChoviar && choviarQty > 0) {
+      items.push({ name: 'Choviar', quantity: choviarQty, price: getItemPrice('Choviar') });
+    }
+    if (extraBreadQty > 0) {
+      items.push({ name: `Extra ${breadType}`, quantity: extraBreadQty, price: getItemPrice(`Extra ${breadType}`) });
+    }
+    customItems.forEach(ci => {
+      items.push({ name: ci.name, quantity: ci.quantity, price: ci.price });
+    });
+    return items;
+  };
+
+  const handleAddCustomItem = () => {
+    if (!selectedCustomItem) return;
+    const price = getItemPrice(selectedCustomItem);
+    const existingIndex = customItems.findIndex(ci => ci.name === selectedCustomItem);
+    if (existingIndex >= 0) {
+      const updated = [...customItems];
+      updated[existingIndex].quantity += customItemQty;
+      setCustomItems(updated);
+    } else {
+      setCustomItems([...customItems, { name: selectedCustomItem, quantity: customItemQty, price }]);
+    }
+    setSelectedCustomItem('');
+    setCustomItemQty(1);
+  };
+
+  const handleRemoveCustomItem = (idx) => {
+    setCustomItems(customItems.filter((_, i) => i !== idx));
+  };
+
+  const itemsList = buildItemsList();
+  const subtotal = itemsList.reduce((sum, i) => sum + (i.price * i.quantity), 0);
+  const tiffinsCount = itemsList.filter(i => i.name.includes('Lunch') || i.name.includes('Meal') || i.name.includes('Brunch') || i.name.includes('Choviar')).reduce((s, i) => s + i.quantity, 0);
+
+  let surcharge = 0;
+  if (zone === 'outside') {
+    surcharge = 40 * Math.max(1, tiffinsCount);
+  } else if (zone === 'borivali') {
+    if (tiffinsCount === 0 && subtotal > 0 && subtotal < 250) {
+      surcharge = 30;
+    }
+  }
+  const grandTotal = Math.round((subtotal + surcharge) / 5) * 5;
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!form.name.trim()) return setError('Please enter customer name.');
+    if (!phone.trim() || phone.length !== 10) return setError('Please enter a valid 10-digit mobile number.');
+    if (!form.pincode.trim() || form.pincode.length !== 6) return setError('Please enter a valid 6-digit pincode.');
+    if (itemsList.length === 0) return setError('Please select at least one meal or item.');
+
+    setError('');
+    setSubmitting(true);
+
+    const [y, mo, dd] = date.split('-');
+    const formattedDate = `${dd}/${mo}/${y}`;
+
+    try {
+      const payload = {
+        date: formattedDate,
+        customer: {
+          name: form.name.trim(),
+          phone: phone.trim(),
+          wingFlat: form.wingFlat.trim(),
+          building: form.building.trim(),
+          street: form.street.trim(),
+          landmark: form.landmark.trim(),
+          locality: form.locality.trim(),
+          pincode: form.pincode.trim(),
+          instructions: form.instructions.trim()
+        },
+        items: itemsList.map(i => ({ name: i.name, quantity: i.quantity })),
+        deliveryPerson,
+        paymentMethod
+      };
+
+      await createAdminOrder(payload, password);
+      onOrderCreated(date);
+    } catch (err) {
+      setError(err.response?.data?.error || err.message || 'Failed to place order.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const lunchOptions = ['None', 'Mini Lunch', 'Brunch', 'Full Lunch', 'Family Meal'];
+  const availableCustomMenuItems = (currentMenu || []).filter(m => 
+    !lunchOptions.includes(m.name) && m.name !== 'Choviar' && m.name !== 'Choviar Special' && m.name !== `Extra ${breadType}`
+  );
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <form onSubmit={handleSubmit} className="p-5 space-y-4 text-gray-800">
+          {/* Header */}
+          <div className="flex justify-between items-start border-b border-gray-100 pb-3">
+            <div>
+              <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                <span>➕ Place Order</span>
+                <span className="text-[10px] bg-red-100 text-jts-red px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">Post-Cutoff Admin</span>
+              </h2>
+              <p className="text-xs text-gray-500 mt-0.5">Order confirmed with kitchen after packing</p>
+            </div>
+            <button type="button" onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-xl text-gray-400 hover:text-gray-600 transition">✕</button>
+          </div>
+
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-2.5 text-xs text-red-700 font-medium">
+              {error}
+            </div>
+          )}
+
+          {/* Section 1: Date & Phone Lookup */}
+          <div className="bg-gray-50/80 p-3.5 rounded-xl border border-gray-100 space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wide block mb-1">Delivery Date</label>
+                <input
+                  type="date"
+                  value={date}
+                  onChange={e => setDate(e.target.value)}
+                  className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs bg-white font-medium focus:ring-2 focus:ring-jts-red focus:outline-none"
+                  required
+                />
+              </div>
+              <div>
+                <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wide block mb-1">
+                  Customer Phone {lookupLoading && <span className="text-jts-red font-normal lowercase">(searching...)</span>}
+                </label>
+                <input
+                  type="tel"
+                  maxLength="10"
+                  placeholder="10-digit mobile"
+                  value={phone}
+                  onChange={e => handlePhoneChange(e.target.value)}
+                  className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs bg-white font-bold tracking-wider focus:ring-2 focus:ring-jts-red focus:outline-none"
+                  required
+                />
+              </div>
+            </div>
+
+            {lookupStatus?.found && (
+              <div className="text-[11px] bg-green-50 border border-green-200 text-green-700 px-2.5 py-1 rounded-lg font-medium flex items-center justify-between">
+                <span>✅ Profile found: <strong>{lookupStatus.name}</strong> (auto-filled)</span>
+              </div>
+            )}
+            {lookupStatus && !lookupStatus.found && phone.length === 10 && (
+              <div className="text-[11px] bg-blue-50 border border-blue-200 text-blue-700 px-2.5 py-1 rounded-lg font-medium">
+                ℹ️ New customer (details will be saved)
+              </div>
+            )}
+          </div>
+
+          {/* Section 2: Address Details */}
+          <div className="space-y-2.5">
+            <div>
+              <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wide block mb-1">Customer Name</label>
+              <input
+                type="text"
+                placeholder="Full Name"
+                value={form.name}
+                onChange={e => setForm({ ...form, name: e.target.value })}
+                className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-jts-red focus:outline-none"
+                required
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <input
+                type="text"
+                placeholder="Flat / Wing"
+                value={form.wingFlat}
+                onChange={e => setForm({ ...form, wingFlat: e.target.value })}
+                className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-jts-red focus:outline-none"
+              />
+              <input
+                type="text"
+                placeholder="Building / Society"
+                value={form.building}
+                onChange={e => setForm({ ...form, building: e.target.value })}
+                className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-jts-red focus:outline-none"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <input
+                type="text"
+                placeholder="Street / Road"
+                value={form.street}
+                onChange={e => setForm({ ...form, street: e.target.value })}
+                className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-jts-red focus:outline-none"
+              />
+              <input
+                type="text"
+                placeholder="Landmark (opt)"
+                value={form.landmark}
+                onChange={e => setForm({ ...form, landmark: e.target.value })}
+                className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-jts-red focus:outline-none"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <input
+                type="text"
+                placeholder="Locality (e.g. Borivali W)"
+                value={form.locality}
+                onChange={e => setForm({ ...form, locality: e.target.value })}
+                className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-jts-red focus:outline-none"
+              />
+              <div>
+                <input
+                  type="text"
+                  maxLength="6"
+                  placeholder="Pincode (6-digit)"
+                  value={form.pincode}
+                  onChange={e => {
+                    setForm({ ...form, pincode: e.target.value });
+                    checkPincode(e.target.value);
+                  }}
+                  className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs font-semibold tracking-wider focus:ring-2 focus:ring-jts-red focus:outline-none"
+                  required
+                />
+                {zone && (
+                  <span className={`text-[10px] font-bold block mt-0.5 ${zone === 'outside' ? 'text-amber-600' : 'text-green-600'}`}>
+                    {zone === 'outside' ? '🚚 Outside Borivali (+₹40/tiffin)' : '📍 Borivali Zone'}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Section 3: Meal Selection */}
+          <div className="bg-red-50/40 p-3.5 rounded-xl border border-red-100 space-y-3">
+            <div className="flex justify-between items-center">
+              <p className="text-[11px] font-bold text-gray-700 uppercase tracking-wide">Lunch Plan</p>
+              <span className="text-[10px] bg-red-100 text-jts-red px-2 py-0.5 rounded font-bold">Bread: {breadType}</span>
+            </div>
+
+            {/* Lunch selection pills */}
+            <div className="grid grid-cols-3 gap-1.5">
+              {lunchOptions.map(opt => (
+                <button
+                  type="button"
+                  key={opt}
+                  onClick={() => setSelectedLunch(opt)}
+                  className={`py-1.5 px-2 text-xs rounded-lg font-bold border transition ${
+                    selectedLunch === opt ? 'bg-jts-red text-white border-jts-red shadow-sm' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                  }`}
+                >
+                  {opt}
+                </button>
+              ))}
+            </div>
+
+            {selectedLunch !== 'None' && (
+              <div className="flex justify-between items-center text-xs pt-1">
+                <span className="text-gray-600 font-medium">{selectedLunch} Quantity:</span>
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={() => setLunchQty(Math.max(1, lunchQty - 1))} className="w-6 h-6 rounded border bg-white text-gray-600 font-bold hover:bg-gray-100">-</button>
+                  <span className="w-5 text-center font-bold text-gray-800">{lunchQty}</span>
+                  <button type="button" onClick={() => setLunchQty(lunchQty + 1)} className="w-6 h-6 rounded border border-jts-red bg-white text-jts-red font-bold hover:bg-red-50">+</button>
+                  <span className="text-gray-500 font-bold ml-1">₹{getItemPrice(selectedLunch) * lunchQty}</span>
+                </div>
+              </div>
+            )}
+
+            {/* Choviar & Extra Bread */}
+            <div className="border-t border-red-100 pt-2.5 space-y-2">
+              <div className="flex justify-between items-center text-xs">
+                <label className="flex items-center gap-2 cursor-pointer font-bold text-gray-700">
+                  <input type="checkbox" checked={hasChoviar} onChange={e => setHasChoviar(e.target.checked)} className="w-4 h-4 text-jts-red rounded border-gray-300" />
+                  <span>Choviar Meal (₹{getItemPrice('Choviar')})</span>
+                </label>
+                {hasChoviar && (
+                  <div className="flex items-center gap-2">
+                    <button type="button" onClick={() => setChoviarQty(Math.max(1, choviarQty - 1))} className="w-6 h-6 rounded border bg-white font-bold">-</button>
+                    <span className="w-5 text-center font-bold">{choviarQty}</span>
+                    <button type="button" onClick={() => setChoviarQty(choviarQty + 1)} className="w-6 h-6 rounded border border-jts-red bg-white text-jts-red font-bold">+</button>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-between items-center text-xs">
+                <span className="font-bold text-gray-700">Extra {breadType} (₹{getItemPrice(`Extra ${breadType}`)}/pc)</span>
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={() => setExtraBreadQty(Math.max(0, extraBreadQty - 1))} className="w-6 h-6 rounded border bg-white font-bold">-</button>
+                  <span className="w-5 text-center font-bold">{extraBreadQty}</span>
+                  <button type="button" onClick={() => setExtraBreadQty(Math.min(50, extraBreadQty + 1))} className="w-6 h-6 rounded border border-jts-red bg-white text-jts-red font-bold">+</button>
+                </div>
+              </div>
+            </div>
+
+            {/* Additional Custom Menu Items */}
+            {availableCustomMenuItems.length > 0 && (
+              <div className="border-t border-red-100 pt-2 space-y-1.5">
+                <p className="text-[11px] font-bold text-gray-600 uppercase tracking-wide">Add Custom Item (Extra Sabji/Farsan/Sweet)</p>
+                <div className="flex gap-2">
+                  <select
+                    value={selectedCustomItem}
+                    onChange={e => setSelectedCustomItem(e.target.value)}
+                    className="flex-1 text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-jts-red"
+                  >
+                    <option value="">Select menu item...</option>
+                    {availableCustomMenuItems.map(m => (
+                      <option key={m.name} value={m.name}>{m.name} (₹{m.price})</option>
+                    ))}
+                  </select>
+                  <input
+                    type="number"
+                    min="1"
+                    value={customItemQty}
+                    onChange={e => setCustomItemQty(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                    className="w-12 text-xs text-center border border-gray-200 rounded-lg px-1 py-1.5 bg-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddCustomItem}
+                    disabled={!selectedCustomItem}
+                    className="px-2.5 py-1.5 bg-gray-800 hover:bg-black text-white text-xs font-bold rounded-lg disabled:opacity-40 transition"
+                  >
+                    + Add
+                  </button>
+                </div>
+
+                {customItems.length > 0 && (
+                  <div className="space-y-1 pt-1">
+                    {customItems.map((ci, idx) => (
+                      <div key={idx} className="flex justify-between items-center text-xs bg-white px-2.5 py-1 rounded border border-gray-200">
+                        <span>{ci.name} × {ci.quantity}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold">₹{ci.price * ci.quantity}</span>
+                          <button type="button" onClick={() => handleRemoveCustomItem(idx)} className="text-red-500 font-bold hover:text-red-700">✕</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Section 4: Delivery Boy & Payment */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wide block mb-1">Delivery Person</label>
+              <select
+                value={deliveryPerson}
+                onChange={e => setDeliveryPerson(e.target.value)}
+                className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs bg-white focus:ring-2 focus:ring-jts-red focus:outline-none"
+              >
+                <option value="">Unassigned</option>
+                <option value="Dinesh">Dinesh</option>
+                <option value="Ramesh">Ramesh</option>
+                <option value="Harish">Harish</option>
+                <option value="Haresh">Haresh</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wide block mb-1">Payment Method</label>
+              <select
+                value={paymentMethod}
+                onChange={e => setPaymentMethod(e.target.value)}
+                className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs bg-white focus:ring-2 focus:ring-jts-red focus:outline-none"
+              >
+                <option value="Cash">Cash on Delivery</option>
+                <option value="Online">Online / UPI</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Section 5: Pricing Summary */}
+          <div className="bg-gray-50 p-3 rounded-xl border border-gray-200 space-y-1 text-xs">
+            <div className="flex justify-between text-gray-600">
+              <span>Subtotal ({itemsList.length} items)</span>
+              <span>₹{subtotal}</span>
+            </div>
+            {surcharge > 0 && (
+              <div className="flex justify-between text-amber-700 font-medium">
+                <span>Delivery Charge</span>
+                <span>+₹{surcharge}</span>
+              </div>
+            )}
+            <div className="flex justify-between text-sm font-black text-gray-900 border-t border-gray-200 pt-1 mt-1">
+              <span>Grand Total</span>
+              <span className="text-jts-red">₹{grandTotal}</span>
+            </div>
+          </div>
+
+          {/* Action buttons */}
+          <div className="flex gap-2 pt-1">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-2.5 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl text-xs transition"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={submitting || itemsList.length === 0}
+              className="flex-1 py-2.5 px-4 bg-jts-red hover:bg-jts-crimson text-white font-bold rounded-xl text-xs shadow-md transition disabled:opacity-50 flex items-center justify-center gap-1.5"
+            >
+              {submitting ? 'Placing Order...' : `Confirm & Place Order (₹${grandTotal})`}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );
@@ -329,6 +849,21 @@ function MenuTab({ password, currentMenu, currentMetadata, onMenuSaved }) {
     setItems(prev => prev.filter((_, i) => i !== idx));
   };
 
+  const moveChoviarItem = (idx, direction) => {
+    setItems(prev => {
+      const choviarIndices = prev.map((item, i) => item.category === 'Choviar' ? i : -1).filter(i => i !== -1);
+      const choviarPos = choviarIndices.indexOf(idx);
+      const targetPos = choviarPos + direction;
+      if (targetPos < 0 || targetPos >= choviarIndices.length) return prev;
+      const targetIdx = choviarIndices[targetPos];
+      const newItems = [...prev];
+      const temp = newItems[idx];
+      newItems[idx] = newItems[targetIdx];
+      newItems[targetIdx] = temp;
+      return newItems;
+    });
+  };
+
   const handleSave = async () => {
     setSaving(true);
     setMsg('');
@@ -493,17 +1028,20 @@ function MenuTab({ password, currentMenu, currentMetadata, onMenuSaved }) {
         {items.filter(i => i.category === 'Choviar').length > 0 ? (
           <div className="overflow-x-auto">
             <div className="flex flex-col gap-2 min-w-[400px] pb-1">
-              <div className="grid grid-cols-[1fr_60px_80px_40px_30px] gap-2 text-[10px] font-bold text-gray-500 uppercase tracking-wide px-1">
+              <div className="grid grid-cols-[1fr_60px_80px_40px_64px] gap-2 text-[10px] font-bold text-gray-500 uppercase tracking-wide px-1">
                 <span>Item Name</span>
                 <span className="text-center">Qty/Order</span>
                 <span>Price (₹)</span>
                 <span>Avail</span>
-                <span></span>
+                <span className="text-right">Action</span>
               </div>
               {items.map((item, idx) => {
                 if (item.category !== 'Choviar') return null;
+                const choviarIndices = items.map((it, i) => it.category === 'Choviar' ? i : -1).filter(i => i !== -1);
+                const isFirst = choviarIndices[0] === idx;
+                const isLast = choviarIndices[choviarIndices.length - 1] === idx;
                 return (
-                  <div key={idx} className="grid grid-cols-[1fr_60px_80px_40px_30px] gap-2 items-center bg-gray-50 p-2 rounded-lg border border-gray-100">
+                  <div key={idx} className="grid grid-cols-[1fr_60px_80px_40px_64px] gap-2 items-center bg-gray-50 p-2 rounded-lg border border-gray-100">
                     <input type="text" value={item.name} onChange={e => updateItem(idx, 'name', e.target.value)} className="w-full text-sm border border-gray-200 rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-jts-red bg-white" placeholder="Name" />
                     <input
                       type="number"
@@ -515,7 +1053,34 @@ function MenuTab({ password, currentMenu, currentMetadata, onMenuSaved }) {
                     />
                     <input type="number" value={item.price} onChange={e => updateItem(idx, 'price', e.target.value)} className="w-full text-sm border border-gray-200 rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-jts-red bg-white" placeholder="₹" />
                     <input type="checkbox" checked={item.available} onChange={e => updateItem(idx, 'available', e.target.checked)} className="w-4 h-4 text-jts-red mx-auto" />
-                    <button onClick={() => removeItem(idx)} className="text-red-500 hover:text-red-700 font-bold flex items-center justify-center">✕</button>
+                    <div className="flex items-center gap-1 justify-end">
+                      <button 
+                        type="button" 
+                        onClick={() => moveChoviarItem(idx, -1)} 
+                        disabled={isFirst}
+                        className="text-gray-500 hover:text-gray-800 disabled:opacity-20 p-0.5 text-xs font-bold transition"
+                        title="Move Up"
+                      >
+                        ▲
+                      </button>
+                      <button 
+                        type="button" 
+                        onClick={() => moveChoviarItem(idx, 1)} 
+                        disabled={isLast}
+                        className="text-gray-500 hover:text-gray-800 disabled:opacity-20 p-0.5 text-xs font-bold transition"
+                        title="Move Down"
+                      >
+                        ▼
+                      </button>
+                      <button 
+                        type="button" 
+                        onClick={() => removeItem(idx)} 
+                        className="text-red-500 hover:text-red-700 font-bold p-0.5 text-xs ml-0.5 transition"
+                        title="Remove"
+                      >
+                        ✕
+                      </button>
+                    </div>
                   </div>
                 );
               })}
@@ -629,7 +1194,7 @@ function MenuTab({ password, currentMenu, currentMetadata, onMenuSaved }) {
 }
 
 // ─── Tab 2: Orders ─────────────────────────────────────────────────────────────
-function OrdersTab({ password }) {
+function OrdersTab({ password, currentMetadata, currentMenu }) {
   const now = new Date();
   const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   
@@ -648,6 +1213,7 @@ function OrdersTab({ password }) {
   const [filterMonth, setFilterMonth] = useState('');
   const [filterDate, setFilterDate]   = useState(defaultDate);
   const [modalOrder, setModalOrder]   = useState(null);
+  const [showNewOrderModal, setShowNewOrderModal] = useState(false);
   const [assignments, setAssignments] = useState({});
   const [savingAssignments, setSavingAssignments] = useState(false);
   const [msg, setMsg] = useState('');
@@ -721,6 +1287,37 @@ function OrdersTab({ password }) {
   return (
     <div className="flex flex-col gap-4">
       {modalOrder && <OrderModal order={modalOrder} onClose={() => setModalOrder(null)} />}
+
+      {showNewOrderModal && (
+        <AdminNewOrderModal
+          password={password}
+          currentMetadata={currentMetadata}
+          currentMenu={currentMenu}
+          onClose={() => setShowNewOrderModal(false)}
+          onOrderCreated={(orderDate) => {
+            setShowNewOrderModal(false);
+            setMsg('✅ Order placed successfully!');
+            setTimeout(() => setMsg(''), 4000);
+            if (orderDate) {
+              setFilterDate(orderDate);
+              setFilterMonth('');
+            } else {
+              fetchOrders();
+            }
+          }}
+        />
+      )}
+
+      {/* Action Button: Post-Cutoff Order Placement */}
+      <div className="print-hide">
+        <button
+          type="button"
+          onClick={() => setShowNewOrderModal(true)}
+          className="w-full py-3 px-4 bg-jts-red hover:bg-jts-crimson text-white rounded-xl font-bold text-sm shadow-sm flex items-center justify-center gap-2 transition active:scale-98"
+        >
+          <span>➕ Place Order (Post-Cutoff)</span>
+        </button>
+      </div>
 
       {/* Dashboard Insights */}
       <div className="bg-gradient-to-br from-jts-navy to-gray-900 rounded-2xl p-4 text-white shadow-lg print-hide">
@@ -923,7 +1520,7 @@ function OrdersTab({ password }) {
 }
 
 // ─── Tab 3: Send to Kitchen ────────────────────────────────────────────────────
-function KitchenTab({ password }) {
+function KitchenTab({ password, currentMetadata, currentMenu }) {
   const getDeliveryDate = () => {
     const d = new Date();
     if (d.getHours() >= 19) d.setDate(d.getDate() + 1);
@@ -938,6 +1535,25 @@ function KitchenTab({ password }) {
   const [loading, setLoading]         = useState(false);
   const [error, setError]             = useState('');
   const [copied, setCopied]           = useState(false);
+  const [printMode, setPrintMode]     = useState(null); // 'lunch' | 'choviar' | null
+
+  useEffect(() => {
+    if (!printMode) return;
+    const handleAfterPrint = () => {
+      setPrintMode(null);
+    };
+    window.addEventListener('afterprint', handleAfterPrint);
+
+    const timer = setTimeout(() => {
+      window.print();
+      setTimeout(() => setPrintMode(null), 500);
+    }, 50);
+
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('afterprint', handleAfterPrint);
+    };
+  }, [printMode]);
 
   const convertDate = (d) => {
     if (!d) return '';
@@ -966,8 +1582,12 @@ function KitchenTab({ password }) {
 
   const buildKitchenText = () => {
     if (!summary) return '';
+    const bread = summary.breadType || summary.metadata?.breadType || currentMetadata?.breadType || 'Roti';
+    const total = summary.grandTotals?.[bread] ??
+      Object.entries(summary.packetSummary?.Bread || {}).reduce((sum, [size, count]) => sum + (Number(size) * Number(count)), 0);
+
     const lines = [`🍱 Kitchen Order Summary – ${convertDate(kitchenDate)}`, ''];
-    lines.push(`Total Roti: ${summary.grandTotals?.Roti || 0}`);
+    lines.push(`Total ${bread}: ${total || 0}`);
     lines.push(`Total Sabji: ${summary.grandTotals?.Sabji || 0}`);
     lines.push(`Total Dal: ${summary.grandTotals?.Dal || 0}`);
     lines.push(`Total Rice: ${summary.grandTotals?.Rice || 0}`);
@@ -1000,6 +1620,40 @@ function KitchenTab({ password }) {
     );
   };
 
+  const breadType = summary?.breadType || summary?.metadata?.breadType || currentMetadata?.breadType || 'Roti';
+  const breadGrandTotal = summary?.grandTotals?.[breadType] ??
+    Object.entries(summary?.packetSummary?.Bread || {}).reduce((sum, [size, count]) => sum + (Number(size) * Number(count)), 0);
+
+  const isChoviarCombo = (name) => {
+    const n = (name || '').trim().toLowerCase();
+    return n === 'full choviar' || n === 'choviar' || n === 'choviar special' || n === 'family choviar';
+  };
+
+  const choviarQtyItemName = summary?.choviarQtyItemName || 
+    (currentMenu || []).find(m => m.category === 'Choviar' && !isChoviarCombo(m.name) && m.qty && Number(m.qty) > 0)?.name?.trim() ||
+    (currentMenu || []).find(m => m.category === 'Choviar' && m.qty && Number(m.qty) > 0)?.name?.trim();
+
+  const choviarQtyGrandTotal = choviarQtyItemName && (
+    summary?.choviarGrandTotals?.[choviarQtyItemName] ??
+    Object.entries(summary?.choviarPacketSummary || {}).reduce((sum, [size, count]) => sum + (Number(size) * Number(count)), 0)
+  );
+
+  const choviarItemNames = Object.keys(summary?.choviarGrandTotals || {}).sort((a, b) => {
+    if (a === choviarQtyItemName) return -1;
+    if (b === choviarQtyItemName) return 1;
+    return 0;
+  });
+
+  const sortedChoviarOrders = [...(summary?.choviarKitchenOrders || [])].sort((a, b) => {
+    if ((a.serialNumber || 0) !== (b.serialNumber || 0)) {
+      return (a.serialNumber || 0) - (b.serialNumber || 0);
+    }
+    if (choviarQtyItemName) {
+      return (a[choviarQtyItemName] || 0) - (b[choviarQtyItemName] || 0);
+    }
+    return 0;
+  });
+
   return (
     <div className="flex flex-col gap-4">
       <div className="bg-white rounded-xl border border-gray-100 p-4 flex flex-col gap-3 print:hidden">
@@ -1029,14 +1683,26 @@ function KitchenTab({ password }) {
           <div className="bg-white rounded-xl border border-gray-100 p-4">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-bold text-gray-800 text-sm">
-                🍱 {convertDate(kitchenDate)}
+                🍱 {convertDate(kitchenDate)} {printMode === 'lunch' ? '— Lunch' : printMode === 'choviar' ? '— Choviar' : ''}
               </h3>
-              <button
-                onClick={() => window.print()}
-                className="print-hide bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-bold py-1.5 px-3 rounded-lg flex items-center gap-1 transition"
-              >
-                🖨️ Print
-              </button>
+              <div className="flex items-center gap-2 print:hidden">
+                {summary.orderCount > 0 && (
+                  <button
+                    onClick={() => setPrintMode('lunch')}
+                    className="bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-bold py-1.5 px-3 rounded-lg flex items-center gap-1 transition"
+                  >
+                    🖨️ Print Lunch
+                  </button>
+                )}
+                {summary.choviarOrderCount > 0 && (
+                  <button
+                    onClick={() => setPrintMode('choviar')}
+                    className="bg-orange-100 hover:bg-orange-200 text-orange-800 text-xs font-bold py-1.5 px-3 rounded-lg flex items-center gap-1 transition"
+                  >
+                    🖨️ Print Choviar
+                  </button>
+                )}
+              </div>
             </div>
 
             {summary.orderCount === 0 && (!summary.choviarOrderCount) ? (
@@ -1045,8 +1711,16 @@ function KitchenTab({ password }) {
               <div className="flex flex-col gap-10">
                 {/* LUNCH SECTION */}
                 {summary.orderCount > 0 && (
-                  <div>
-                    <h3 className="text-lg font-black text-gray-800 border-b-2 border-gray-200 pb-2 mb-4">🍽️ LUNCH ({summary.orderCount})</h3>
+                  <div className={printMode === 'choviar' ? 'print:hidden' : ''}>
+                    <div className="flex items-center justify-between border-b-2 border-gray-200 pb-2 mb-4">
+                      <h3 className="text-lg font-black text-gray-800">🍽️ LUNCH ({summary.orderCount})</h3>
+                      <button
+                        onClick={() => setPrintMode('lunch')}
+                        className="print:hidden bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-bold py-1.5 px-3 rounded-lg flex items-center gap-1 transition"
+                      >
+                        🖨️ Print Lunch
+                      </button>
+                    </div>
                 {/* Grand Totals Grid */}
                 <h4 className="text-sm font-bold text-gray-800 border-b pb-2 mb-3 print:hidden">🔢 Grand Totals (Bulk Quantities)</h4>
                 <div className="grid grid-cols-3 gap-3 mb-6 print:hidden">
@@ -1072,7 +1746,7 @@ function KitchenTab({ password }) {
 
                 {/* Packet Summary */}
                 {summary.packetSummary && (
-                  <div className="mb-6">
+                  <div className="mb-6 print:hidden">
                     <h4 className="text-sm font-bold text-gray-800 border-b pb-2 mb-4">📦 Packet Breakdown</h4>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       {/* Dal/Rice/Sabji Table */}
@@ -1128,8 +1802,8 @@ function KitchenTab({ password }) {
                               </tr>
                             )}
                             <tr className="bg-gray-50 border-t-2 border-gray-300">
-                              <td className="border border-gray-200 p-2 text-gray-800 text-left font-bold">Grand Total ({summary.metadata?.breadType || 'Roti'})</td>
-                              <td className="border border-gray-200 p-2 font-bold text-jts-red">{summary.grandTotals?.[summary.metadata?.breadType || 'Roti'] || summary.grandTotals?.Roti || 0}</td>
+                              <td className="border border-gray-200 p-2 text-gray-800 text-left font-bold">Grand Total ({breadType})</td>
+                              <td className="border border-gray-200 p-2 font-bold text-jts-red">{breadGrandTotal}</td>
                             </tr>
                           </tbody>
                         </table>
@@ -1148,7 +1822,7 @@ function KitchenTab({ password }) {
                           <th className="py-1.5 px-1 font-bold">Name</th>
                           <th className="py-1.5 px-1 font-bold">Locality</th>
                           {summary.grandTotals?.Tiffins > 0 && <th className="py-1.5 px-1 text-center font-bold">Tiffins</th>}
-                          <th className="py-1.5 px-1 text-center font-bold">Roti</th>
+                          <th className="py-1.5 px-1 text-center font-bold">{breadType}</th>
                           <th className="py-1.5 px-1 text-center font-bold">Sabji</th>
                           <th className="py-1.5 px-1 text-center font-bold">Dal</th>
                           <th className="py-1.5 px-1 text-center font-bold">Rice</th>
@@ -1167,7 +1841,7 @@ function KitchenTab({ password }) {
                             </td>
                             <td className="py-2 px-1 text-gray-600 text-[10px] whitespace-normal min-w-[80px] leading-snug">{order.locality || '-'}</td>
                             {summary.grandTotals?.Tiffins > 0 && <td className="py-2 px-1 text-center text-gray-800 font-bold">{order.Tiffins || '-'}</td>}
-                            <td className="py-2 px-1 text-center text-gray-800 font-bold">{order.RotiStr || order.Roti || '-'}</td>
+                            <td className="py-2 px-1 text-center text-gray-800 font-bold">{order[breadType] || order.Bread || order.RotiStr || order.Roti || order.Paratha || order.Puri || '-'}</td>
                             <td className="py-2 px-1 text-center text-gray-800 font-bold">{order.SabjiStr || order.Sabji || '-'}</td>
                             <td className="py-2 px-1 text-center text-gray-800 font-bold">{order.DalStr || order.Dal || '-'}</td>
                             <td className="py-2 px-1 text-center text-gray-800 font-bold">{order.RiceStr || order.Rice || '-'}</td>
@@ -1178,6 +1852,32 @@ function KitchenTab({ password }) {
                           </tr>
                         ))}
                       </tbody>
+                      <tfoot>
+                        <tr className="bg-gray-100 font-bold border-t-2 border-gray-300 text-gray-900">
+                          <td colSpan={3} className="py-2 px-1 text-left font-black uppercase text-[10px]">
+                            TOTAL ({summary.orderCount})
+                          </td>
+                          {summary.grandTotals?.Tiffins > 0 && (
+                            <td className="py-2 px-1 text-center font-black">{summary.grandTotals.Tiffins}</td>
+                          )}
+                          <td className="py-2 px-1 text-center font-black text-jts-red">{breadGrandTotal}</td>
+                          <td className="py-2 px-1 text-center font-black">{summary.grandTotals?.Sabji ?? 0}</td>
+                          <td className="py-2 px-1 text-center font-black">{summary.grandTotals?.Dal ?? 0}</td>
+                          <td className="py-2 px-1 text-center font-black">{summary.grandTotals?.Rice ?? 0}</td>
+                          {summary.grandTotals?.Namkeen > 0 && (
+                            <td className="py-2 px-1 text-center font-black">{summary.grandTotals.Namkeen}</td>
+                          )}
+                          {summary.grandTotals?.Salad > 0 && (
+                            <td className="py-2 px-1 text-center font-black">{summary.grandTotals.Salad}</td>
+                          )}
+                          {summary.grandTotals?.Sweet > 0 && (
+                            <td className="py-2 px-1 text-center font-black">{summary.grandTotals.Sweet}</td>
+                          )}
+                          {summary.grandTotals?.Farsan > 0 && (
+                            <td className="py-2 px-1 text-center font-black">{summary.grandTotals.Farsan}</td>
+                          )}
+                        </tr>
+                      </tfoot>
                     </table>
                   </div>
                 )}
@@ -1186,21 +1886,66 @@ function KitchenTab({ password }) {
 
                 {/* CHOVIAR SECTION */}
                 {summary.choviarOrderCount > 0 && (
-                  <div>
-                    <h3 className="text-lg font-black text-jts-red border-b-2 border-jts-red/20 pb-2 mb-4">🌙 CHOVIAR ({summary.choviarOrderCount})</h3>
+                  <div className={printMode === 'lunch' ? 'print:hidden' : ''}>
+                    <div className="flex items-center justify-between border-b-2 border-jts-red/20 pb-2 mb-4">
+                      <h3 className="text-lg font-black text-jts-red">🌙 CHOVIAR ({summary.choviarOrderCount})</h3>
+                      <button
+                        onClick={() => setPrintMode('choviar')}
+                        className="print:hidden bg-orange-100 hover:bg-orange-200 text-orange-800 text-xs font-bold py-1.5 px-3 rounded-lg flex items-center gap-1 transition"
+                      >
+                        🖨️ Print Choviar
+                      </button>
+                    </div>
                     
                     {/* Choviar Grand Totals Grid */}
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6 print:hidden">
-                      {Object.entries(summary.choviarGrandTotals || {}).map(([itemName, count]) => (
+                      {choviarItemNames.map(itemName => (
                         <div key={itemName} className="bg-orange-50 rounded-lg p-3 text-center border border-orange-100">
                           <p className="text-xs font-bold text-gray-600 uppercase tracking-tight truncate px-1">{itemName}</p>
-                          <p className="text-2xl font-black text-jts-red mt-1">{count}</p>
+                          <p className="text-2xl font-black text-jts-red mt-1">{summary.choviarGrandTotals?.[itemName] || 0}</p>
                         </div>
                       ))}
                     </div>
 
+                    {/* Choviar Packet Breakdown */}
+                    {choviarQtyItemName && summary.choviarPacketSummary && (
+                      <div className="mb-6 print:hidden">
+                        <h4 className="text-sm font-bold text-gray-800 border-b pb-2 mb-4">📦 {choviarQtyItemName} Packet Breakdown</h4>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-center text-sm border-collapse border border-gray-200 bg-white max-w-[250px]">
+                            <thead>
+                              <tr className="bg-orange-100/60 text-gray-700">
+                                <th className="border border-gray-200 p-2">Pkt Size</th>
+                                <th className="border border-gray-200 p-2">Total Pkts</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {Object.entries(summary.choviarPacketSummary || {})
+                                .sort((a, b) => Number(a[0]) - Number(b[0]))
+                                .map(([pcCount, pktCount], i) => (
+                                  <tr key={pcCount} className={i % 2 === 1 ? "bg-orange-50/50" : ""}>
+                                    <td className="border border-gray-200 p-2 text-gray-800">{pcCount} pc pkt</td>
+                                    <td className="border border-gray-200 p-2 font-bold">{pktCount}</td>
+                                  </tr>
+                                ))
+                              }
+                              {Object.keys(summary.choviarPacketSummary || {}).length === 0 && (
+                                <tr>
+                                  <td colSpan={2} className="border border-gray-200 p-4 text-gray-400 italic">No {choviarQtyItemName} packets</td>
+                                </tr>
+                              )}
+                              <tr className="bg-orange-50/60 border-t-2 border-orange-200">
+                                <td className="border border-gray-200 p-2 text-gray-800 text-left font-bold">Grand Total ({choviarQtyItemName})</td>
+                                <td className="border border-gray-200 p-2 font-bold text-jts-red">{choviarQtyGrandTotal || 0}</td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Choviar Orders Table */}
-                    {summary.choviarKitchenOrders && summary.choviarKitchenOrders.length > 0 && (
+                    {sortedChoviarOrders.length > 0 && (
                       <div className="w-full overflow-x-auto">
                         <table className="w-full text-left text-xs leading-tight">
                           <thead>
@@ -1208,25 +1953,37 @@ function KitchenTab({ password }) {
                               <th className="py-1.5 px-1 rounded-l-lg font-bold">SR NO</th>
                               <th className="py-1.5 px-1 font-bold">Name</th>
                               <th className="py-1.5 px-1 font-bold">Locality</th>
-                              {Object.keys(summary.choviarGrandTotals || {}).map(item => (
+                              {choviarItemNames.map(item => (
                                 <th key={item} className="py-1.5 px-1 text-center font-bold">{item}</th>
                               ))}
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-gray-100">
-                            {summary.choviarKitchenOrders.map((order, i) => (
+                            {sortedChoviarOrders.map((order, i) => (
                               <tr key={order.orderId || i} className={`hover:bg-gray-50 transition ${order.zone === 'outside' ? 'bg-orange-50/50' : ''}`}>
                                 <td className="py-2 px-1 font-bold text-gray-800">#{order.serialNumber || '-'}</td>
                                 <td className="py-2 px-1 text-gray-800 font-bold whitespace-normal min-w-[100px] leading-snug">
                                   {order.name}
                                 </td>
                                 <td className="py-2 px-1 text-gray-600 text-[10px] whitespace-normal min-w-[80px] leading-snug">{order.locality || '-'}</td>
-                                {Object.keys(summary.choviarGrandTotals || {}).map(item => (
+                                {choviarItemNames.map(item => (
                                   <td key={item} className="py-2 px-1 text-center text-gray-800 font-bold">{order[item] || '-'}</td>
                                 ))}
                               </tr>
                             ))}
                           </tbody>
+                          <tfoot>
+                            <tr className="bg-orange-100/70 font-bold border-t-2 border-orange-300 text-gray-900">
+                              <td colSpan={3} className="py-2 px-1 text-left font-black uppercase text-[10px]">
+                                TOTAL ({summary.choviarOrderCount})
+                              </td>
+                              {choviarItemNames.map(item => (
+                                <td key={item} className="py-2 px-1 text-center font-black text-jts-red">
+                                  {summary.choviarGrandTotals?.[item] || 0}
+                                </td>
+                              ))}
+                            </tr>
+                          </tfoot>
                         </table>
                       </div>
                     )}
@@ -1239,7 +1996,7 @@ function KitchenTab({ password }) {
           {summary.orderCount > 0 && (
             <button
               onClick={handleCopy}
-              className={`w-full py-3.5 rounded-xl font-bold text-sm transition
+              className={`w-full py-3.5 rounded-xl font-bold text-sm transition print:hidden
                 ${copied
                   ? 'bg-green-500 text-white'
                   : 'bg-jts-navy hover:bg-blue-900 text-white'}`}
@@ -1985,8 +2742,8 @@ export default function AdminPage() {
       {/* Tab content */}
       <main className="max-w-2xl mx-auto px-4 py-3">
         {activeTab === 'menu'    && <MenuTab    password={adminPassword} currentMenu={currentMenu} currentMetadata={currentMetadata} onMenuSaved={(savedItems, savedMeta) => { setCurrentMenu(savedItems); setCurrentMetadata(savedMeta); }} />}
-        {activeTab === 'orders'  && <OrdersTab  password={adminPassword} />}
-        {activeTab === 'kitchen' && <KitchenTab password={adminPassword} />}
+        {activeTab === 'orders'  && <OrdersTab  password={adminPassword} currentMetadata={currentMetadata} currentMenu={currentMenu} />}
+        {activeTab === 'kitchen' && <KitchenTab password={adminPassword} currentMetadata={currentMetadata} currentMenu={currentMenu} />}
         {activeTab === 'billing' && <BillingTab password={adminPassword} />}
         {activeTab === 'settings' && <SettingsTab password={adminPassword} currentMetadata={currentMetadata} onMetadataSaved={(savedMeta) => setCurrentMetadata(savedMeta)} />}
         {activeTab === 'manage' && (

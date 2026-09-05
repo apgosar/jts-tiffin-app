@@ -45,6 +45,8 @@ scripts/diagnose-*.js
 # ── Generated quotation documents ─────────────────────────────────────────────
 Quotation.md
 quotation.pdf
+proforma_invoice.md
+proforma_invoice.pdf
 
 # ── Test and coverage output ──────────────────────────────────────────────────
 coverage/
