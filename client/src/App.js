@@ -37,48 +37,65 @@ export function getOrderingState(metadata = {}) {
   const now = new Date();
   const hour = simHourParam !== null ? parseInt(simHourParam, 10) : now.getHours();
 
-  let targetDate = new Date(now);
-  targetDate.setHours(0, 0, 0, 0);
-
-  // Determine target date (delivery date)
-  // Default rollover logic at 19:00 (7 PM)
-  if (hour >= 19) {
-    targetDate.setDate(targetDate.getDate() + 1);
-  }
-
-  let status = 'OPEN'; // 'OPEN', 'LUNCH_CLOSED', 'CHOVIAR_ONLY'
-
-  const lunchCutoffHr = parseInt(metadata.lunchCutoff?.split(':')[0] || '5', 10);
-  const lunchCutoffDay = metadata.lunchCutoffDay || 'Same Day';
-  const choviarCutoffHr = parseInt(metadata.choviarCutoff?.split(':')[0] || '11', 10);
-  const choviarCutoffDay = metadata.choviarCutoffDay || 'Same Day';
-
-  const lunchCutoffTime = new Date(targetDate);
-  if (lunchCutoffDay === 'Previous Day') lunchCutoffTime.setDate(lunchCutoffTime.getDate() - 1);
-  lunchCutoffTime.setHours(lunchCutoffHr, 0, 0, 0);
-
-  const choviarCutoffTime = new Date(targetDate);
-  if (choviarCutoffDay === 'Previous Day') choviarCutoffTime.setDate(choviarCutoffTime.getDate() - 1);
-  choviarCutoffTime.setHours(choviarCutoffHr, 0, 0, 0);
-
   const currentTime = new Date(now);
   if (simHourParam !== null) {
     currentTime.setHours(hour, 0, 0, 0);
   }
 
-  const lunchMissed = currentTime >= lunchCutoffTime;
-  const choviarMissed = currentTime >= choviarCutoffTime;
+  const today = new Date(now);
+  today.setHours(0, 0, 0, 0);
 
+  let targetDate = null;
+
+  // 1. If admin explicitly published liveMenuDate, use that if it's today or future
+  if (metadata.liveMenuDate && /^\d{2}\/\d{2}\/\d{4}$/.test(metadata.liveMenuDate)) {
+    const [d, m, y] = metadata.liveMenuDate.split('/');
+    const liveDateObj = new Date(parseInt(y, 10), parseInt(m, 10) - 1, parseInt(d, 10));
+    liveDateObj.setHours(0, 0, 0, 0);
+    if (liveDateObj >= today) {
+      targetDate = liveDateObj;
+    }
+  }
+
+  // 2. Default target date logic if liveMenuDate is not set or in the past
+  if (!targetDate) {
+    targetDate = new Date(today);
+    // Rollover to tomorrow if 7 PM or later
+    if (hour >= 19) {
+      targetDate.setDate(targetDate.getDate() + 1);
+    }
+  }
+
+  const getCutoff = (timeStr, dayPref, date) => {
+    const [h = '5', min = '0'] = (timeStr || '05:00').split(':');
+    const cTime = new Date(date);
+    if (dayPref === 'Previous Day') cTime.setDate(cTime.getDate() - 1);
+    cTime.setHours(parseInt(h, 10), parseInt(min, 10), 0, 0);
+    return cTime;
+  };
+
+  let lunchCutoffTime = getCutoff(metadata.lunchCutoff || '05:00', metadata.lunchCutoffDay || 'Same Day', targetDate);
+  let choviarCutoffTime = getCutoff(metadata.choviarCutoff || '11:00', metadata.choviarCutoffDay || 'Same Day', targetDate);
+
+  let lunchMissed = currentTime >= lunchCutoffTime;
+  let choviarMissed = currentTime >= choviarCutoffTime;
+
+  // If both cutoffs for targetDate have already passed, advance to the next day and recalculate cutoffs
+  if (lunchMissed && choviarMissed) {
+    targetDate.setDate(targetDate.getDate() + 1);
+    lunchCutoffTime = getCutoff(metadata.lunchCutoff || '05:00', metadata.lunchCutoffDay || 'Same Day', targetDate);
+    choviarCutoffTime = getCutoff(metadata.choviarCutoff || '11:00', metadata.choviarCutoffDay || 'Same Day', targetDate);
+    lunchMissed = currentTime >= lunchCutoffTime;
+    choviarMissed = currentTime >= choviarCutoffTime;
+  }
+
+  let status = 'OPEN';
   if (lunchMissed && choviarMissed) {
     status = 'CLOSED';
-    // If we missed everything for the target date, push target date to the next day
-    // (This ensures users can always order *something* eventually)
-    targetDate.setDate(targetDate.getDate() + 1);
-    status = 'OPEN';
   } else if (lunchMissed && !choviarMissed) {
     status = 'LUNCH_CLOSED';
   } else if (!lunchMissed && choviarMissed) {
-    status = 'CHOVIAR_CLOSED'; // Edge case
+    status = 'CHOVIAR_CLOSED';
   } else {
     status = 'OPEN';
   }
@@ -91,9 +108,10 @@ export function getOrderingState(metadata = {}) {
   const liveMenuDateStr = metadata.liveMenuDate;
   // Menu is live if liveMenuDate isn't set, OR if targetDate is <= liveMenuDate
   let isMenuLive = true;
-  if (liveMenuDateStr) {
+  if (liveMenuDateStr && /^\d{2}\/\d{2}\/\d{4}$/.test(liveMenuDateStr)) {
     const [d, m, y] = liveMenuDateStr.split('/');
     const liveDateObj = new Date(parseInt(y, 10), parseInt(m, 10) - 1, parseInt(d, 10));
+    liveDateObj.setHours(0, 0, 0, 0);
     if (targetDate > liveDateObj) {
       isMenuLive = false;
     }

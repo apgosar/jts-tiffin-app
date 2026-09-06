@@ -490,7 +490,7 @@ export default function MenuPage() {
           <div className="bg-white border-2 border-jts-red rounded-xl p-6 shadow-md text-center my-10">
             <p className="text-4xl mb-3">👨‍🍳</p>
             <h2 className="text-xl font-bold text-jts-red mb-2" style={{ fontFamily: "'Oswald', Impact, sans-serif" }}>We are cooking tomorrow's menu!</h2>
-            <p className="text-gray-600 text-sm font-medium">Orders will be live again post 7 PM.</p>
+            <p className="text-gray-600 text-sm font-medium">Orders will open once tomorrow's menu is live.</p>
           </div>
         ) : null}
 

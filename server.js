@@ -352,12 +352,26 @@ app.post('/api/orders', orderLimiter, async (req, res) => {
   const choviarCutoff = parseInt(metadata.choviarCutoff?.split(':')[0] || '11', 10);
 
   // Determine target date (delivery date)
-  const deliveryTime = new Date(istTime);
-  // Default rollover logic (to be replaced by liveMenuDate if needed, but for now stick to 19:00 rollover)
-  if (istHour >= 19) {
-    deliveryTime.setDate(deliveryTime.getDate() + 1);
+  let deliveryTime = null;
+  const todayDateObj = new Date(istTime);
+  todayDateObj.setHours(0, 0, 0, 0);
+
+  if (metadata.liveMenuDate && /^\d{2}\/\d{2}\/\d{4}$/.test(metadata.liveMenuDate)) {
+    const [d, m, y] = metadata.liveMenuDate.split('/');
+    const liveDateObj = new Date(parseInt(y, 10), parseInt(m, 10) - 1, parseInt(d, 10));
+    liveDateObj.setHours(0, 0, 0, 0);
+    if (liveDateObj >= todayDateObj) {
+      deliveryTime = liveDateObj;
+    }
   }
-  deliveryTime.setHours(0, 0, 0, 0);
+
+  if (!deliveryTime) {
+    deliveryTime = new Date(istTime);
+    if (istHour >= 19) {
+      deliveryTime.setDate(deliveryTime.getDate() + 1);
+    }
+    deliveryTime.setHours(0, 0, 0, 0);
+  }
   
   if (!betaTesting) {
     const hasLunch = validatedItems.some(i => i.category !== 'Choviar');
@@ -371,30 +385,30 @@ app.post('/api/orders', orderLimiter, async (req, res) => {
     }
 
     if (hasLunch) {
-      const lunchCutoffHr = parseInt(metadata.lunchCutoff?.split(':')[0] || '5', 10);
+      const [lHr = '5', lMin = '0'] = (metadata.lunchCutoff || '05:00').split(':');
       const lunchCutoffDay = metadata.lunchCutoffDay || 'Same Day';
       const lunchCutoffTime = new Date(deliveryTime);
       if (lunchCutoffDay === 'Previous Day') {
         lunchCutoffTime.setDate(lunchCutoffTime.getDate() - 1);
       }
-      lunchCutoffTime.setHours(lunchCutoffHr, 0, 0, 0);
+      lunchCutoffTime.setHours(parseInt(lHr, 10), parseInt(lMin, 10), 0, 0);
 
       if (istTime >= lunchCutoffTime) {
-        return res.status(400).json({ error: `Lunch order cutoff (${lunchCutoffHr}:00 ${lunchCutoffDay === 'Previous Day' ? 'Yesterday' : 'Today'}) has passed for the selected delivery day.` });
+        return res.status(400).json({ error: `Lunch order cutoff (${metadata.lunchCutoff || '05:00'} ${lunchCutoffDay === 'Previous Day' ? 'Yesterday' : 'Today'}) has passed for the selected delivery day.` });
       }
     }
 
     if (hasChoviar) {
-      const choviarCutoffHr = parseInt(metadata.choviarCutoff?.split(':')[0] || '11', 10);
+      const [cHr = '11', cMin = '0'] = (metadata.choviarCutoff || '11:00').split(':');
       const choviarCutoffDay = metadata.choviarCutoffDay || 'Same Day';
       const choviarCutoffTime = new Date(deliveryTime);
       if (choviarCutoffDay === 'Previous Day') {
         choviarCutoffTime.setDate(choviarCutoffTime.getDate() - 1);
       }
-      choviarCutoffTime.setHours(choviarCutoffHr, 0, 0, 0);
+      choviarCutoffTime.setHours(parseInt(cHr, 10), parseInt(cMin, 10), 0, 0);
 
       if (istTime >= choviarCutoffTime) {
-        return res.status(400).json({ error: `Choviar order cutoff (${choviarCutoffHr}:00 ${choviarCutoffDay === 'Previous Day' ? 'Yesterday' : 'Today'}) has passed for the selected delivery day.` });
+        return res.status(400).json({ error: `Choviar order cutoff (${metadata.choviarCutoff || '11:00'} ${choviarCutoffDay === 'Previous Day' ? 'Yesterday' : 'Today'}) has passed for the selected delivery day.` });
       }
     }
   }
