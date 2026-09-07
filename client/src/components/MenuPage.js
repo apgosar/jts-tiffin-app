@@ -157,7 +157,7 @@ function TiffinCard({ item, cart, updateQuantity, animDelay }) {
               <span className="text-jts-navy text-xs font-semibold opacity-80">per tiffin</span>
             </div>
             <p className="text-[10px] text-gray-400 mt-1.5 font-medium">
-              ₹40 extra per tiffin for delivery outside Borivali
+              {item.category === 'Choviar' ? 'Choviar delivery only in Borivali' : '₹40 extra per tiffin for delivery outside Borivali'}
             </p>
           </div>
           
@@ -635,7 +635,7 @@ export default function MenuPage() {
           <div className="mt-8 bg-jts-navy rounded-2xl p-4 text-center">
             <p className="text-white font-bold text-base" style={{ fontFamily: "'Oswald', sans-serif" }}>Keyur Shah</p>
             <a href="tel:+918779084488" className="text-jts-gold font-semibold text-lg tracking-wide hover:underline mb-1 inline-block">📞 87790 84488</a>
-            <p className="text-jts-gold text-xs font-medium">₹40 extra per tiffin for delivery outside Borivali</p>
+            <p className="text-jts-gold text-xs font-medium">₹40 extra per Lunch tiffin for delivery outside Borivali</p>
             <p className="text-jts-gold text-xs font-medium mt-0.5">Choviar delivery available only in Borivali.</p>
             
             <div className="mt-4 pt-3 border-t border-blue-900/50 text-gray-300 text-xs flex flex-col gap-1.5 font-medium">

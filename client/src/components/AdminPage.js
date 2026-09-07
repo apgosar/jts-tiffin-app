@@ -1654,6 +1654,10 @@ function KitchenTab({ password, currentMetadata, currentMenu }) {
     return 0;
   });
 
+  const outsideLunchOrders = (summary?.outsideOrders?.length > 0)
+    ? summary.outsideOrders
+    : (summary?.kitchenOrders || []).filter(o => o.zone === 'outside');
+
   return (
     <div className="flex flex-col gap-4">
       <div className="bg-white rounded-xl border border-gray-100 p-4 flex flex-col gap-3 print:hidden">
@@ -1683,7 +1687,7 @@ function KitchenTab({ password, currentMetadata, currentMenu }) {
           <div className="bg-white rounded-xl border border-gray-100 p-4">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-bold text-gray-800 text-sm">
-                🍱 {convertDate(kitchenDate)} {printMode === 'lunch' ? '— Lunch' : printMode === 'choviar' ? '— Choviar' : ''}
+                🍱 {convertDate(kitchenDate)} {printMode === 'lunch' ? '— Lunch' : printMode === 'choviar' ? '— Choviar' : printMode === 'outside' ? '— Outside Lunch' : ''}
               </h3>
               <div className="flex items-center gap-2 print:hidden">
                 {summary.orderCount > 0 && (
@@ -1692,6 +1696,14 @@ function KitchenTab({ password, currentMetadata, currentMenu }) {
                     className="bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-bold py-1.5 px-3 rounded-lg flex items-center gap-1 transition"
                   >
                     🖨️ Print Lunch
+                  </button>
+                )}
+                {outsideLunchOrders.length > 0 && (
+                  <button
+                    onClick={() => setPrintMode('outside')}
+                    className="bg-amber-100 hover:bg-amber-200 text-amber-800 text-xs font-bold py-1.5 px-3 rounded-lg flex items-center gap-1 transition border border-amber-300"
+                  >
+                    🖨️ Print outside Lunch
                   </button>
                 )}
                 {summary.choviarOrderCount > 0 && (
@@ -1711,15 +1723,25 @@ function KitchenTab({ password, currentMetadata, currentMenu }) {
               <div className="flex flex-col gap-10">
                 {/* LUNCH SECTION */}
                 {summary.orderCount > 0 && (
-                  <div className={printMode === 'choviar' ? 'print:hidden' : ''}>
+                  <div className={printMode === 'choviar' || printMode === 'outside' ? 'print:hidden' : ''}>
                     <div className="flex items-center justify-between border-b-2 border-gray-200 pb-2 mb-4">
                       <h3 className="text-lg font-black text-gray-800">🍽️ LUNCH ({summary.orderCount})</h3>
-                      <button
-                        onClick={() => setPrintMode('lunch')}
-                        className="print:hidden bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-bold py-1.5 px-3 rounded-lg flex items-center gap-1 transition"
-                      >
-                        🖨️ Print Lunch
-                      </button>
+                      <div className="flex items-center gap-2 print:hidden">
+                        <button
+                          onClick={() => setPrintMode('lunch')}
+                          className="bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-bold py-1.5 px-3 rounded-lg flex items-center gap-1 transition"
+                        >
+                          🖨️ Print Lunch
+                        </button>
+                        {outsideLunchOrders.length > 0 && (
+                          <button
+                            onClick={() => setPrintMode('outside')}
+                            className="bg-amber-100 hover:bg-amber-200 text-amber-800 text-xs font-bold py-1.5 px-3 rounded-lg flex items-center gap-1 transition border border-amber-300"
+                          >
+                            🖨️ Print outside Lunch
+                          </button>
+                        )}
+                      </div>
                     </div>
                 {/* Grand Totals Grid */}
                 <h4 className="text-sm font-bold text-gray-800 border-b pb-2 mb-3 print:hidden">🔢 Grand Totals (Bulk Quantities)</h4>
@@ -1853,7 +1875,21 @@ function KitchenTab({ password, currentMetadata, currentMenu }) {
                         ))}
                       </tbody>
                       <tfoot>
-                        <tr className="bg-gray-100 font-bold border-t-2 border-gray-300 text-gray-900">
+                        <tr className="bg-gray-50 text-gray-500 text-[9px] uppercase tracking-tighter border-t-2 border-gray-300">
+                          <th className="py-1.5 px-1 rounded-l-lg font-bold">SR NO</th>
+                          <th className="py-1.5 px-1 font-bold">Name</th>
+                          <th className="py-1.5 px-1 font-bold">Locality</th>
+                          {summary.grandTotals?.Tiffins > 0 && <th className="py-1.5 px-1 text-center font-bold">Tiffins</th>}
+                          <th className="py-1.5 px-1 text-center font-bold">{breadType}</th>
+                          <th className="py-1.5 px-1 text-center font-bold">Sabji</th>
+                          <th className="py-1.5 px-1 text-center font-bold">Dal</th>
+                          <th className="py-1.5 px-1 text-center font-bold">Rice</th>
+                          {summary.grandTotals?.Namkeen > 0 && <th className="py-1.5 px-1 text-center font-bold">Namkeen</th>}
+                          {summary.grandTotals?.Salad > 0 && <th className="py-1.5 px-1 text-center font-bold">Salad</th>}
+                          {summary.grandTotals?.Sweet > 0 && <th className="py-1.5 px-1 text-center font-bold">Sweet</th>}
+                          {summary.grandTotals?.Farsan > 0 && <th className="py-1.5 px-1 rounded-r-lg text-center font-bold">Farsan</th>}
+                        </tr>
+                        <tr className="bg-gray-100 font-bold border-t border-gray-200 text-gray-900">
                           <td colSpan={3} className="py-2 px-1 text-left font-black uppercase text-[10px]">
                             TOTAL ({summary.orderCount})
                           </td>
@@ -1884,9 +1920,60 @@ function KitchenTab({ password, currentMetadata, currentMenu }) {
                   </div>
                 )}
 
+                {/* OUTSIDE LUNCH PRINT SECTION (Hidden on screen, rendered only when printMode === 'outside') */}
+                {outsideLunchOrders.length > 0 && (
+                  <div className={printMode === 'outside' ? 'block' : 'hidden'}>
+                    <div className="border-b-2 border-gray-300 pb-2 mb-4">
+                      <h3 className="text-lg font-black text-gray-900">
+                        📍 OUTSIDE BORIVALI LUNCH ({outsideLunchOrders.length})
+                      </h3>
+                    </div>
+
+                    <div className="w-full overflow-x-auto">
+                      <table className="w-full text-left text-xs leading-tight">
+                        <thead>
+                          <tr className="bg-gray-100 text-gray-700 text-[10px] uppercase tracking-tighter">
+                            <th className="py-2 px-2 rounded-l font-bold">SR NO</th>
+                            <th className="py-2 px-2 font-bold">Name</th>
+                            <th className="py-2 px-2 font-bold">Mobile Number</th>
+                            <th className="py-2 px-2 rounded-r font-bold">Address</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200">
+                          {outsideLunchOrders.map((order, i) => (
+                            <tr key={order.orderId || i}>
+                              <td className="py-2.5 px-2 font-bold text-gray-900">#{order.serialNumber || i + 1}</td>
+                              <td className="py-2.5 px-2 font-bold text-gray-900">{order.name}</td>
+                              <td className="py-2.5 px-2 font-semibold text-gray-900">
+                                {order.phone || '-'}
+                              </td>
+                              <td className="py-2.5 px-2 text-gray-800 leading-snug whitespace-normal">
+                                {order.address || order.locality || '-'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot>
+                          <tr className="bg-gray-50 text-gray-500 text-[9px] uppercase tracking-tighter border-t-2 border-gray-300">
+                            <th className="py-1.5 px-2 font-bold">SR NO</th>
+                            <th className="py-1.5 px-2 font-bold">Name</th>
+                            <th className="py-1.5 px-2 font-bold">Mobile Number</th>
+                            <th className="py-1.5 px-2 font-bold">Address</th>
+                          </tr>
+                          <tr className="bg-gray-100 font-bold border-t border-gray-200 text-gray-900">
+                            <td colSpan={4} className="py-2 px-2 text-left font-black uppercase text-[10px]">
+                              TOTAL OUTSIDE ORDERS: {outsideLunchOrders.length}
+                            </td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
                 {/* CHOVIAR SECTION */}
                 {summary.choviarOrderCount > 0 && (
-                  <div className={printMode === 'lunch' ? 'print:hidden' : ''}>
+                  <div className={printMode === 'lunch' || printMode === 'outside' ? 'print:hidden' : ''}>
                     <div className="flex items-center justify-between border-b-2 border-jts-red/20 pb-2 mb-4">
                       <h3 className="text-lg font-black text-jts-red">🌙 CHOVIAR ({summary.choviarOrderCount})</h3>
                       <button
@@ -1973,7 +2060,15 @@ function KitchenTab({ password, currentMetadata, currentMenu }) {
                             ))}
                           </tbody>
                           <tfoot>
-                            <tr className="bg-orange-100/70 font-bold border-t-2 border-orange-300 text-gray-900">
+                            <tr className="bg-orange-50 text-gray-600 text-[9px] uppercase tracking-tighter border-t-2 border-orange-300">
+                              <th className="py-1.5 px-1 rounded-l-lg font-bold">SR NO</th>
+                              <th className="py-1.5 px-1 font-bold">Name</th>
+                              <th className="py-1.5 px-1 font-bold">Locality</th>
+                              {choviarItemNames.map(item => (
+                                <th key={item} className="py-1.5 px-1 text-center font-bold">{item}</th>
+                              ))}
+                            </tr>
+                            <tr className="bg-orange-100/70 font-bold border-t border-orange-200 text-gray-900">
                               <td colSpan={3} className="py-2 px-1 text-left font-black uppercase text-[10px]">
                                 TOTAL ({summary.choviarOrderCount})
                               </td>

@@ -1763,16 +1763,21 @@ app.get('/api/admin/kitchen', adminLimiter, requireAdmin, async (req, res) => {
   const outsideOrders = [];
 
   orders.forEach(order => {
-    if (order.zone === 'outside' && order.status !== 'CANCELLED') {
-      outsideOrders.push({
-        name: order.name,
-        locality: order.locality || '',
-        itemsSummary: order.itemsSummary || ''
-      });
-    }
-
     const lunchItems = (order.items || []).filter(i => i.category !== 'Choviar');
     const choviarItems = (order.items || []).filter(i => i.category === 'Choviar');
+
+    const addr = order.address || [order.wingFlat, order.building, order.street, order.locality].filter(Boolean).join(', ');
+
+    if (order.zone === 'outside' && order.status !== 'CANCELLED' && lunchItems.length > 0) {
+      outsideOrders.push({
+        orderId: order.orderId,
+        name: order.name,
+        phone: order.phone || '',
+        address: addr || '',
+        locality: order.locality || '',
+        itemsSummary: order.itemsSummary || lunchItems.map(i => `${i.name}×${i.quantity}`).join(', ')
+      });
+    }
 
     if (lunchItems.length > 0) {
       const comp = getRawComponents(lunchItems, metadata);
@@ -1793,10 +1798,13 @@ app.get('/api/admin/kitchen', adminLimiter, requireAdmin, async (req, res) => {
       kitchenOrders.push({
         orderId: order.orderId,
         name: order.name,
+        phone: order.phone || '',
+        address: addr || '',
         deliveryPerson: order.deliveryPerson,
         routeOrder: order.routeOrder,
         zone: order.zone || 'borivali',
         locality: order.locality || '',
+        itemsSummary: order.itemsSummary || lunchItems.map(i => `${i.name}×${i.quantity}`).join(', '),
         ...comp
       });
       
@@ -1889,10 +1897,12 @@ app.get('/api/admin/kitchen', adminLimiter, requireAdmin, async (req, res) => {
 
   kitchenOrders.forEach(o => { o.serialNumber = lunchMap[o.orderId] || 0; });
   choviarKitchenOrders.forEach(o => { o.serialNumber = choviarMap[o.orderId] || 0; });
+  outsideOrders.forEach(o => { o.serialNumber = lunchMap[o.orderId] || 0; });
 
   // Sort according to serial number (which corresponds to outside first by roti, then borivali by sequence)
   kitchenOrders.sort((a, b) => (a.serialNumber || 0) - (b.serialNumber || 0));
   choviarKitchenOrders.sort((a, b) => (a.serialNumber || 0) - (b.serialNumber || 0));
+  outsideOrders.sort((a, b) => (a.serialNumber || 0) - (b.serialNumber || 0));
 
   res.json({ 
     date, 
