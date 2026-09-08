@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCart } from '../App';
 import { ChevronLeft, LogIn, Calendar, XCircle, Search, Edit3, CheckCircle } from 'lucide-react';
@@ -12,26 +12,26 @@ export default function MyOrdersPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [orders, setOrders] = useState([]);
-  
-  const handleLogin = async (e) => {
-    if (e) e.preventDefault();
-    if (phone.length !== 10) {
-      return setError('Please enter a valid 10-digit mobile number');
-    }
-    
+
+  // Cancel order modal state
+  const [cancelOrderModal, setCancelOrderModal] = useState(null);
+  const [cancelling, setCancelling]             = useState(false);
+  const [cancelError, setCancelError]           = useState(null);
+
+  const fetchOrdersForPhone = async (phoneNumber) => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/orders/manage?phone=${encodeURIComponent(phone)}`);
+      const res = await fetch(`/api/orders/manage?phone=${encodeURIComponent(phoneNumber)}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      
+
       const sortedOrders = (data.orders || []).sort((a, b) => {
         const [d1, m1, y1] = a.date.split('/');
         const [d2, m2, y2] = b.date.split('/');
         return new Date(y1, m1 - 1, d1) - new Date(y2, m2 - 1, d2);
       });
-      
+
       setOrders(sortedOrders);
       setIsLoggedIn(true);
     } catch (err) {
@@ -41,24 +41,45 @@ export default function MyOrdersPage() {
     }
   };
 
-  const handleCancel = async (orderId) => {
-    if (!window.confirm('Are you sure you want to cancel this order? This cannot be undone.')) {
-      return;
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const p = params.get('phone') || '';
+    if (/^[6-9]\d{9}$/.test(p)) {
+      setPhone(p);
+      fetchOrdersForPhone(p);
     }
-    setLoading(true);
+  }, []);
+
+  const handleLogin = async (e) => {
+    if (e) e.preventDefault();
+    if (phone.length !== 10) {
+      return setError('Please enter a valid 10-digit mobile number');
+    }
+    await fetchOrdersForPhone(phone);
+  };
+
+  const handleConfirmCancel = async () => {
+    if (!cancelOrderModal) return;
+    const orderId = cancelOrderModal.orderId || cancelOrderModal.id;
+    const phoneToUse = cancelOrderModal.phone || phone;
+
+    setCancelling(true);
+    setCancelError(null);
     try {
-      const res = await fetch(`/api/orders/manage/${encodeURIComponent(orderId)}?phone=${encodeURIComponent(phone)}`, {
+      const res = await fetch(`/api/orders/manage/${encodeURIComponent(orderId)}?phone=${encodeURIComponent(phoneToUse)}`, {
         method: 'DELETE'
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      
-      // Remove from list
-      setOrders(orders.filter(o => o.id !== orderId));
+      if (!res.ok) throw new Error(data.error || 'Failed to cancel order');
+
+      // Remove from active list
+      setOrders(prev => prev.filter(o => (o.orderId || o.id) !== orderId));
+      setCancelOrderModal(null);
     } catch (err) {
-      alert(err.message || 'Failed to cancel order');
+      console.error('Cancel order failed:', err);
+      setCancelError(err.message || 'Failed to cancel order');
     } finally {
-      setLoading(false);
+      setCancelling(false);
     }
   };
 
@@ -267,20 +288,27 @@ const DEFAULT_LUNCH_OPTIONS = [
                         <p className="text-lg font-extrabold text-jts-red">₹{order.grandTotal}</p>
                       </div>
                       
-                      {order.canEdit ? (
+                      {order.canEdit || order.canCancel ? (
                         <div className="flex gap-2">
-                          <button 
-                            onClick={() => handleEdit(order)}
-                            className="px-3 py-1.5 border border-blue-200 text-blue-600 rounded-lg text-xs font-bold hover:bg-blue-50 transition-colors flex items-center gap-1.5"
-                          >
-                            <Edit3 size={14} /> Edit
-                          </button>
-                          <button 
-                            onClick={() => handleCancel(order.id)}
-                            className="px-3 py-1.5 border border-red-200 text-red-600 rounded-lg text-xs font-bold hover:bg-red-50 transition-colors flex items-center gap-1.5"
-                          >
-                            <XCircle size={14} /> Cancel
-                          </button>
+                          {order.canEdit && (
+                            <button 
+                              onClick={() => handleEdit(order)}
+                              className="px-3 py-1.5 border border-blue-200 text-blue-600 rounded-lg text-xs font-bold hover:bg-blue-50 transition-colors flex items-center gap-1.5"
+                            >
+                              <Edit3 size={14} /> Edit
+                            </button>
+                          )}
+                          {order.canCancel && (
+                            <button 
+                              onClick={() => {
+                                setCancelError(null);
+                                setCancelOrderModal(order);
+                              }}
+                              className="px-3 py-1.5 border border-red-200 text-red-600 rounded-lg text-xs font-bold hover:bg-red-50 transition-colors flex items-center gap-1.5"
+                            >
+                              <XCircle size={14} /> Cancel
+                            </button>
+                          )}
                         </div>
                       ) : (
                         <span className="text-xs font-bold text-gray-400 bg-gray-100 px-2 py-1 rounded-md">
@@ -420,6 +448,67 @@ const DEFAULT_LUNCH_OPTIONS = [
           </div>
         );
       })()}
+
+      {/* CANCEL CONFIRMATION MODAL */}
+      {cancelOrderModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in" onClick={() => !cancelling && setCancelOrderModal(null)}>
+          <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl border border-gray-100 animate-slide-up" onClick={(e) => e.stopPropagation()}>
+            <div className="w-14 h-14 bg-red-50 text-red-600 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-inner">
+              <XCircle size={32} />
+            </div>
+            <h3 className="text-xl font-bold text-gray-900 text-center mb-1">Cancel Order?</h3>
+            <p className="text-xs text-gray-500 text-center mb-4 font-medium">
+              Are you sure you want to cancel this order? This action cannot be undone.
+            </p>
+
+            <div className="bg-gray-50 border border-gray-200 rounded-2xl p-3.5 mb-4 text-xs space-y-2">
+              <div className="flex justify-between items-center font-bold text-gray-800">
+                <span className="tracking-wide">Order #{cancelOrderModal.orderId || cancelOrderModal.id}</span>
+                <span className="text-jts-red font-black text-sm">₹{cancelOrderModal.grandTotal}</span>
+              </div>
+              <div className="flex justify-between text-gray-600 font-medium">
+                <span>Delivery Date:</span>
+                <span className="font-semibold text-gray-800">{cancelOrderModal.date}</span>
+              </div>
+              <div className="text-gray-700 font-medium pt-1.5 border-t border-gray-200/60 leading-relaxed">
+                {cancelOrderModal.itemsSummary}
+              </div>
+            </div>
+
+            {cancelError && (
+              <div className="mb-3 bg-red-50 border border-red-200 rounded-xl p-2.5 text-xs text-red-700 font-medium text-center">
+                {cancelError}
+              </div>
+            )}
+
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                disabled={cancelling}
+                onClick={handleConfirmCancel}
+                className="w-full py-3.5 bg-jts-red text-white font-bold rounded-xl text-sm hover:bg-jts-crimson shadow-md active:scale-[0.99] transition disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {cancelling ? (
+                  <>
+                    <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Cancelling…
+                  </>
+                ) : (
+                  'Yes, Cancel Order'
+                )}
+              </button>
+              <button
+                type="button"
+                disabled={cancelling}
+                onClick={() => setCancelOrderModal(null)}
+                className="w-full py-2.5 bg-gray-100 text-gray-700 font-bold rounded-xl text-sm hover:bg-gray-200 transition"
+              >
+                Keep Order
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -103,11 +103,18 @@ export default function CheckoutPage() {
   const navigate = useNavigate();
   const { cartItems, cartSubtotal, updateQuantity, clearCart, setLastOrder, metadata, editOrder, setEditOrder } = useCart();
 
-  // Phone lookup
+  // ── Ordering cutoffs & delivery date ─────────────────────────────────────────
+  const { status, targetDate } = getOrderingState(metadata);
+  const deliveryDateStr = targetDate ? `${String(targetDate.getDate()).padStart(2, '0')}/${String(targetDate.getMonth() + 1).padStart(2, '0')}/${targetDate.getFullYear()}` : null;
+
+  // Phone lookup & existing orders
   const [phone, setPhone]                     = useState('');
   const [lookupState, setLookupState]         = useState('idle'); // idle | loading | done
   const [savedProfiles, setSavedProfiles]     = useState([]);  // [{ name, address, pincode }]
   const [selectedProfile, setSelectedProfile] = useState(null); // index or -1 (new)
+  const [existingOrders, setExistingOrders]   = useState([]);
+  const [showDuplicateModal, setShowDuplicateModal] = useState(false);
+  const [confirmedDuplicate, setConfirmedDuplicate] = useState(false);
 
   // Form
   const [form, setForm]     = useState(EMPTY_FORM);
@@ -143,13 +150,15 @@ export default function CheckoutPage() {
     if (profile.pincode) computeZone(profile.pincode);
   };
 
-  const performLookup = async (val) => {
+  const performLookup = async (val, targetDateString) => {
+    const dStr = targetDateString !== undefined ? targetDateString : deliveryDateStr;
     if (/^[6-9]\d{9}$/.test(val)) {
       setLookupState('loading');
       try {
-        const res     = await lookupCustomer(val);
+        const res      = await lookupCustomer(val, dStr);
         const profiles = res.data.profiles || [];
         setSavedProfiles(profiles);
+        setExistingOrders(res.data.existingOrders || []);
         if (profiles.length > 0) {
           setSelectedProfile(0);
           applyProfile(profiles[0]);
@@ -163,6 +172,7 @@ export default function CheckoutPage() {
         setSelectedProfile(-1);
         setForm(EMPTY_FORM);
         setZone(null);
+        setExistingOrders([]);
       } finally {
         setLookupState('done');
       }
@@ -172,6 +182,7 @@ export default function CheckoutPage() {
       setSelectedProfile(null);
       setForm(EMPTY_FORM);
       setZone(null);
+      setExistingOrders([]);
     }
   };
 
@@ -184,8 +195,8 @@ export default function CheckoutPage() {
           setPhone(profile.phone);
           // Pre-fill form instantly from cache
           applyProfile(profile);
-          // Trigger automated backend lookup
-          performLookup(profile.phone);
+          // Trigger automated backend lookup with delivery date
+          performLookup(profile.phone, deliveryDateStr);
         }
       } else if (editOrder) {
         // Pre-fill from editOrder if we are editing
@@ -194,15 +205,11 @@ export default function CheckoutPage() {
       }
     } catch (err) {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
+  }, [deliveryDateStr]);
 
   // Submission
   const [submitting, setSubmitting]   = useState(false);
   const [serverError, setServerError] = useState('');
-
-  // ── Ordering cutoffs ─────────────────────────────────────────────────────────
-  const { status } = getOrderingState(metadata);
   const hasLunch = cartItems.some(item => item.category === 'Lunch' || !item.category);
   const isCheckoutBlocked = status === 'CLOSED' || (status === 'LUNCH_CLOSED' && hasLunch);
   
@@ -277,8 +284,9 @@ export default function CheckoutPage() {
   const handlePhoneChange = (e) => {
     const val = e.target.value.replace(/\D/g, '').slice(0, 10);
     setPhone(val);
+    setConfirmedDuplicate(false);
     if (errors.phone) setErrors(prev => ({ ...prev, phone: '' }));
-    performLookup(val);
+    performLookup(val, deliveryDateStr);
   };
 
   const handleFormChange = (field) => (e) => {
@@ -320,18 +328,7 @@ export default function CheckoutPage() {
   };
 
   // ── Submit ───────────────────────────────────────────────────────────────────
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (isCheckoutBlocked) return;
-    
-    const validationErrors = validate();
-    if (Object.keys(validationErrors).length > 0) {
-      setErrors(validationErrors);
-      const firstKey = Object.keys(validationErrors)[0];
-      document.getElementById(firstKey)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      return;
-    }
-
+  const executeOrder = async () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
     setSubmitting(true);
     setServerError('');
@@ -393,6 +390,26 @@ export default function CheckoutPage() {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (isCheckoutBlocked) return;
+    
+    const validationErrors = validate();
+    if (Object.keys(validationErrors).length > 0) {
+      setErrors(validationErrors);
+      const firstKey = Object.keys(validationErrors)[0];
+      document.getElementById(firstKey)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+
+    if (existingOrders.length > 0 && !editOrder && !confirmedDuplicate) {
+      setShowDuplicateModal(true);
+      return;
+    }
+
+    await executeOrder();
   };
 
 
@@ -559,6 +576,55 @@ export default function CheckoutPage() {
             </p>
           )}
 
+          {/* Existing Order Warning Banner */}
+          {lookupState === 'done' && !editOrder && existingOrders.length > 0 && (
+            <div className="bg-amber-50 border-2 border-amber-400 rounded-xl p-3.5 shadow-sm">
+              <div className="flex items-start gap-2.5">
+                <span className="text-xl leading-none">⚠️</span>
+                <div className="flex-1 text-sm">
+                  <div className="flex items-center justify-between gap-2 flex-wrap mb-1">
+                    <h4 className="font-bold text-amber-900">
+                      You already have {existingOrders.length > 1 ? `${existingOrders.length} orders` : 'an order'} for {deliveryDateStr || 'this date'}!
+                    </h4>
+                  </div>
+                  <p className="text-xs text-amber-800 mb-2.5">
+                    An active order is already scheduled for delivery. Review below to avoid placing a duplicate order:
+                  </p>
+                  <div className="space-y-2">
+                    {existingOrders.map((ord, idx) => (
+                      <div key={ord.orderId || idx} className="bg-white/90 border border-amber-200 rounded-lg p-2.5 flex items-center justify-between gap-3">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-gray-900 text-xs tracking-wider">#{ord.orderId}</span>
+                            {ord.category && (
+                              <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">
+                                {ord.category}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-gray-700 font-medium mt-0.5">{ord.itemsSummary}</p>
+                        </div>
+                        <div className="text-right whitespace-nowrap">
+                          <span className="text-sm font-black text-amber-900">₹{ord.grandTotal}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-3 pt-2 border-t border-amber-200/60 flex items-center justify-between flex-wrap gap-2">
+                    <span className="text-xs text-amber-700 font-medium">Want to change or view your existing order?</span>
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/my-orders?phone=${phone}`)}
+                      className="text-xs font-bold text-amber-900 hover:text-amber-950 underline flex items-center gap-1"
+                    >
+                      View / Modify Order &rarr;
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* STEP 2: Saved addresses picker */}
           {lookupState === 'done' && savedProfiles.length > 0 && (
             <div className="flex flex-col gap-2">
@@ -706,6 +772,72 @@ export default function CheckoutPage() {
         </form>
         )}
       </main>
+
+      {/* Duplicate Order Confirmation Modal */}
+      {showDuplicateModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl border border-gray-100 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-3 mb-3 text-amber-600">
+              <span className="text-3xl">⚠️</span>
+              <div>
+                <h3 className="font-bold text-lg text-gray-900 leading-tight">Duplicate Order Check</h3>
+                <p className="text-xs text-gray-500 font-medium">Delivery Date: {deliveryDateStr || 'Upcoming Date'}</p>
+              </div>
+            </div>
+
+            <p className="text-sm text-gray-700 mb-3">
+              You already have <strong className="text-gray-900">{existingOrders.length > 1 ? `${existingOrders.length} active orders` : 'an active order'}</strong> placed for this delivery date:
+            </p>
+
+            <div className="space-y-2 mb-4 max-h-48 overflow-y-auto pr-1">
+              {existingOrders.map((ord, idx) => (
+                <div key={ord.orderId || idx} className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs">
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="font-bold text-amber-900">Order #{ord.orderId}</span>
+                    <span className="font-bold text-amber-900">₹{ord.grandTotal}</span>
+                  </div>
+                  <p className="text-gray-700">{ord.itemsSummary}</p>
+                </div>
+              ))}
+            </div>
+
+            <p className="text-xs text-gray-600 mb-5 bg-gray-50 p-2.5 rounded-xl border border-gray-200">
+              Are you sure you want to place <strong>another new order</strong> for the same date?
+            </p>
+
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setConfirmedDuplicate(true);
+                  setShowDuplicateModal(false);
+                  executeOrder();
+                }}
+                className="w-full py-3 bg-jts-red text-white font-bold rounded-xl text-sm hover:bg-jts-crimson shadow-md active:scale-[0.99] transition"
+              >
+                Yes, Place Another Order
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDuplicateModal(false);
+                  navigate(`/my-orders?phone=${phone}`);
+                }}
+                className="w-full py-2.5 bg-gray-100 text-gray-800 font-bold rounded-xl text-sm hover:bg-gray-200 transition"
+              >
+                No, View My Existing Order
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowDuplicateModal(false)}
+                className="w-full py-2 text-xs font-semibold text-gray-500 hover:text-gray-700 transition"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

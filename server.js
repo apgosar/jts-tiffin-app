@@ -257,25 +257,61 @@ app.get('/api/check-pincode', publicLimiter, (req, res) => {
   res.json({ zone: getZone(pincode), surchargePerTiffin: SURCHARGE_AMOUNT });
 });
 
-// GET /api/customer/lookup?phone=XXXXXXXXXX
+// GET /api/customer/lookup?phone=XXXXXXXXXX&date=DD/MM/YYYY
 app.get('/api/customer/lookup', lookupLimiter, async (req, res) => {
-  const { phone } = req.query;
+  const { phone, date } = req.query;
   if (!phone || !/^[6-9]\d{9}$/.test(phone.trim())) {
     return res.status(400).json({ error: 'Invalid phone number' });
   }
   const queryPhone = phone.trim();
 
+  let existingOrders = [];
+
   if (USE_MOCK) {
     const profiles = MOCK_CUSTOMERS.filter(c => c.phone === queryPhone);
-    return res.json({ found: profiles.length > 0, profiles });
+    if (date) {
+      existingOrders = MOCK_ORDERS.filter(o => o.phone === queryPhone && o.date === date && o.status !== 'CANCELLED')
+        .map(o => ({
+          orderId: o.orderId,
+          date: o.date,
+          name: o.name,
+          itemsSummary: o.itemsSummary || (o.items || []).map(i => `${i.name}×${i.quantity}`).join(', '),
+          grandTotal: o.grandTotal,
+          category: o.category,
+          status: o.status,
+          time: o.time
+        }));
+    }
+    return res.json({ found: profiles.length > 0, profiles, existingOrders });
   }
 
   try {
     const customerDoc = await db.collection('customers').doc(queryPhone).get();
+
+    if (date) {
+      const ordersSnap = await db.collection('orders')
+        .where('phone', '==', queryPhone)
+        .where('date', '==', date)
+        .get();
+      existingOrders = ordersSnap.docs
+        .map(d => d.data())
+        .filter(o => o.status !== 'CANCELLED')
+        .map(o => ({
+          orderId: o.orderId,
+          date: o.date,
+          name: o.name,
+          itemsSummary: o.itemsSummary || (o.items || []).map(i => `${i.name}×${i.quantity}`).join(', '),
+          grandTotal: o.grandTotal,
+          category: o.category,
+          status: o.status,
+          time: o.time
+        }));
+    }
+
     if (customerDoc.exists) {
-      return res.json({ found: true, profiles: [customerDoc.data()] });
+      return res.json({ found: true, profiles: [customerDoc.data()], existingOrders });
     } else {
-      return res.json({ found: false, profiles: [] });
+      return res.json({ found: false, profiles: [], existingOrders });
     }
   } catch (err) {
     console.error('Error looking up customer:', err.message);
@@ -804,7 +840,7 @@ app.get('/api/orders/manage', publicLimiter, async (req, res) => {
   }
 
   try {
-    const metaSnap = await db.collection('admin').doc('metadata').get();
+    const metaSnap = await db.collection('metadata').doc('global').get();
     if (metaSnap.exists) metadata = metaSnap.data();
     
     const lunchCutoff = parseInt(metadata.lunchCutoff?.split(':')[0] || '5', 10);
@@ -850,6 +886,7 @@ app.delete('/api/orders/manage/:orderId', publicLimiter, async (req, res) => {
   }
 
   const queryPhone = phone.trim();
+  console.log(`[DELETE /api/orders/manage] Received cancellation request: orderId=${orderId}, phone=${queryPhone}`);
   
   const parseDate = (dStr) => {
     const [day, month, year] = dStr.split('/');
@@ -867,7 +904,10 @@ app.delete('/api/orders/manage/:orderId', publicLimiter, async (req, res) => {
 
   if (USE_MOCK) {
     const order = MOCK_ORDERS.find(o => o.orderId === orderId && o.phone === queryPhone);
-    if (!order) return res.status(404).json({ error: 'Order not found or unauthorized' });
+    if (!order) {
+      console.warn(`[DELETE /api/orders/manage] Order ${orderId} not found or unauthorized for phone ${queryPhone}`);
+      return res.status(404).json({ error: 'Order not found or unauthorized' });
+    }
     
     const lunchCutoff = parseInt(metadata.lunchCutoff?.split(':')[0] || '5', 10);
     const choviarCutoff = parseInt(metadata.choviarCutoff?.split(':')[0] || '11', 10);
@@ -881,11 +921,12 @@ app.delete('/api/orders/manage/:orderId', publicLimiter, async (req, res) => {
     }
     
     order.status = 'CANCELLED';
+    console.log(`[DELETE /api/orders/manage] Order ${orderId} cancelled successfully (mock)`);
     return res.json({ success: true, message: 'Order cancelled successfully' });
   }
 
   try {
-    const metaSnap = await db.collection('admin').doc('metadata').get();
+    const metaSnap = await db.collection('metadata').doc('global').get();
     if (metaSnap.exists) metadata = metaSnap.data();
 
     const lunchCutoff = parseInt(metadata.lunchCutoff?.split(':')[0] || '5', 10);
@@ -895,19 +936,35 @@ app.delete('/api/orders/manage/:orderId', publicLimiter, async (req, res) => {
     const orderRef = db.collection('orders').doc(orderId);
     const doc = await orderRef.get();
     
-    if (!doc.exists) return res.status(404).json({ error: 'Order not found' });
+    if (!doc.exists) {
+      console.warn(`[DELETE /api/orders/manage] Order #${orderId} not found in database`);
+      return res.status(404).json({ error: 'Order not found' });
+    }
     
     const orderData = doc.data();
-    if (orderData.phone !== queryPhone) return res.status(403).json({ error: 'Unauthorized to cancel this order' });
+    if (orderData.phone !== queryPhone) {
+      console.warn(`[DELETE /api/orders/manage] Unauthorized: order phone ${orderData.phone} does not match request phone ${queryPhone}`);
+      return res.status(403).json({ error: 'Unauthorized to cancel this order' });
+    }
     
     const oDate = parseDate(orderData.date);
-    if (oDate < todayDateObj) return res.status(400).json({ error: 'Cannot cancel past orders' });
+    if (oDate < todayDateObj) {
+      console.warn(`[DELETE /api/orders/manage] Rejected: cannot cancel past order (${orderData.date})`);
+      return res.status(400).json({ error: 'Cannot cancel past orders' });
+    }
     if (oDate.getTime() === todayDateObj.getTime() && !betaTesting) {
-      if (orderData.category === 'Lunch' && istHour >= lunchCutoff) return res.status(400).json({ error: `Lunch order cutoff (${lunchCutoff} AM) has passed for today` });
-      if (orderData.category === 'Choviar' && istHour >= choviarCutoff) return res.status(400).json({ error: `Choviar order cutoff (${choviarCutoff} AM) has passed for today` });
+      if (orderData.category === 'Lunch' && istHour >= lunchCutoff) {
+        console.warn(`[DELETE /api/orders/manage] Rejected: lunch cutoff passed (${lunchCutoff}:00)`);
+        return res.status(400).json({ error: `Lunch order cutoff (${lunchCutoff} AM) has passed for today` });
+      }
+      if (orderData.category === 'Choviar' && istHour >= choviarCutoff) {
+        console.warn(`[DELETE /api/orders/manage] Rejected: choviar cutoff passed (${choviarCutoff}:00)`);
+        return res.status(400).json({ error: `Choviar order cutoff (${choviarCutoff} AM) has passed for today` });
+      }
     }
 
     await orderRef.update({ status: 'CANCELLED' });
+    console.log(`[DELETE /api/orders/manage] Order #${orderId} cancelled successfully in Firestore.`);
     res.json({ success: true, message: 'Order cancelled successfully' });
   } catch (err) {
     console.error('Error cancelling order:', err.message);
@@ -1438,29 +1495,6 @@ app.put('/api/admin/menu', adminLimiter, requireAdmin, async (req, res) => {
     if (metadata) {
       const metaRef = db.collection('metadata').doc('global');
       batch.set(metaRef, metadata);
-
-      if (metadata.lunchClosed === 'Yes' || metadata.choviarClosed === 'Yes') {
-        const now = new Date();
-        const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
-        const istTime = new Date(utc + (3600000 * 5.5));
-        istTime.setDate(istTime.getDate() + 1);
-        const tomorrowStr = `${String(istTime.getDate()).padStart(2, '0')}/${String(istTime.getMonth() + 1).padStart(2, '0')}/${istTime.getFullYear()}`;
-
-        const ordersSnap = await db.collection('orders')
-          .where('date', '==', tomorrowStr)
-          .where('status', '==', 'ACTIVE')
-          .get();
-          
-        ordersSnap.forEach(doc => {
-          const order = doc.data();
-          if (metadata.lunchClosed === 'Yes' && order.category === 'Lunch') {
-             batch.update(doc.ref, { status: 'CANCELLED', cancelledAt: FieldValue.serverTimestamp(), cancelReason: 'Lunch Closed by Admin' });
-          }
-          if (metadata.choviarClosed === 'Yes' && order.category === 'Choviar') {
-             batch.update(doc.ref, { status: 'CANCELLED', cancelledAt: FieldValue.serverTimestamp(), cancelReason: 'Choviar Closed by Admin' });
-          }
-        });
-      }
     }
 
     await batch.commit();

@@ -73,7 +73,14 @@ export default function ConfirmationPage() {
           <div className="bg-jts-cream border border-red-200 rounded-xl px-5 py-3 w-full flex justify-between items-center text-left">
             <div>
               <p className="text-xs text-jts-red font-medium uppercase tracking-wide">Order ID</p>
-              <p className="text-xl font-black text-jts-red tracking-widest">{orderId}</p>
+              <div className="flex items-baseline gap-2 flex-wrap">
+                <span className="text-xl font-black text-jts-red tracking-widest">{orderId}</span>
+                {customer?.locality && (
+                  <span className="text-base font-bold text-gray-700">
+                    ({customer.locality})
+                  </span>
+                )}
+              </div>
             </div>
             {date && (
               <div className="text-right border-l border-red-200 pl-4">
