@@ -880,10 +880,12 @@ function MenuTab({ password, currentMenu, currentMetadata, onMenuSaved }) {
     }
   };
 
-  const handleMakeLive = async () => {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const dateStr = `${String(tomorrow.getDate()).padStart(2, '0')}/${String(tomorrow.getMonth() + 1).padStart(2, '0')}/${tomorrow.getFullYear()}`;
+  const handleMakeLive = async (target = 'tomorrow') => {
+    const d = new Date();
+    if (target === 'tomorrow') {
+      d.setDate(d.getDate() + 1);
+    }
+    const dateStr = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
     
     const newMeta = { ...metadata, liveMenuDate: dateStr };
     setMetadata(newMeta);
@@ -892,7 +894,7 @@ function MenuTab({ password, currentMenu, currentMetadata, onMenuSaved }) {
     setMsg('');
     try {
       await updateAdminMenu({ items, metadata: newMeta }, password);
-      setMsg(`✅ Menu is now LIVE for ${dateStr}!`);
+      setMsg(`✅ Menu is now LIVE for ${target === 'today' ? 'TODAY' : 'TOMORROW'} (${dateStr})!`);
       if (onMenuSaved) onMenuSaved(items, newMeta);
     } catch (err) {
       setMsg('❌ ' + (err.response?.data?.error || 'Failed to make menu live.'));
@@ -902,14 +904,30 @@ function MenuTab({ password, currentMenu, currentMetadata, onMenuSaved }) {
     }
   };
 
+  const today = new Date();
+  const todayLabel = today.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
+  const todayDateStr = `${String(today.getDate()).padStart(2, '0')}/${String(today.getMonth() + 1).padStart(2, '0')}/${today.getFullYear()}`;
+
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
-  const tomorrowLabel = tomorrow.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' });
+  const tomorrowLabel = tomorrow.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
+  const tomorrowDateStr = `${String(tomorrow.getDate()).padStart(2, '0')}/${String(tomorrow.getMonth() + 1).padStart(2, '0')}/${tomorrow.getFullYear()}`;
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="bg-jts-gold/20 border border-jts-gold rounded-xl px-4 py-2.5 text-sm text-jts-navy font-semibold text-center flex justify-between items-center">
-        <span>📅 Setting menu for: <span className="font-bold">{tomorrowLabel}</span></span>
+      <div className="bg-jts-gold/20 border border-jts-gold rounded-xl px-4 py-2.5 text-sm text-jts-navy font-semibold flex flex-wrap justify-between items-center gap-2">
+        <div className="flex items-center gap-2">
+          <span>📅 Currently Live:</span>
+          {metadata.liveMenuDate ? (
+            <span className="font-bold text-green-800 bg-green-100 border border-green-300 px-2.5 py-0.5 rounded-full text-xs">
+              🟢 {metadata.liveMenuDate} {metadata.liveMenuDate === todayDateStr ? '(Today)' : metadata.liveMenuDate === tomorrowDateStr ? '(Tomorrow)' : ''}
+            </span>
+          ) : (
+            <span className="font-bold text-gray-600 bg-gray-100 border border-gray-300 px-2.5 py-0.5 rounded-full text-xs">
+              ⚪ None
+            </span>
+          )}
+        </div>
         <div className="flex gap-2">
           <button onClick={loadPresets} className="bg-jts-navy text-white px-3 py-1 rounded-lg text-xs font-bold hover:bg-blue-900 shadow-sm transition">
             Load Presets
@@ -997,11 +1015,11 @@ function MenuTab({ password, currentMenu, currentMetadata, onMenuSaved }) {
         <div className="col-span-1 sm:col-span-2 pt-2 border-t border-gray-100 mt-2 flex flex-wrap gap-4">
           <label className="flex items-center gap-2 cursor-pointer text-sm font-bold text-red-600 bg-red-50 border border-red-200 px-3 py-2 rounded-xl flex-1 justify-center transition hover:bg-red-100">
             <input type="checkbox" checked={metadata.lunchClosed === 'Yes'} onChange={e => updateMeta('lunchClosed', e.target.checked ? 'Yes' : 'No')} className="w-4 h-4 text-red-600" />
-            Close Lunch Tomorrow
+            Close Lunch Orders
           </label>
           <label className="flex items-center gap-2 cursor-pointer text-sm font-bold text-red-600 bg-red-50 border border-red-200 px-3 py-2 rounded-xl flex-1 justify-center transition hover:bg-red-100">
             <input type="checkbox" checked={metadata.choviarClosed === 'Yes'} onChange={e => updateMeta('choviarClosed', e.target.checked ? 'Yes' : 'No')} className="w-4 h-4 text-red-600" />
-            Close Choviar Tomorrow
+            Close Choviar Orders
           </label>
         </div>
 
@@ -1175,20 +1193,33 @@ function MenuTab({ password, currentMenu, currentMetadata, onMenuSaved }) {
       <button
         onClick={handleSave}
         disabled={saving}
-        className={`w-full py-3.5 rounded-xl font-bold text-white text-sm transition mb-4
+        className={`w-full py-3 rounded-xl font-bold text-white text-sm transition mb-3
           ${saving ? 'bg-red-300 cursor-not-allowed' : 'bg-jts-red hover:bg-jts-crimson shadow-md'}`}
       >
-        {saving ? 'Saving…' : '💾 Save Menu (Hidden from Users)'}
+        {saving ? 'Saving…' : '💾 Save Menu Details (Keep Current Live Date)'}
       </button>
 
-      <button
-        onClick={handleMakeLive}
-        disabled={saving}
-        className={`w-full py-3.5 rounded-xl font-black text-white text-sm tracking-wide transition shadow-md
-          ${saving ? 'bg-green-300 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'}`}
-      >
-        🚀 MAKE MENU LIVE FOR TOMORROW
-      </button>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <button
+          onClick={() => handleMakeLive('today')}
+          disabled={saving}
+          className={`w-full py-3.5 px-3 rounded-xl font-black text-white text-xs sm:text-sm tracking-wide transition shadow-md flex items-center justify-center gap-1.5
+            ${saving ? 'bg-amber-300 cursor-not-allowed' : 'bg-amber-600 hover:bg-amber-700'}`}
+        >
+          <span>🚀</span>
+          <span>MAKE LIVE FOR TODAY ({todayLabel})</span>
+        </button>
+
+        <button
+          onClick={() => handleMakeLive('tomorrow')}
+          disabled={saving}
+          className={`w-full py-3.5 px-3 rounded-xl font-black text-white text-xs sm:text-sm tracking-wide transition shadow-md flex items-center justify-center gap-1.5
+            ${saving ? 'bg-green-300 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'}`}
+        >
+          <span>🚀</span>
+          <span>MAKE LIVE FOR TOMORROW ({tomorrowLabel})</span>
+        </button>
+      </div>
     </div>
   );
 }
@@ -2826,7 +2857,7 @@ export default function AdminPage() {
       {/* Tabs */}
       <div className="max-w-2xl mx-auto px-4 pt-4 pb-2">
         <div className="flex gap-1 bg-gray-100 rounded-xl p-1 overflow-x-auto hide-scrollbar">
-          <TabBtn active={activeTab === 'menu'}    onClick={() => setActiveTab('menu')}>🍽️ Tomorrow's Menu</TabBtn>
+          <TabBtn active={activeTab === 'menu'}    onClick={() => setActiveTab('menu')}>🍽️ Menu</TabBtn>
           <TabBtn active={activeTab === 'orders'}  onClick={() => setActiveTab('orders')}>📋 Orders</TabBtn>
           <TabBtn active={activeTab === 'kitchen'} onClick={() => setActiveTab('kitchen')}>👨‍🍳 Kitchen</TabBtn>
           <TabBtn active={activeTab === 'billing'} onClick={() => setActiveTab('billing')}>💰 Billing</TabBtn>
