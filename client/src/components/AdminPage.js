@@ -2230,6 +2230,14 @@ function ManageUsersView({ adminPassword }) {
 }
 
 // ─── Billing Tab ──────────────────────────────────────────────────────────────
+function WhatsAppIcon({ className = "w-4 h-4" }) {
+  return (
+    <svg className={className} fill="currentColor" viewBox="0 0 24 24">
+      <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/>
+    </svg>
+  );
+}
+
 function BillingTab({ password }) {
   const [monthPickerValue, setMonthPickerValue] = useState(() => {
     const d = new Date();
@@ -2239,6 +2247,7 @@ function BillingTab({ password }) {
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Hidden references for the shareable bill
   const [shareData, setShareData] = useState(null);
@@ -2429,10 +2438,71 @@ function BillingTab({ password }) {
     }, 100);
   };
 
+  const getWhatsAppUrl = (cust) => {
+    if (!cust) return '';
+    let phone = (cust.phone || '').replace(/\D/g, '');
+    if (phone.length === 10) {
+      phone = '91' + phone;
+    } else if (phone.length === 11 && phone.startsWith('0')) {
+      phone = '91' + phone.slice(1);
+    }
+
+    let monthLabel = monthPickerValue;
+    if (monthPickerValue && monthPickerValue.includes('-')) {
+      const [y, m] = monthPickerValue.split('-');
+      const d = new Date(parseInt(y, 10), parseInt(m, 10) - 1, 1);
+      monthLabel = d.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+    }
+
+    const lines = [
+      `*JAIN TIFFIN SERVICE*`,
+      `*Monthly Bill: ${monthLabel}*`,
+      `--------------------------------`,
+      `*Customer:* ${cust.name}`,
+      `*Phone:* ${cust.phone}`
+    ];
+    if (cust.address) {
+      lines.push(`*Address:* ${cust.address}`);
+    }
+    lines.push(`--------------------------------`);
+    lines.push(`*Order Details:*`);
+
+    (cust.unpaidOrders || []).forEach(o => {
+      let line = `• ${o.date}: ${o.itemsSummary} - ₹${o.outstanding}`;
+      if (o.paid > 0 && o.outstanding > 0) {
+        line += ` (₹${o.paid} paid)`;
+      } else if (o.paid > 0 && o.outstanding < 0) {
+        line += ` (Excess ₹${o.paid})`;
+      }
+      lines.push(line);
+    });
+
+    lines.push(`--------------------------------`);
+    lines.push(`*Total Pending: ₹${cust.totalPending.toLocaleString('en-IN')}/-*`);
+    lines.push(`--------------------------------`);
+    lines.push(`*Payment Mode:*`);
+    lines.push(`Gpay / PayTM: 87790 84488 (Keyur Shah)`);
+    lines.push(``);
+    lines.push(`_Thank you for ordering with us!_`);
+
+    const text = encodeURIComponent(lines.join('\n'));
+    return phone ? `https://wa.me/${phone}?text=${text}` : `https://wa.me/?text=${text}`;
+  };
+
+  const filteredCustomers = customers.filter(c => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase().trim();
+    return (
+      (c.name && c.name.toLowerCase().includes(q)) ||
+      (c.phone && c.phone.includes(q)) ||
+      (c.address && c.address.toLowerCase().includes(q))
+    );
+  });
+
   return (
     <div className="space-y-4">
-      {/* Month Filter */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 print:hidden">
+      {/* Month Filter & Print */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4 print:hidden">
         <div>
           <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Select Month</label>
           <input 
@@ -2442,14 +2512,51 @@ function BillingTab({ password }) {
             className="w-full sm:w-auto px-4 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-jts-red transition"
           />
         </div>
-        <button onClick={() => window.print()} className="px-5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl transition text-sm flex items-center gap-2">
+        <button onClick={() => window.print()} className="px-5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl transition text-sm flex items-center justify-center gap-2">
           🖨️ Print Report
         </button>
       </div>
 
+      {/* Customer Search Bar */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-3 print:hidden">
+        <div className="relative flex items-center">
+          <span className="absolute left-3.5 text-gray-400 text-sm pointer-events-none">🔍</span>
+          <input 
+            type="text" 
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search customer by name, mobile number, or address…"
+            className="w-full pl-10 pr-9 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-jts-red transition"
+          />
+          {searchQuery && (
+            <button 
+              onClick={() => setSearchQuery('')}
+              className="absolute right-3 text-gray-400 hover:text-gray-600 p-1 text-xs rounded-full"
+              title="Clear search"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+        {searchQuery.trim() && (
+          <p className="text-xs text-gray-500 mt-2 px-1">
+            Showing {filteredCustomers.length} of {customers.length} pending customer{customers.length === 1 ? '' : 's'}
+          </p>
+        )}
+      </div>
+
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 mb-4 text-center print:hidden">
-        <p className="text-sm text-gray-500 font-medium mb-1">Total Outstanding ({monthPickerValue})</p>
-        <p className="text-3xl font-black text-jts-red">₹{customers.reduce((sum, c) => sum + c.totalPending, 0).toLocaleString('en-IN')}/-</p>
+        <p className="text-sm text-gray-500 font-medium mb-1">
+          {searchQuery.trim() ? `Matching Outstanding (${filteredCustomers.length} customer${filteredCustomers.length === 1 ? '' : 's'})` : `Total Outstanding (${monthPickerValue})`}
+        </p>
+        <p className="text-3xl font-black text-jts-red">
+          ₹{(searchQuery.trim() ? filteredCustomers : customers).reduce((sum, c) => sum + c.totalPending, 0).toLocaleString('en-IN')}/-
+        </p>
+        {searchQuery.trim() && (
+          <p className="text-xs text-gray-400 mt-1">
+            Total for month: ₹{customers.reduce((sum, c) => sum + c.totalPending, 0).toLocaleString('en-IN')}/-
+          </p>
+        )}
       </div>
 
       {loading ? (
@@ -2458,9 +2565,21 @@ function BillingTab({ password }) {
         <div className="bg-red-50 text-red-600 p-4 rounded-xl text-sm font-medium">{error}</div>
       ) : customers.length === 0 ? (
         <div className="text-center text-sm text-gray-500 py-6">No pending payments for this month! 🎉</div>
+      ) : filteredCustomers.length === 0 ? (
+        <div className="text-center text-sm text-gray-500 py-10 bg-white rounded-2xl border border-gray-100 p-6">
+          <p className="text-3xl mb-2">🔍</p>
+          <p className="font-bold text-gray-700">No customers found</p>
+          <p className="text-xs text-gray-400 mt-1">No pending bills matching "{searchQuery}"</p>
+          <button 
+            onClick={() => setSearchQuery('')}
+            className="mt-3 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-semibold transition"
+          >
+            Clear Search
+          </button>
+        </div>
       ) : (
         <div className="space-y-3">
-          {customers.map((cust) => (
+          {filteredCustomers.map((cust) => (
             <div 
               key={cust.phone} 
               className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer hover:shadow-md transition"
@@ -2471,12 +2590,27 @@ function BillingTab({ password }) {
                 <p className="text-sm text-gray-500">{cust.phone}</p>
                 <p className="text-sm font-semibold text-jts-red mt-1">Pending: ₹{cust.totalPending.toLocaleString('en-IN')}/- ({cust.unpaidOrders.length} orders)</p>
               </div>
-              <button 
-                onClick={(e) => { e.stopPropagation(); handleShare(cust); }}
-                className="self-start sm:self-auto bg-green-100 hover:bg-green-200 text-green-800 font-semibold py-2 px-4 rounded-xl text-sm flex items-center gap-2 transition"
-              >
-                <span>📤 Share Bill</span>
-              </button>
+              <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
+                <a 
+                  href={getWhatsAppUrl(cust)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  title={`Send bill to ${cust.name} on WhatsApp`}
+                  className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-3 rounded-xl text-sm flex items-center gap-1.5 transition shadow-sm"
+                >
+                  <WhatsAppIcon className="w-4 h-4" />
+                  <span className="text-xs font-bold">WhatsApp</span>
+                </a>
+                <button 
+                  onClick={(e) => { e.stopPropagation(); handleShare(cust); }}
+                  className="bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-2 px-3 rounded-xl text-sm flex items-center gap-1.5 transition"
+                  title="Share or download bill image"
+                >
+                  <span>📤</span>
+                  <span className="text-xs font-medium">Image</span>
+                </button>
+              </div>
             </div>
           ))}
         </div>
@@ -2614,12 +2748,22 @@ function BillingTab({ password }) {
               </div>
             </div>
             
-            <div className="p-4 border-t border-gray-100 shrink-0">
+            <div className="p-4 border-t border-gray-100 shrink-0 flex gap-2">
+              <a 
+                href={getWhatsAppUrl(selectedCustomer)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex-1 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl transition flex items-center justify-center gap-2 shadow-sm text-sm"
+              >
+                <WhatsAppIcon className="w-5 h-5" />
+                <span>Send on WhatsApp</span>
+              </a>
               <button 
                 onClick={() => { setSelectedCustomer(null); handleShare(selectedCustomer); }}
-                className="w-full py-3 bg-green-100 hover:bg-green-200 text-green-800 font-bold rounded-xl transition flex items-center justify-center gap-2 shadow-sm"
+                className="py-3 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl transition flex items-center justify-center gap-1.5 shadow-sm text-sm"
+                title="Share or download bill image"
               >
-                📤 Share Bill
+                <span>📤 Image</span>
               </button>
             </div>
           </div>
