@@ -13,6 +13,7 @@ function DeliveryPage() {
   };
 
   useEffect(() => {
+    document.title = 'JTS Delivery';
     fetchOrders();
   }, []);
 

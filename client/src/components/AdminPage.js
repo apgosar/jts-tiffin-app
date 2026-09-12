@@ -1248,6 +1248,14 @@ function OrdersTab({ password, currentMetadata, currentMenu }) {
   const [assignments, setAssignments] = useState({});
   const [savingAssignments, setSavingAssignments] = useState(false);
   const [msg, setMsg] = useState('');
+  const [collapsedSections, setCollapsedSections] = useState({
+    'Lunch Orders': false,
+    'Choviar Orders': false
+  });
+
+  const toggleSection = (title) => {
+    setCollapsedSections(prev => ({ ...prev, [title]: !prev[title] }));
+  };
 
   const convertMonth = (m) => { if (!m) return undefined; const [y, mo] = m.split('-'); return `${mo}/${y}`; };
   const convertDate  = (d) => { if (!d) return undefined; const [y, mo, dd] = d.split('-'); return `${dd}/${mo}/${y}`; };
@@ -1458,20 +1466,43 @@ function OrdersTab({ password, currentMetadata, currentMenu }) {
 
         const renderGroup = (title, groupOrders) => {
           if (groupOrders.length === 0) return null;
+          const isCollapsed = collapsedSections[title] || false;
+
           return (
             <div className="flex flex-col gap-3 mt-4">
-              <div className="flex items-center justify-between">
-                <h3 className="font-bold text-gray-800 text-lg uppercase tracking-wide">{title} ({groupOrders.length})</h3>
-                <button
-                  onClick={() => handleSaveAssignments(groupOrders)}
-                  disabled={savingAssignments}
-                  className={`px-4 py-1.5 text-white text-sm font-bold rounded-lg transition ${savingAssignments ? 'bg-red-300 cursor-not-allowed' : 'bg-jts-red hover:bg-jts-crimson shadow-sm'}`}
-                >
-                  {savingAssignments ? 'Saving...' : '💾 Save Assignments'}
-                </button>
+              <div 
+                className="flex items-center justify-between cursor-pointer p-3 bg-white hover:bg-gray-50 rounded-xl transition select-none border border-gray-200 shadow-sm border-l-4 border-l-jts-red"
+                onClick={() => toggleSection(title)}
+              >
+                <div className="flex items-center gap-2">
+                  <h3 className="font-bold text-gray-800 text-lg uppercase tracking-wide">{title} ({groupOrders.length})</h3>
+                  <span className="text-xs font-semibold text-gray-500 bg-gray-100 px-2 py-0.5 rounded-md">
+                    {isCollapsed ? 'Show' : 'Hide'}
+                  </span>
+                  <span className="text-sm font-bold text-gray-400">{isCollapsed ? '▼' : '▲'}</span>
+                </div>
+                <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+                  {!isCollapsed && (
+                    <button
+                      onClick={() => handleSaveAssignments(groupOrders)}
+                      disabled={savingAssignments}
+                      className={`px-4 py-1.5 text-white text-sm font-bold rounded-lg transition ${savingAssignments ? 'bg-red-300 cursor-not-allowed' : 'bg-jts-red hover:bg-jts-crimson shadow-sm'}`}
+                    >
+                      {savingAssignments ? 'Saving...' : '💾 Save Assignments'}
+                    </button>
+                  )}
+                  <button
+                    onClick={() => toggleSection(title)}
+                    className="p-1.5 text-gray-500 hover:text-gray-800 rounded-lg hover:bg-gray-100 transition"
+                    title={isCollapsed ? `Expand ${title}` : `Collapse ${title}`}
+                  >
+                    <span className="text-sm font-bold">{isCollapsed ? '▼' : '▲'}</span>
+                  </button>
+                </div>
               </div>
-              <div className="overflow-x-auto bg-white rounded-xl border border-gray-300 shadow-sm">
-                <table className="w-full text-sm text-left border-collapse">
+              {!isCollapsed && (
+                <div className="overflow-x-auto bg-white rounded-xl border border-gray-300 shadow-sm">
+                  <table className="w-full text-sm text-left border-collapse">
                   <thead className="bg-gray-100 border-b border-gray-300 text-gray-800 text-xs uppercase tracking-wider">
                     <tr>
                       <th className="border-r border-gray-300 px-2 py-2 text-center w-16">Seq</th>
@@ -1535,6 +1566,7 @@ function OrdersTab({ password, currentMetadata, currentMenu }) {
                   </tbody>
                 </table>
               </div>
+              )}
             </div>
           );
         };
@@ -1567,6 +1599,14 @@ function KitchenTab({ password, currentMetadata, currentMenu }) {
   const [error, setError]             = useState('');
   const [copied, setCopied]           = useState(false);
   const [printMode, setPrintMode]     = useState(null); // 'lunch' | 'choviar' | null
+  const [collapsedSections, setCollapsedSections] = useState({
+    lunch: false,
+    choviar: false
+  });
+
+  const toggleSection = (section) => {
+    setCollapsedSections(prev => ({ ...prev, [section]: !prev[section] }));
+  };
 
   useEffect(() => {
     if (!printMode) return;
@@ -1755,9 +1795,18 @@ function KitchenTab({ password, currentMetadata, currentMenu }) {
                 {/* LUNCH SECTION */}
                 {summary.orderCount > 0 && (
                   <div className={printMode === 'choviar' || printMode === 'outside' ? 'print:hidden' : ''}>
-                    <div className="flex items-center justify-between border-b-2 border-gray-200 pb-2 mb-4">
-                      <h3 className="text-lg font-black text-gray-800">🍽️ LUNCH ({summary.orderCount})</h3>
-                      <div className="flex items-center gap-2 print:hidden">
+                    <div 
+                      className="flex items-center justify-between border-b-2 border-gray-200 pb-2 mb-4 cursor-pointer hover:bg-gray-50 p-2 rounded-xl transition select-none"
+                      onClick={() => toggleSection('lunch')}
+                    >
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-lg font-black text-gray-800">🍽️ LUNCH ({summary.orderCount})</h3>
+                        <span className="text-xs font-semibold text-gray-500 bg-gray-100 px-2 py-0.5 rounded-md print:hidden">
+                          {collapsedSections.lunch ? 'Show' : 'Hide'}
+                        </span>
+                        <span className="text-sm font-bold text-gray-400 print:hidden">{collapsedSections.lunch ? '▼' : '▲'}</span>
+                      </div>
+                      <div className="flex items-center gap-2 print:hidden" onClick={e => e.stopPropagation()}>
                         <button
                           onClick={() => setPrintMode('lunch')}
                           className="bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-bold py-1.5 px-3 rounded-lg flex items-center gap-1 transition"
@@ -1772,9 +1821,19 @@ function KitchenTab({ password, currentMetadata, currentMenu }) {
                             🖨️ Print outside Lunch
                           </button>
                         )}
+                        <button
+                          onClick={() => toggleSection('lunch')}
+                          className="p-1.5 text-gray-500 hover:text-gray-800 rounded-lg hover:bg-gray-200 transition"
+                          title={collapsedSections.lunch ? 'Expand Lunch' : 'Collapse Lunch'}
+                        >
+                          <span className="text-sm font-bold">{collapsedSections.lunch ? '▼' : '▲'}</span>
+                        </button>
                       </div>
                     </div>
-                {/* Grand Totals Grid */}
+
+                    {(!collapsedSections.lunch || printMode === 'lunch' || printMode === 'outside') && (
+                      <>
+                    {/* Grand Totals Grid */}
                 <h4 className="text-sm font-bold text-gray-800 border-b pb-2 mb-3 print:hidden">🔢 Grand Totals (Bulk Quantities)</h4>
                 <div className="grid grid-cols-3 gap-3 mb-6 print:hidden">
                   {[
@@ -1948,6 +2007,8 @@ function KitchenTab({ password, currentMetadata, currentMenu }) {
                     </table>
                   </div>
                 )}
+                      </>
+                    )}
                   </div>
                 )}
 
@@ -2005,16 +2066,36 @@ function KitchenTab({ password, currentMetadata, currentMenu }) {
                 {/* CHOVIAR SECTION */}
                 {summary.choviarOrderCount > 0 && (
                   <div className={printMode === 'lunch' || printMode === 'outside' ? 'print:hidden' : ''}>
-                    <div className="flex items-center justify-between border-b-2 border-jts-red/20 pb-2 mb-4">
-                      <h3 className="text-lg font-black text-jts-red">🌙 CHOVIAR ({summary.choviarOrderCount})</h3>
-                      <button
-                        onClick={() => setPrintMode('choviar')}
-                        className="print:hidden bg-orange-100 hover:bg-orange-200 text-orange-800 text-xs font-bold py-1.5 px-3 rounded-lg flex items-center gap-1 transition"
-                      >
-                        🖨️ Print Choviar
-                      </button>
+                    <div 
+                      className="flex items-center justify-between border-b-2 border-jts-red/20 pb-2 mb-4 cursor-pointer hover:bg-orange-50/50 p-2 rounded-xl transition select-none"
+                      onClick={() => toggleSection('choviar')}
+                    >
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-lg font-black text-jts-red">🌙 CHOVIAR ({summary.choviarOrderCount})</h3>
+                        <span className="text-xs font-semibold text-orange-600 bg-orange-100 px-2 py-0.5 rounded-md print:hidden">
+                          {collapsedSections.choviar ? 'Show' : 'Hide'}
+                        </span>
+                        <span className="text-sm font-bold text-orange-400 print:hidden">{collapsedSections.choviar ? '▼' : '▲'}</span>
+                      </div>
+                      <div className="flex items-center gap-2 print:hidden" onClick={e => e.stopPropagation()}>
+                        <button
+                          onClick={() => setPrintMode('choviar')}
+                          className="print:hidden bg-orange-100 hover:bg-orange-200 text-orange-800 text-xs font-bold py-1.5 px-3 rounded-lg flex items-center gap-1 transition"
+                        >
+                          🖨️ Print Choviar
+                        </button>
+                        <button
+                          onClick={() => toggleSection('choviar')}
+                          className="p-1.5 text-gray-500 hover:text-gray-800 rounded-lg hover:bg-orange-100 transition"
+                          title={collapsedSections.choviar ? 'Expand Choviar' : 'Collapse Choviar'}
+                        >
+                          <span className="text-sm font-bold">{collapsedSections.choviar ? '▼' : '▲'}</span>
+                        </button>
+                      </div>
                     </div>
-                    
+
+                    {(!collapsedSections.choviar || printMode === 'choviar') && (
+                      <>
                     {/* Choviar Grand Totals Grid */}
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6 print:hidden">
                       {choviarItemNames.map(itemName => (
@@ -2112,6 +2193,8 @@ function KitchenTab({ password, currentMetadata, currentMenu }) {
                           </tfoot>
                         </table>
                       </div>
+                    )}
+                      </>
                     )}
                   </div>
                 )}
@@ -3200,6 +3283,10 @@ export default function AdminPage() {
   const [activeTab, setActiveTab]         = useState('menu'); // menu | orders | kitchen
   const [currentMenu, setCurrentMenu]     = useState([]);
   const [currentMetadata, setCurrentMetadata] = useState({});
+
+  useEffect(() => {
+    document.title = 'JTS Admin';
+  }, []);
 
   const handleLogin = async (pass) => {
     setAuthError('');

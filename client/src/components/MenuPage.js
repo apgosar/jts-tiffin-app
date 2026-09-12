@@ -372,6 +372,7 @@ export default function MenuPage() {
   const { status, isMenuLive, targetDateLabel, targetDate, lunchCutoffTime, choviarCutoffTime } = getOrderingState(metadata);
 
   useEffect(() => {
+    document.title = 'Jain Tiffin Service – Daily Tiffin Order';
     let cancelled = false;
     getMenu()
       .then(res => {
