@@ -2248,6 +2248,8 @@ function BillingTab({ password }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('pending'); // 'pending' | 'paid' | 'all'
+  const [modalOrderFilter, setModalOrderFilter] = useState('all'); // 'all' | 'pending'
 
   // Hidden references for the shareable bill
   const [shareData, setShareData] = useState(null);
@@ -2336,13 +2338,14 @@ function BillingTab({ password }) {
         
         const orders = res.data.orders || [];
         
-        // Aggregate unpaid orders
+        // Aggregate all customer orders (both paid and unpaid)
         const groups = {};
         
         for (const order of orders) {
           if (order.status === 'CANCELLED') continue;
           
-          let outstanding = order.grandTotal || 0;
+          const grandTotal = Number(order.grandTotal) || 0;
+          let outstanding = grandTotal;
           let paid = 0;
 
           if (order.paymentReceived) {
@@ -2350,16 +2353,16 @@ function BillingTab({ password }) {
               const amount = Number(order.amountReceived);
               if (!isNaN(amount)) {
                 paid = amount;
-                outstanding = outstanding - paid;
+                outstanding = grandTotal - paid;
               } else {
+                paid = grandTotal;
                 outstanding = 0; // Fully paid
               }
             } else {
+              paid = grandTotal;
               outstanding = 0; // Fully paid
             }
           }
-
-          if (outstanding === 0) continue;
           
           const phone = order.phone || 'Unknown';
           if (!groups[phone]) {
@@ -2367,7 +2370,10 @@ function BillingTab({ password }) {
               name: order.name || 'Unknown',
               phone: phone,
               address: order.address || '',
+              totalBilled: 0,
+              totalPaid: 0,
               totalPending: 0,
+              orders: [],
               unpaidOrders: []
             };
           }
@@ -2375,17 +2381,26 @@ function BillingTab({ password }) {
           order.outstanding = outstanding;
           order.paid = paid;
 
+          groups[phone].totalBilled += grandTotal;
+          groups[phone].totalPaid += paid;
           groups[phone].totalPending += outstanding;
-          groups[phone].unpaidOrders.push(order);
+          groups[phone].orders.push(order);
+          if (outstanding > 0) {
+            groups[phone].unpaidOrders.push(order);
+          }
         }
+
         const customerList = Object.values(groups).map(cust => {
-          cust.unpaidOrders.sort((a, b) => {
-            const [d1, m1, y1] = a.date.split('/');
-            const [d2, m2, y2] = b.date.split('/');
+          const sortByDate = (a, b) => {
+            const [d1, m1, y1] = (a.date || '').split('/');
+            const [d2, m2, y2] = (b.date || '').split('/');
             return new Date(y1, m1 - 1, d1) - new Date(y2, m2 - 1, d2);
-          });
+          };
+          cust.orders.sort(sortByDate);
+          cust.unpaidOrders.sort(sortByDate);
           return cust;
-        }).filter(cust => cust.totalPending !== 0).sort((a, b) => a.name.localeCompare(b.name));
+        }).sort((a, b) => a.name.localeCompare(b.name));
+
         setCustomers(customerList);
       } catch (err) {
         setError(err.response?.data?.error || 'Failed to fetch billing data.');
@@ -2465,20 +2480,34 @@ function BillingTab({ password }) {
       lines.push(`*Address:* ${cust.address}`);
     }
     lines.push(`--------------------------------`);
-    lines.push(`*Order Details:*`);
 
-    (cust.unpaidOrders || []).forEach(o => {
-      let line = `• ${o.date}: ${o.itemsSummary} - ₹${o.outstanding}`;
-      if (o.paid > 0 && o.outstanding > 0) {
-        line += ` (₹${o.paid} paid)`;
-      } else if (o.paid > 0 && o.outstanding < 0) {
-        line += ` (Excess ₹${o.paid})`;
+    if (cust.totalPending <= 0) {
+      lines.push(`*Order Summary:*`);
+      lines.push(`• Total Orders: ${cust.orders.length}`);
+      lines.push(`• Total Billed: ₹${(cust.totalBilled || 0).toLocaleString('en-IN')}/-`);
+      lines.push(`• Total Paid: ₹${(cust.totalPaid || 0).toLocaleString('en-IN')}/-`);
+      lines.push(`--------------------------------`);
+      lines.push(`*STATUS: PAID IN FULL ✅*`);
+      lines.push(`*Balance Due: ₹0/-*`);
+    } else {
+      lines.push(`*Pending Orders:*`);
+      (cust.unpaidOrders || []).forEach(o => {
+        let line = `• ${o.date}: ${o.itemsSummary} - ₹${o.outstanding}`;
+        if (o.paid > 0 && o.outstanding > 0) {
+          line += ` (₹${o.paid} paid)`;
+        } else if (o.paid > 0 && o.outstanding < 0) {
+          line += ` (Excess ₹${o.paid})`;
+        }
+        lines.push(line);
+      });
+      lines.push(`--------------------------------`);
+      if (cust.totalPaid > 0) {
+        lines.push(`*Total Billed:* ₹${(cust.totalBilled || 0).toLocaleString('en-IN')}/- (${cust.orders.length} orders)`);
+        lines.push(`*Total Paid:* ₹${(cust.totalPaid || 0).toLocaleString('en-IN')}/-`);
       }
-      lines.push(line);
-    });
+      lines.push(`*Total Pending: ₹${cust.totalPending.toLocaleString('en-IN')}/-*`);
+    }
 
-    lines.push(`--------------------------------`);
-    lines.push(`*Total Pending: ₹${cust.totalPending.toLocaleString('en-IN')}/-*`);
     lines.push(`--------------------------------`);
     lines.push(`*Payment Mode:*`);
     lines.push(`Gpay / PayTM: 87790 84488 (Keyur Shah)`);
@@ -2489,7 +2518,7 @@ function BillingTab({ password }) {
     return phone ? `https://wa.me/${phone}?text=${text}` : `https://wa.me/?text=${text}`;
   };
 
-  const filteredCustomers = customers.filter(c => {
+  const searchedCustomers = customers.filter(c => {
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase().trim();
     return (
@@ -2498,6 +2527,23 @@ function BillingTab({ password }) {
       (c.address && c.address.toLowerCase().includes(q))
     );
   });
+
+  const pendingCustomers = searchedCustomers.filter(c => c.totalPending > 0);
+  const paidCustomers = searchedCustomers.filter(c => c.totalPending <= 0);
+
+  const displayedCustomers = statusFilter === 'pending'
+    ? pendingCustomers
+    : statusFilter === 'paid'
+      ? paidCustomers
+      : searchedCustomers;
+
+  const allPendingCount = customers.filter(c => c.totalPending > 0).length;
+  const allPaidCount = customers.filter(c => c.totalPending <= 0).length;
+  const allTotalCount = customers.length;
+
+  const totalBilledAmt = customers.reduce((sum, c) => sum + c.totalBilled, 0);
+  const totalPaidAmt = customers.reduce((sum, c) => sum + c.totalPaid, 0);
+  const totalPendingAmt = customers.filter(c => c.totalPending > 0).reduce((sum, c) => sum + c.totalPending, 0);
 
   return (
     <div className="space-y-4">
@@ -2540,23 +2586,87 @@ function BillingTab({ password }) {
         </div>
         {searchQuery.trim() && (
           <p className="text-xs text-gray-500 mt-2 px-1">
-            Showing {filteredCustomers.length} of {customers.length} pending customer{customers.length === 1 ? '' : 's'}
+            Showing {displayedCustomers.length} matching customer{displayedCustomers.length === 1 ? '' : 's'}
           </p>
         )}
       </div>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 mb-4 text-center print:hidden">
-        <p className="text-sm text-gray-500 font-medium mb-1">
-          {searchQuery.trim() ? `Matching Outstanding (${filteredCustomers.length} customer${filteredCustomers.length === 1 ? '' : 's'})` : `Total Outstanding (${monthPickerValue})`}
-        </p>
-        <p className="text-3xl font-black text-jts-red">
-          ₹{(searchQuery.trim() ? filteredCustomers : customers).reduce((sum, c) => sum + c.totalPending, 0).toLocaleString('en-IN')}/-
-        </p>
-        {searchQuery.trim() && (
-          <p className="text-xs text-gray-400 mt-1">
-            Total for month: ₹{customers.reduce((sum, c) => sum + c.totalPending, 0).toLocaleString('en-IN')}/-
-          </p>
-        )}
+      {/* Status Filter Tabs */}
+      <div className="flex flex-wrap gap-2 print:hidden">
+        <button
+          onClick={() => setStatusFilter('pending')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+            statusFilter === 'pending'
+              ? 'bg-jts-red text-white shadow-sm'
+              : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
+          }`}
+        >
+          <span>⏳ Pending</span>
+          <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${
+            statusFilter === 'pending' ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-700'
+          }`}>
+            {searchQuery.trim() ? pendingCustomers.length : allPendingCount}
+          </span>
+        </button>
+        
+        <button
+          onClick={() => setStatusFilter('paid')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+            statusFilter === 'paid'
+              ? 'bg-green-600 text-white shadow-sm'
+              : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
+          }`}
+        >
+          <span>✅ Paid in Full</span>
+          <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${
+            statusFilter === 'paid' ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-700'
+          }`}>
+            {searchQuery.trim() ? paidCustomers.length : allPaidCount}
+          </span>
+        </button>
+        
+        <button
+          onClick={() => setStatusFilter('all')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+            statusFilter === 'all'
+              ? 'bg-gray-900 text-white shadow-sm'
+              : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
+          }`}
+        >
+          <span>👥 All Customers</span>
+          <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${
+            statusFilter === 'all' ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-700'
+          }`}>
+            {searchQuery.trim() ? searchedCustomers.length : allTotalCount}
+          </span>
+        </button>
+      </div>
+
+      {/* Monthly Financial Summary Card */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 print:hidden">
+        <div className="grid grid-cols-3 divide-x divide-gray-100 text-center">
+          <div className="px-2">
+            <p className="text-xs text-gray-400 font-medium mb-0.5 uppercase tracking-wide">Total Billed</p>
+            <p className="text-lg sm:text-2xl font-black text-gray-900">
+              ₹{totalBilledAmt.toLocaleString('en-IN')}/-
+            </p>
+            <p className="text-[11px] text-gray-400 mt-0.5">{allTotalCount} customer{allTotalCount === 1 ? '' : 's'}</p>
+          </div>
+          <div className="px-2">
+            <p className="text-xs text-green-600 font-medium mb-0.5 uppercase tracking-wide">Total Received</p>
+            <p className="text-lg sm:text-2xl font-black text-green-600">
+              ₹{totalPaidAmt.toLocaleString('en-IN')}/-
+            </p>
+            <p className="text-[11px] text-gray-400 mt-0.5">{allPaidCount} paid in full</p>
+          </div>
+          <div className="px-2">
+            <p className="text-xs text-jts-red font-medium mb-0.5 uppercase tracking-wide">Outstanding</p>
+            <p className="text-lg sm:text-2xl font-black text-jts-red">
+              ₹{totalPendingAmt.toLocaleString('en-IN')}/-
+            </p>
+            <p className="text-[11px] text-gray-400 mt-0.5">{allPendingCount} pending</p>
+          </div>
+        </div>
       </div>
 
       {loading ? (
@@ -2564,109 +2674,87 @@ function BillingTab({ password }) {
       ) : error ? (
         <div className="bg-red-50 text-red-600 p-4 rounded-xl text-sm font-medium">{error}</div>
       ) : customers.length === 0 ? (
-        <div className="text-center text-sm text-gray-500 py-6">No pending payments for this month! 🎉</div>
-      ) : filteredCustomers.length === 0 ? (
+        <div className="text-center text-sm text-gray-500 py-6">No orders found for this month.</div>
+      ) : displayedCustomers.length === 0 ? (
         <div className="text-center text-sm text-gray-500 py-10 bg-white rounded-2xl border border-gray-100 p-6">
           <p className="text-3xl mb-2">🔍</p>
           <p className="font-bold text-gray-700">No customers found</p>
-          <p className="text-xs text-gray-400 mt-1">No pending bills matching "{searchQuery}"</p>
-          <button 
-            onClick={() => setSearchQuery('')}
-            className="mt-3 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-semibold transition"
-          >
-            Clear Search
-          </button>
+          <p className="text-xs text-gray-400 mt-1">
+            {searchQuery.trim()
+              ? `No customers matching "${searchQuery}" in ${statusFilter} list`
+              : statusFilter === 'pending'
+                ? 'No pending payments for this month! All customers are paid in full. 🎉'
+                : 'No customers found for this filter.'}
+          </p>
+          {searchQuery.trim() && (
+            <button 
+              onClick={() => setSearchQuery('')}
+              className="mt-3 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-semibold transition"
+            >
+              Clear Search
+            </button>
+          )}
         </div>
       ) : (
         <div className="space-y-3">
-          {filteredCustomers.map((cust) => (
-            <div 
-              key={cust.phone} 
-              className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer hover:shadow-md transition"
-              onClick={() => setSelectedCustomer(cust)}
-            >
-              <div>
-                <p className="font-bold text-gray-900 text-lg">{cust.name}</p>
-                <p className="text-sm text-gray-500">{cust.phone}</p>
-                <p className="text-sm font-semibold text-jts-red mt-1">Pending: ₹{cust.totalPending.toLocaleString('en-IN')}/- ({cust.unpaidOrders.length} orders)</p>
-              </div>
-              <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
-                <a 
-                  href={getWhatsAppUrl(cust)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                  title={`Send bill to ${cust.name} on WhatsApp`}
-                  className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-3 rounded-xl text-sm flex items-center gap-1.5 transition shadow-sm"
-                >
-                  <WhatsAppIcon className="w-4 h-4" />
-                  <span className="text-xs font-bold">WhatsApp</span>
-                </a>
-                <button 
-                  onClick={(e) => { e.stopPropagation(); handleShare(cust); }}
-                  className="bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-2 px-3 rounded-xl text-sm flex items-center gap-1.5 transition"
-                  title="Share or download bill image"
-                >
-                  <span>📤</span>
-                  <span className="text-xs font-medium">Image</span>
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Hidden Bill Template for capturing */}
-      {shareData && (
-        <div className="absolute top-[-9999px] left-[-9999px]">
-          {Array.from({ length: Math.ceil(shareData.unpaidOrders.length / 12) }).map((_, i) => {
-            const pageOrders = shareData.unpaidOrders.slice(i * 12, (i + 1) * 12);
-            const isLastPage = i === Math.ceil(shareData.unpaidOrders.length / 12) - 1;
-            const totalPages = Math.ceil(shareData.unpaidOrders.length / 12);
+          {displayedCustomers.map((cust) => {
+            const isPaid = cust.totalPending <= 0;
+            const isPartial = cust.totalPaid > 0 && cust.totalPending > 0;
             
             return (
-              <div key={i} className="bill-capture-node bg-white p-6 w-[450px] border border-gray-100 mb-10">
-                <div className="text-center border-b border-gray-200 pb-4 mb-4">
-                  <h2 className="text-2xl font-black text-gray-900 uppercase" style={{ fontFamily: "'Oswald', sans-serif" }}>Jain Tiffin Service</h2>
-                  <p className="text-sm text-gray-500 mt-1">Monthly Bill - {monthPickerValue} {totalPages > 1 ? `(Part ${i+1}/${totalPages})` : ''}</p>
+              <div 
+                key={cust.phone} 
+                className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer hover:shadow-md transition"
+                onClick={() => { setSelectedCustomer(cust); setModalOrderFilter('all'); }}
+              >
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="font-bold text-gray-900 text-lg">{cust.name}</p>
+                    {isPaid ? (
+                      <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-bold rounded-full">Paid in Full ✅</span>
+                    ) : isPartial ? (
+                      <span className="px-2 py-0.5 bg-amber-100 text-amber-800 text-xs font-bold rounded-full">Partially Paid ⚠️</span>
+                    ) : (
+                      <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-bold rounded-full">Pending ⏳</span>
+                    )}
+                  </div>
+                  <p className="text-sm text-gray-500">{cust.phone}</p>
+                  <div className="flex items-center gap-3 text-sm mt-1 flex-wrap">
+                    {cust.totalPending > 0 ? (
+                      <span className="font-bold text-jts-red">
+                        Pending: ₹{cust.totalPending.toLocaleString('en-IN')}/-
+                      </span>
+                    ) : (
+                      <span className="font-bold text-green-600">
+                        Paid: ₹{cust.totalPaid.toLocaleString('en-IN')}/-
+                      </span>
+                    )}
+                    <span className="text-xs text-gray-400">
+                      • {cust.orders.length} order{cust.orders.length === 1 ? '' : 's'} (₹{cust.totalBilled.toLocaleString('en-IN')})
+                      {isPartial && ` • ₹${cust.totalPaid.toLocaleString('en-IN')} paid`}
+                    </span>
+                  </div>
                 </div>
-                
-                {i === 0 && (
-                  <div className="mb-4">
-                    <p className="font-bold text-gray-900">{shareData.name}</p>
-                    <p className="text-sm text-gray-600">{shareData.phone}</p>
-                    <p className="text-sm text-gray-600 mt-1">{shareData.address}</p>
-                  </div>
-                )}
-
-                <div className="space-y-3 mb-4">
-                  <div className="flex justify-between text-xs font-semibold text-gray-400 uppercase border-b border-gray-100 pb-1">
-                    <span>Date & Items</span>
-                    <span>Amount</span>
-                  </div>
-                  {pageOrders.map((order, idx) => (
-                    <div key={order.orderId || idx} className="flex justify-between text-sm py-2 border-b border-gray-50 items-start gap-4">
-                      <div className="flex flex-col">
-                        <span className="font-bold text-gray-800">{order.date}</span>
-                        <span className="text-xs text-gray-500 mt-0.5">{order.itemsSummary}</span>
-                        {order.paid > 0 && order.outstanding > 0 && <span className="text-[10px] text-orange-600 font-bold mt-0.5">Partial: ₹{order.paid} paid</span>}
-                        {order.paid > 0 && order.outstanding < 0 && <span className="text-[10px] text-green-600 font-bold mt-0.5">Excess: ₹{order.paid} paid</span>}
-                      </div>
-                      <span className="font-bold text-gray-900 shrink-0 mt-0.5">₹{order.outstanding.toLocaleString('en-IN')}</span>
-                    </div>
-                  ))}
-                </div>
-
-                {isLastPage && (
-                  <div className="flex justify-between items-center bg-gray-50 rounded-xl p-3 border border-gray-100 mt-6">
-                    <span className="font-bold text-gray-700 uppercase text-xs">Total Pending</span>
-                    <span className="font-black text-jts-red text-xl">₹{shareData.totalPending.toLocaleString('en-IN')}/-</span>
-                  </div>
-                )}
-                
-                <div className="text-center mt-6 pt-4 border-t border-gray-200">
-                  <p className="text-xs text-gray-400 font-medium">Thank you for ordering with us!</p>
-                  <p className="text-[10px] text-gray-400 mt-1">Gpay / PayTM: 87790 84488 (Keyur Shah)</p>
+                <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
+                  <a 
+                    href={getWhatsAppUrl(cust)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    title={`Send bill to ${cust.name} on WhatsApp`}
+                    className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-3 rounded-xl text-sm flex items-center gap-1.5 transition shadow-sm"
+                  >
+                    <WhatsAppIcon className="w-4 h-4" />
+                    <span className="text-xs font-bold">WhatsApp</span>
+                  </a>
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); handleShare(cust); }}
+                    className="bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-2 px-3 rounded-xl text-sm flex items-center gap-1.5 transition"
+                    title="Share or download bill image"
+                  >
+                    <span>📤</span>
+                    <span className="text-xs font-medium">Image</span>
+                  </button>
                 </div>
               </div>
             );
@@ -2674,77 +2762,233 @@ function BillingTab({ password }) {
         </div>
       )}
 
+      {/* Hidden Bill Template for capturing */}
+      {shareData && (() => {
+        const billOrders = shareData.orders && shareData.orders.length > 0 ? shareData.orders : shareData.unpaidOrders;
+        const totalPages = Math.max(1, Math.ceil(billOrders.length / 12));
+        
+        return (
+          <div className="absolute top-[-9999px] left-[-9999px]">
+            {Array.from({ length: totalPages }).map((_, i) => {
+              const pageOrders = billOrders.slice(i * 12, (i + 1) * 12);
+              const isLastPage = i === totalPages - 1;
+              
+              return (
+                <div key={i} className="bill-capture-node bg-white p-6 w-[450px] border border-gray-100 mb-10">
+                  <div className="text-center border-b border-gray-200 pb-4 mb-4">
+                    <h2 className="text-2xl font-black text-gray-900 uppercase" style={{ fontFamily: "'Oswald', sans-serif" }}>Jain Tiffin Service</h2>
+                    <p className="text-sm text-gray-500 mt-1">Monthly Bill - {monthPickerValue} {totalPages > 1 ? `(Part ${i+1}/${totalPages})` : ''}</p>
+                  </div>
+                  
+                  {i === 0 && (
+                    <div className="mb-4">
+                      <p className="font-bold text-gray-900">{shareData.name}</p>
+                      <p className="text-sm text-gray-600">{shareData.phone}</p>
+                      <p className="text-sm text-gray-600 mt-1">{shareData.address}</p>
+                    </div>
+                  )}
+
+                  <div className="space-y-3 mb-4">
+                    <div className="flex justify-between text-xs font-semibold text-gray-400 uppercase border-b border-gray-100 pb-1">
+                      <span>Date & Items</span>
+                      <span>Amount</span>
+                    </div>
+                    {pageOrders.map((order, idx) => (
+                      <div key={order.orderId || idx} className="flex justify-between text-sm py-2 border-b border-gray-50 items-start gap-4">
+                        <div className="flex flex-col">
+                          <span className="font-bold text-gray-800">{order.date}</span>
+                          <span className="text-xs text-gray-500 mt-0.5">{order.itemsSummary}</span>
+                          {order.outstanding === 0 && <span className="text-[10px] text-green-600 font-bold mt-0.5">Paid ✅</span>}
+                          {order.paid > 0 && order.outstanding > 0 && <span className="text-[10px] text-orange-600 font-bold mt-0.5">Partial: ₹{order.paid} paid</span>}
+                          {order.paid > 0 && order.outstanding < 0 && <span className="text-[10px] text-green-600 font-bold mt-0.5">Excess: ₹{order.paid} paid</span>}
+                        </div>
+                        <div className="text-right shrink-0 mt-0.5">
+                          <span className="font-bold text-gray-900">₹{(order.grandTotal || 0).toLocaleString('en-IN')}</span>
+                          {order.outstanding > 0 && order.outstanding !== order.grandTotal && (
+                            <span className="block text-[10px] text-jts-red font-bold">Due: ₹{order.outstanding}</span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {isLastPage && (
+                    <div className="space-y-2 mt-6">
+                      <div className="flex justify-between items-center text-xs text-gray-500 px-1">
+                        <span>Total Billed ({billOrders.length} orders):</span>
+                        <span className="font-bold text-gray-700">₹{(shareData.totalBilled || 0).toLocaleString('en-IN')}/-</span>
+                      </div>
+                      {shareData.totalPaid > 0 && (
+                        <div className="flex justify-between items-center text-xs text-green-600 px-1">
+                          <span>Total Paid:</span>
+                          <span className="font-bold">₹{(shareData.totalPaid || 0).toLocaleString('en-IN')}/-</span>
+                        </div>
+                      )}
+                      <div className={`flex justify-between items-center ${shareData.totalPending > 0 ? 'bg-red-50 border-red-100' : 'bg-green-50 border-green-100'} rounded-xl p-3 border`}>
+                        <span className={`font-bold ${shareData.totalPending > 0 ? 'text-red-700' : 'text-green-700'} uppercase text-xs`}>
+                          {shareData.totalPending > 0 ? 'Total Pending' : 'Status'}
+                        </span>
+                        <span className={`font-black ${shareData.totalPending > 0 ? 'text-jts-red' : 'text-green-700'} text-xl`}>
+                          {shareData.totalPending > 0 ? `₹${shareData.totalPending.toLocaleString('en-IN')}/-` : 'PAID IN FULL ✅'}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                  
+                  <div className="text-center mt-6 pt-4 border-t border-gray-200">
+                    <p className="text-xs text-gray-400 font-medium">Thank you for ordering with us!</p>
+                    <p className="text-[10px] text-gray-400 mt-1">Gpay / PayTM: 87790 84488 (Keyur Shah)</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
+
       {/* Detail Modal */}
       {selectedCustomer && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-4" onClick={() => setSelectedCustomer(null)}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="p-5 border-b border-gray-100 flex justify-between items-center shrink-0">
               <div>
-                <h3 className="font-bold text-gray-900 text-lg">{selectedCustomer.name}</h3>
-                <p className="text-xs text-gray-500">Bill Details for {monthPickerValue}</p>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-bold text-gray-900 text-lg">{selectedCustomer.name}</h3>
+                  {selectedCustomer.totalPending <= 0 ? (
+                    <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-bold rounded-full">Paid ✅</span>
+                  ) : selectedCustomer.totalPaid > 0 ? (
+                    <span className="px-2 py-0.5 bg-amber-100 text-amber-800 text-xs font-bold rounded-full">Partial ⚠️</span>
+                  ) : null}
+                </div>
+                <p className="text-xs text-gray-500">{selectedCustomer.phone} • {monthPickerValue}</p>
               </div>
               <button onClick={() => setSelectedCustomer(null)} className="p-2 hover:bg-gray-100 rounded-xl transition text-gray-500">✕</button>
             </div>
             
             <div className="p-5 overflow-y-auto space-y-4">
               
-              <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
-                <h4 className="font-bold text-blue-900 mb-3 text-sm">Record Payment</h4>
-                <form onSubmit={handleRecordPayment} className="space-y-3">
-                  <div className="flex gap-2">
-                    <input 
-                      type="number" 
-                      placeholder="Amount" 
-                      value={recordAmount}
-                      onChange={e => setRecordAmount(e.target.value)}
-                      className="w-full px-3 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-400 outline-none text-sm"
-                      required
-                    />
-                    <select 
-                      value={recordMethod} 
-                      onChange={e => setRecordMethod(e.target.value)}
-                      className="px-3 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-400 outline-none text-sm bg-white"
+              {/* Record Payment form - only if customer has pending amount */}
+              {selectedCustomer.totalPending > 0 && (
+                <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
+                  <h4 className="font-bold text-blue-900 mb-3 text-sm">Record Payment</h4>
+                  <form onSubmit={handleRecordPayment} className="space-y-3">
+                    <div className="flex gap-2">
+                      <input 
+                        type="number" 
+                        placeholder={`Amount (Pending: ₹${selectedCustomer.totalPending})`} 
+                        value={recordAmount}
+                        onChange={e => setRecordAmount(e.target.value)}
+                        className="w-full px-3 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-400 outline-none text-sm"
+                        required
+                      />
+                      <select 
+                        value={recordMethod} 
+                        onChange={e => setRecordMethod(e.target.value)}
+                        className="px-3 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-400 outline-none text-sm bg-white"
+                      >
+                        <option value="Gpay">Gpay</option>
+                        <option value="Cash">Cash</option>
+                      </select>
+                    </div>
+                    <div className="flex gap-2 items-center">
+                      <input 
+                        type="date" 
+                        value={recordDate}
+                        onChange={e => setRecordDate(e.target.value)}
+                        className="flex-1 px-3 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-400 outline-none text-sm"
+                        required
+                      />
+                      <button 
+                        type="submit" 
+                        disabled={isRecording}
+                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition text-sm disabled:opacity-50 shrink-0"
+                      >
+                        {isRecording ? '...' : 'Save'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              )}
+
+              {/* Balance Summary Box */}
+              <div className="bg-gray-50 rounded-xl p-3 border border-gray-100 grid grid-cols-3 divide-x divide-gray-200 text-center">
+                <div>
+                  <span className="block text-[11px] text-gray-500 font-medium">Billed</span>
+                  <span className="font-bold text-gray-900 text-sm">₹{(selectedCustomer.totalBilled || 0).toLocaleString('en-IN')}</span>
+                </div>
+                <div>
+                  <span className="block text-[11px] text-gray-500 font-medium">Paid</span>
+                  <span className="font-bold text-green-600 text-sm">₹{(selectedCustomer.totalPaid || 0).toLocaleString('en-IN')}</span>
+                </div>
+                <div>
+                  <span className="block text-[11px] text-gray-500 font-medium">Pending</span>
+                  <span className={`font-black text-sm ${selectedCustomer.totalPending > 0 ? 'text-jts-red' : 'text-green-600'}`}>
+                    ₹{(selectedCustomer.totalPending || 0).toLocaleString('en-IN')}
+                  </span>
+                </div>
+              </div>
+
+              {/* Order Filter in Modal */}
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">
+                  Orders ({selectedCustomer.orders.length})
+                </span>
+                {selectedCustomer.unpaidOrders.length > 0 && selectedCustomer.totalPaid > 0 && (
+                  <div className="flex gap-1 text-xs">
+                    <button
+                      onClick={() => setModalOrderFilter('all')}
+                      className={`px-2 py-1 rounded-md font-semibold ${
+                        modalOrderFilter === 'all' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
                     >
-                      <option value="Gpay">Gpay</option>
-                      <option value="Cash">Cash</option>
-                    </select>
-                  </div>
-                  <div className="flex gap-2 items-center">
-                    <input 
-                      type="date" 
-                      value={recordDate}
-                      onChange={e => setRecordDate(e.target.value)}
-                      className="flex-1 px-3 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-400 outline-none text-sm"
-                      required
-                    />
-                    <button 
-                      type="submit" 
-                      disabled={isRecording}
-                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition text-sm disabled:opacity-50 shrink-0"
+                      All ({selectedCustomer.orders.length})
+                    </button>
+                    <button
+                      onClick={() => setModalOrderFilter('pending')}
+                      className={`px-2 py-1 rounded-md font-semibold ${
+                        modalOrderFilter === 'pending' ? 'bg-jts-red text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
                     >
-                      {isRecording ? '...' : 'Save'}
+                      Pending ({selectedCustomer.unpaidOrders.length})
                     </button>
                   </div>
-                </form>
+                )}
               </div>
 
-              <div className="flex justify-between items-center bg-red-50 rounded-xl p-3 border border-red-100">
-                <span className="font-bold text-red-800 text-sm">Total Pending</span>
-                <span className="font-black text-jts-red text-xl">₹{selectedCustomer.totalPending.toLocaleString('en-IN')}/-</span>
-              </div>
-
-              <div className="space-y-3">
-                {selectedCustomer.unpaidOrders.filter(o => o.outstanding !== 0).map((order, idx) => (
-                  <div key={order.orderId || idx} className="bg-gray-50 rounded-xl p-3 border border-gray-100">
-                    <div className="flex justify-between items-start mb-2 border-b border-gray-200 pb-2">
-                      <span className="font-bold text-gray-800">{order.date}</span>
-                      <span className="font-bold text-jts-red">₹{order.outstanding.toLocaleString('en-IN')}</span>
+              <div className="space-y-2.5">
+                {(modalOrderFilter === 'pending' ? selectedCustomer.unpaidOrders : selectedCustomer.orders).map((order, idx) => {
+                  const isOrderPaid = order.outstanding === 0;
+                  const isOrderPartial = order.paid > 0 && order.outstanding > 0;
+                  
+                  return (
+                    <div key={order.orderId || idx} className="bg-gray-50 rounded-xl p-3 border border-gray-100">
+                      <div className="flex justify-between items-start mb-1.5 border-b border-gray-200 pb-1.5">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-gray-800 text-sm">{order.date}</span>
+                          {isOrderPaid ? (
+                            <span className="text-[10px] bg-green-100 text-green-700 font-bold px-1.5 py-0.5 rounded">Paid ✅</span>
+                          ) : isOrderPartial ? (
+                            <span className="text-[10px] bg-amber-100 text-amber-700 font-bold px-1.5 py-0.5 rounded">Partial ⚠️</span>
+                          ) : (
+                            <span className="text-[10px] bg-red-100 text-red-700 font-bold px-1.5 py-0.5 rounded">Pending ⏳</span>
+                          )}
+                        </div>
+                        <div className="text-right">
+                          <span className="font-bold text-gray-900 text-sm">₹{(order.grandTotal || 0).toLocaleString('en-IN')}</span>
+                          {order.outstanding > 0 && order.outstanding !== order.grandTotal && (
+                            <span className="block text-[11px] text-jts-red font-bold">Due: ₹{order.outstanding}</span>
+                          )}
+                        </div>
+                      </div>
+                      <p className="text-xs text-gray-600 leading-relaxed">{order.itemsSummary}</p>
+                      {order.paid > 0 && (
+                        <p className="text-[11px] text-green-700 font-medium mt-1 pt-1 border-t border-gray-100 border-dashed">
+                          Payment: ₹{order.paid} received {order.paymentMethod ? `via ${order.paymentMethod}` : ''} {order.paymentDate ? `on ${order.paymentDate}` : ''}
+                        </p>
+                      )}
                     </div>
-                    <p className="text-sm text-gray-600 leading-relaxed">{order.itemsSummary}</p>
-                    {order.paid > 0 && order.outstanding > 0 && <p className="text-xs text-orange-600 font-bold mt-1 pt-1 border-t border-gray-100 border-dashed">Partial Payment: ₹{order.paid} received</p>}
-                    {order.paid > 0 && order.outstanding < 0 && <p className="text-xs text-green-600 font-bold mt-1 pt-1 border-t border-gray-100 border-dashed">Excess Payment: ₹{order.paid} received</p>}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
             
