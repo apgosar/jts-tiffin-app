@@ -938,6 +938,44 @@ function MenuTab({ password, currentMenu, currentMetadata, onMenuSaved }) {
         </div>
       </div>
 
+      {/* Quick Dabbawala Holiday Toggle for Live Date */}
+      {metadata.liveMenuDate && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xl flex-shrink-0">🚫</span>
+            <div>
+              <p className="text-xs font-bold text-amber-900">
+                Outside Borivali Delivery ({metadata.liveMenuDate})
+              </p>
+              <p className="text-[10px] text-amber-700">
+                {metadata.outsideBlockedDate === metadata.liveMenuDate
+                  ? 'Currently BLOCKED for live date (Dabbawala Mama Holiday)'
+                  : 'Currently OPEN for live date'}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              const isCurrentlyBlocked = metadata.outsideBlockedDate === metadata.liveMenuDate;
+              setMetadata(prev => ({
+                ...prev,
+                outsideBlockedDate: isCurrentlyBlocked ? '' : metadata.liveMenuDate
+              }));
+            }}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition shadow-sm ${
+              metadata.outsideBlockedDate === metadata.liveMenuDate
+                ? 'bg-red-600 text-white hover:bg-red-700'
+                : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
+            }`}
+          >
+            {metadata.outsideBlockedDate === metadata.liveMenuDate
+              ? '🚫 Blocked (Click to Unblock)'
+              : 'Block for this Date'}
+          </button>
+        </div>
+      )}
+
       {/* Metadata Section */}
       <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm flex flex-col gap-4">
         <h3 className="text-sm font-bold text-gray-800 border-b pb-2">Custom Order & Lunch Details</h3>
@@ -3100,6 +3138,18 @@ function BillingTab({ password }) {
   );
 }
 
+function formatDateToInput(dStr) {
+  if (!dStr || !/^\d{2}\/\d{2}\/\d{4}$/.test(dStr)) return '';
+  const [d, m, y] = dStr.split('/');
+  return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+}
+
+function formatInputToDate(isoStr) {
+  if (!isoStr || !/^\d{4}-\d{2}-\d{2}$/.test(isoStr)) return '';
+  const [y, m, d] = isoStr.split('-');
+  return `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
+}
+
 // ─── Tab 5: Settings ───────────────────────────────────────────────────────────
 function SettingsTab({ password, currentMetadata, onMetadataSaved }) {
   const [metadata, setMetadata] = useState({
@@ -3228,6 +3278,80 @@ function SettingsTab({ password, currentMetadata, onMetadataSaved }) {
             </div>
             <input type="checkbox" className="hidden" checked={metadata.betaTesting === 'Yes'} onChange={e => updateMeta('betaTesting', e.target.checked ? 'Yes' : 'No')} />
           </label>
+        </div>
+      </div>
+
+      {/* Outside Borivali Delivery (Dabbawala Holiday) */}
+      <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm flex flex-col gap-4">
+        <div className="flex items-center justify-between border-b pb-2">
+          <div className="flex items-center gap-2">
+            <span className="text-xl">🚫</span>
+            <div>
+              <h3 className="text-sm font-bold text-gray-800">Outside Borivali Delivery (Dabbawala Holiday)</h3>
+              <p className="text-[11px] text-gray-500">Block outside Borivali orders for a specific day due to Dabbawala Mama Holiday</p>
+            </div>
+          </div>
+          {metadata.outsideBlockedDate ? (
+            <span className="bg-red-100 text-red-700 text-xs font-bold px-2.5 py-1 rounded-full border border-red-200 animate-pulse">
+              Blocked: {metadata.outsideBlockedDate}
+            </span>
+          ) : (
+            <span className="bg-green-100 text-green-700 text-xs font-bold px-2.5 py-1 rounded-full border border-green-200">
+              Deliveries Open
+            </span>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+            <label className="text-xs font-semibold text-gray-600 sm:w-32">Blocked Date:</label>
+            <input
+              type="date"
+              value={formatDateToInput(metadata.outsideBlockedDate)}
+              onChange={e => updateMeta('outsideBlockedDate', formatInputToDate(e.target.value))}
+              className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-jts-red focus:outline-none"
+            />
+            {metadata.outsideBlockedDate && (
+              <button
+                type="button"
+                onClick={() => updateMeta('outsideBlockedDate', '')}
+                className="text-xs text-red-600 hover:text-red-800 font-bold px-2.5 py-1.5 bg-red-50 hover:bg-red-100 rounded-lg border border-red-200 transition"
+              >
+                ✕ Clear Block
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[11px] text-gray-500 font-medium">Quick Select:</span>
+            <button
+              type="button"
+              onClick={() => {
+                const today = new Date();
+                const dStr = `${String(today.getDate()).padStart(2, '0')}/${String(today.getMonth() + 1).padStart(2, '0')}/${today.getFullYear()}`;
+                updateMeta('outsideBlockedDate', dStr);
+              }}
+              className="text-xs font-semibold bg-gray-100 hover:bg-gray-200 text-gray-700 px-2.5 py-1 rounded-lg border border-gray-300 transition"
+            >
+              Today
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const tmrw = new Date();
+                tmrw.setDate(tmrw.getDate() + 1);
+                const dStr = `${String(tmrw.getDate()).padStart(2, '0')}/${String(tmrw.getMonth() + 1).padStart(2, '0')}/${tmrw.getFullYear()}`;
+                updateMeta('outsideBlockedDate', dStr);
+              }}
+              className="text-xs font-semibold bg-gray-100 hover:bg-gray-200 text-gray-700 px-2.5 py-1 rounded-lg border border-gray-300 transition"
+            >
+              Tomorrow
+            </button>
+          </div>
+
+          <p className="text-[11px] text-gray-500 bg-amber-50 border border-amber-200 rounded-lg p-2.5">
+            ⚠️ When set, customers outside Borivali cannot place orders for this date, and a flashing warning banner will appear on the customer menu page.
+          </p>
         </div>
       </div>
 

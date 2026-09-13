@@ -250,11 +250,21 @@ app.get('/api/menu', publicLimiter, async (req, res) => {
   }
 });
 
-// GET /api/check-pincode?pincode=XXXXXX
-app.get('/api/check-pincode', publicLimiter, (req, res) => {
-  const { pincode } = req.query;
+// GET /api/check-pincode?pincode=XXXXXX&date=DD/MM/YYYY
+app.get('/api/check-pincode', publicLimiter, async (req, res) => {
+  const { pincode, date } = req.query;
   if (!pincode) return res.status(400).json({ error: 'Missing pincode' });
-  res.json({ zone: getZone(pincode), surchargePerTiffin: SURCHARGE_AMOUNT });
+  const zone = getZone(pincode);
+  let outsideBlocked = false;
+  if (zone === 'outside' && date) {
+    try {
+      const { metadata } = await getMenuForPricing();
+      if (metadata.outsideBlockedDate === date || (Array.isArray(metadata.outsideBlockedDates) && metadata.outsideBlockedDates.includes(date))) {
+        outsideBlocked = true;
+      }
+    } catch (e) {}
+  }
+  res.json({ zone, surchargePerTiffin: SURCHARGE_AMOUNT, outsideBlocked });
 });
 
 // GET /api/customer/lookup?phone=XXXXXXXXXX&date=DD/MM/YYYY
@@ -454,6 +464,13 @@ app.post('/api/orders', orderLimiter, async (req, res) => {
   
   const baseOrderId  = uuidv4().slice(0, 8).toUpperCase();
   const date = `${String(deliveryTime.getDate()).padStart(2, '0')}/${String(deliveryTime.getMonth() + 1).padStart(2, '0')}/${deliveryTime.getFullYear()}`;
+
+  if (zone === 'outside') {
+    const isBlocked = metadata.outsideBlockedDate === date || (Array.isArray(metadata.outsideBlockedDates) && metadata.outsideBlockedDates.includes(date));
+    if (isBlocked) {
+      return res.status(400).json({ error: 'Outside Borivali orders are closed because of Dabbawala Mama Holiday' });
+    }
+  }
   const time = formatTime(now);
 
   const lunchItems = validatedItems.filter(i => i.category !== 'Choviar');
@@ -687,6 +704,13 @@ app.post('/api/orders/recurring', orderLimiter, async (req, res) => {
   }
 
   const zone = getZone(customer.pincode.trim());
+  if (zone === 'outside') {
+    const isBlockedDate = (dStr) => metadata.outsideBlockedDate === dStr || (Array.isArray(metadata.outsideBlockedDates) && metadata.outsideBlockedDates.includes(dStr));
+    const blockedDay = deliveryDates.find(d => isBlockedDate(d.dateStr));
+    if (blockedDay) {
+      return res.status(400).json({ error: `Outside Borivali orders are closed on ${blockedDay.dateStr} because of Dabbawala Mama Holiday` });
+    }
+  }
   const subtotal = validatedItems.reduce((s, i) => s + i.price * i.quantity, 0);
 
   const lunchItems = validatedItems.filter(i => i.category !== 'Choviar');
@@ -1083,6 +1107,12 @@ app.put('/api/orders/manage/:orderId', orderLimiter, async (req, res) => {
     if (validatedItems.length === 0) return res.status(400).json({ error: 'No valid items provided' });
 
     const zone = getZone(customer.pincode.trim());
+    if (zone === 'outside') {
+      const isBlocked = metadata.outsideBlockedDate === orderData.date || (Array.isArray(metadata.outsideBlockedDates) && metadata.outsideBlockedDates.includes(orderData.date));
+      if (isBlocked) {
+        return res.status(400).json({ error: 'Outside Borivali orders are closed because of Dabbawala Mama Holiday' });
+      }
+    }
     const subtotal = validatedItems.reduce((s, i) => s + i.price * i.quantity, 0);
     
     let surcharge = 0;

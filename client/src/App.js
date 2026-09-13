@@ -117,16 +117,30 @@ export function getOrderingState(metadata = {}) {
     }
   }
 
+  const targetDateStr = `${String(targetDate.getDate()).padStart(2, '0')}/${String(targetDate.getMonth() + 1).padStart(2, '0')}/${targetDate.getFullYear()}`;
+
   return {
     status,
     isMenuLive,
     targetDate,
+    targetDateStr,
     lunchCutoffTime,
     choviarCutoffTime,
     targetDateLabel: targetDate.toLocaleDateString('en-IN', {
       weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
     })
   };
+}
+
+export function isOutsideBlocked(dateStr, metadata = {}) {
+  if (!dateStr) return false;
+  if (metadata.outsideBlockedDate && metadata.outsideBlockedDate === dateStr) {
+    return true;
+  }
+  if (Array.isArray(metadata.outsideBlockedDates) && metadata.outsideBlockedDates.includes(dateStr)) {
+    return true;
+  }
+  return false;
 }
 
 // ─── App ──────────────────────────────────────────────────────────────────────

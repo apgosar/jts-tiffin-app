@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useCart, getOrderingState } from '../App';
+import { useCart, getOrderingState, isOutsideBlocked } from '../App';
 import { lookupCustomer, placeOrder, updateOrder } from '../services/api';
 
 // ─── Small helpers ────────────────────────────────────────────────────────────
@@ -34,8 +34,21 @@ function TextInput({ id, value, onChange, placeholder, type = 'text', maxLength,
 }
 
 // ─── Zone Badge ───────────────────────────────────────────────────────────────
-function ZoneBadge({ zone, surchargeTotal }) {
+function ZoneBadge({ zone, surchargeTotal, outsideBlocked, deliveryDateStr }) {
   if (!zone) return null;
+  if (zone === 'outside' && outsideBlocked) {
+    return (
+      <div className="flex items-start gap-2 bg-red-50 border-2 border-red-500 rounded-xl px-3 py-2.5 shadow-sm">
+        <span className="text-red-600 text-xl flex-shrink-0">🚫</span>
+        <div>
+          <p className="text-xs font-black text-red-700 uppercase tracking-wide">Outside Borivali Delivery Closed</p>
+          <p className="text-xs text-red-600 font-semibold mt-0.5">
+            Outside Borivali orders are closed because of Dabbawala Mama Holiday{deliveryDateStr ? ` on ${deliveryDateStr}` : ''}.
+          </p>
+        </div>
+      </div>
+    );
+  }
   if (zone === 'borivali') {
     const fee = surchargeTotal;
     return (
@@ -104,8 +117,9 @@ export default function CheckoutPage() {
   const { cartItems, cartSubtotal, updateQuantity, clearCart, setLastOrder, metadata, editOrder, setEditOrder } = useCart();
 
   // ── Ordering cutoffs & delivery date ─────────────────────────────────────────
-  const { status, targetDate } = getOrderingState(metadata);
-  const deliveryDateStr = targetDate ? `${String(targetDate.getDate()).padStart(2, '0')}/${String(targetDate.getMonth() + 1).padStart(2, '0')}/${targetDate.getFullYear()}` : null;
+  const { status, targetDate, targetDateStr } = getOrderingState(metadata);
+  const deliveryDateStr = targetDateStr || (targetDate ? `${String(targetDate.getDate()).padStart(2, '0')}/${String(targetDate.getMonth() + 1).padStart(2, '0')}/${targetDate.getFullYear()}` : null);
+  const outsideBlocked = isOutsideBlocked(deliveryDateStr, metadata);
 
   // Phone lookup & existing orders
   const [phone, setPhone]                     = useState('');
@@ -122,10 +136,12 @@ export default function CheckoutPage() {
 
   // Pincode / zone
   const [zone, setZone]     = useState(null); // null | 'borivali' | 'outside'
+  const isOutsideDeliveryBlocked = zone === 'outside' && outsideBlocked;
 
   const computeZone = (pincode) => {
     if (/^\d{6}$/.test(pincode)) {
-      fetch(`/api/check-pincode?pincode=${pincode}`)
+      const dateParam = deliveryDateStr ? `&date=${encodeURIComponent(deliveryDateStr)}` : '';
+      fetch(`/api/check-pincode?pincode=${pincode}${dateParam}`)
         .then(r => r.json())
         .then(data => setZone(data.zone || null))
         .catch(() => setZone(null));
@@ -323,12 +339,18 @@ export default function CheckoutPage() {
       e.pincode = 'PINCODE is required';
     } else if (!/^\d{6}$/.test(form.pincode.trim())) {
       e.pincode = 'Enter a valid 6-digit PINCODE';
+    } else if (zone === 'outside' && outsideBlocked) {
+      e.pincode = 'Outside Borivali orders are closed because of Dabbawala Mama Holiday';
     }
     return e;
   };
 
   // ── Submit ───────────────────────────────────────────────────────────────────
   const executeOrder = async () => {
+    if (zone === 'outside' && outsideBlocked) {
+      setServerError('Outside Borivali orders are closed because of Dabbawala Mama Holiday');
+      return;
+    }
     window.scrollTo({ top: 0, behavior: 'smooth' });
     setSubmitting(true);
     setServerError('');
@@ -713,7 +735,9 @@ export default function CheckoutPage() {
                   </Field>
 
                   {/* Zone Badge */}
-                  {form.pincode.length === 6 && zone && !isCustomOrder && <ZoneBadge zone={zone} surchargeTotal={surchargeTotal} />}
+                  {form.pincode.length === 6 && zone && !isCustomOrder && (
+                    <ZoneBadge zone={zone} surchargeTotal={surchargeTotal} outsideBlocked={outsideBlocked} deliveryDateStr={deliveryDateStr} />
+                  )}
 
                   <Field label="Special Instructions (Optional)" id="instructions" error={errors.instructions}>
                     <textarea 
@@ -732,7 +756,7 @@ export default function CheckoutPage() {
 
           {/* Show zone badge for selected profile */}
           {lookupState === 'done' && selectedProfile >= 0 && zone && !isCustomOrder && (
-            <ZoneBadge zone={zone} surchargeTotal={surchargeTotal} />
+            <ZoneBadge zone={zone} surchargeTotal={surchargeTotal} outsideBlocked={outsideBlocked} deliveryDateStr={deliveryDateStr} />
           )}
 
           {/* Special Instructions for Saved Profile */}
@@ -749,6 +773,14 @@ export default function CheckoutPage() {
             </Field>
           )}
 
+          {/* Outside Delivery Blocked Warning Banner */}
+          {isOutsideDeliveryBlocked && (
+            <div className="bg-red-50 border-2 border-red-500 text-red-700 rounded-xl p-3.5 text-xs font-bold text-center flex items-center justify-center gap-2">
+              <span className="text-base">🚫</span>
+              <span>Outside Borivali orders are closed because of Dabbawala Mama Holiday</span>
+            </div>
+          )}
+
           {/* Server error */}
           {serverError && (
             <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-sm text-red-700">
@@ -760,13 +792,15 @@ export default function CheckoutPage() {
           {lookupState !== 'idle' && (
             <button
               type="submit"
-              disabled={submitting || lookupState === 'loading'}
+              disabled={submitting || lookupState === 'loading' || isOutsideDeliveryBlocked}
               className={`w-full py-4 rounded-2xl font-bold text-white text-base transition
-                ${submitting || lookupState === 'loading'
-                  ? 'bg-red-300 cursor-not-allowed'
+                ${submitting || lookupState === 'loading' || isOutsideDeliveryBlocked
+                  ? 'bg-red-300 cursor-not-allowed opacity-80'
                   : 'bg-jts-red hover:bg-jts-crimson active:bg-red-900 shadow-md'}`}
             >
-              {submitting ? (editOrder ? 'Updating Order…' : 'Placing Order…') : (editOrder ? '✏️ Update Order' : '🛍️ Place Order')}
+              {isOutsideDeliveryBlocked
+                ? '🚫 Outside Delivery Closed for this Date'
+                : submitting ? (editOrder ? 'Updating Order…' : 'Placing Order…') : (editOrder ? '✏️ Update Order' : '🛍️ Place Order')}
             </button>
           )}
         </form>

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useCart, getOrderingState } from '../App';
+import { useCart, getOrderingState, isOutsideBlocked } from '../App';
 import { getMenu } from '../services/api';
 import LoadingSpinner from './LoadingSpinner';
 import JtsLogo from './JtsLogo';
@@ -369,7 +369,8 @@ export default function MenuPage() {
   const [error, setError]       = useState(null);
   
   // Use ordering state helper
-  const { status, isMenuLive, targetDateLabel, targetDate, lunchCutoffTime, choviarCutoffTime } = getOrderingState(metadata);
+  const { status, isMenuLive, targetDateLabel, targetDate, targetDateStr, lunchCutoffTime, choviarCutoffTime } = getOrderingState(metadata);
+  const outsideBlocked = isOutsideBlocked(targetDateStr, metadata);
 
   useEffect(() => {
     document.title = 'Jain Tiffin Service – Daily Tiffin Order';
@@ -446,6 +447,15 @@ export default function MenuPage() {
           </button>
         </div>
       </header>
+
+      {/* ── Outside Borivali Blocked Flashing Banner ── */}
+      {outsideBlocked && (
+        <div className="bg-red-600 text-white font-extrabold text-center py-3 px-4 shadow-md animate-pulse flex items-center justify-center gap-2 text-sm sm:text-base tracking-wide uppercase border-y-2 border-yellow-300">
+          <span className="text-xl">⚠️</span>
+          <span>Outside Borivali orders are closed because of Dabbawala Mama Holiday</span>
+          <span className="text-xl">⚠️</span>
+        </div>
+      )}
 
       {/* ── Navy tagline banner ── */}
       <div className="bg-jts-navy">
