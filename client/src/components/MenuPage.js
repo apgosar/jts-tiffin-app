@@ -494,14 +494,12 @@ export default function MenuPage() {
         {!isMenuLive ? (
           <div className="bg-white border-2 border-jts-gold rounded-xl p-6 shadow-md text-center my-10">
             <p className="text-4xl mb-3">🕒</p>
-            <h2 className="text-xl font-bold text-jts-gold mb-2" style={{ fontFamily: "'Oswald', Impact, sans-serif" }}>Menu is being updated!</h2>
-            <p className="text-gray-600 text-sm font-medium">Tomorrow's menu is being prepared. Please check back later.</p>
+            <h2 className="text-xl font-bold text-jts-gold leading-snug" style={{ fontFamily: "'Oswald', Impact, sans-serif" }}>Menu for tomorrow will be updated between 6-8pm.</h2>
           </div>
         ) : status === 'CLOSED' ? (
           <div className="bg-white border-2 border-jts-red rounded-xl p-6 shadow-md text-center my-10">
-            <p className="text-4xl mb-3">👨‍🍳</p>
-            <h2 className="text-xl font-bold text-jts-red mb-2" style={{ fontFamily: "'Oswald', Impact, sans-serif" }}>We are cooking tomorrow's menu!</h2>
-            <p className="text-gray-600 text-sm font-medium">Orders will open once tomorrow's menu is live.</p>
+            <p className="text-4xl mb-3">🕒</p>
+            <h2 className="text-xl font-bold text-jts-red leading-snug" style={{ fontFamily: "'Oswald', Impact, sans-serif" }}>Menu for tomorrow will be updated between 6-8pm.</h2>
           </div>
         ) : null}
 
