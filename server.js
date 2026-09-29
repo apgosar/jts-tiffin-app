@@ -89,6 +89,8 @@ let MOCK_METADATA = {
   sabji: 'Bhindi', sweet: 'Aamras', dal: 'Gujarati Dal', farsan: 'Dhokla', 
   betaTesting: 'Yes',
   breadType: 'Roti',
+  rotiPrice: 8,
+  theplaPrice: 12,
   lunchCutoff: '05:00',
   choviarCutoff: '11:00',
   tiffinMatrix: {
@@ -175,6 +177,9 @@ function computeServerPrice(itemObj, menuItems, metadata) {
   const breadType = metadata.breadType || 'Roti';
   if (itemName === breadType || itemName === 'Roti' || itemName === `Extra ${breadType}` || itemName === 'Extra Roti') {
     return { price: parseFloat(metadata.rotiPrice) || 8, category: 'Individual' };
+  }
+  if (itemName === 'Thepla' || itemName === 'Extra Thepla') {
+    return { price: parseFloat(metadata.theplaPrice) || 12, category: 'Individual' };
   }
 
   // Custom Order Items
@@ -358,14 +363,21 @@ app.post('/api/orders', orderLimiter, async (req, res) => {
   }
   for (const item of items) {
     const qty = parseInt(item.quantity, 10);
+    let minLimit = 1;
     let limit = MAX_QTY_PER_ITEM;
-    if (item.name === 'Roti') {
+    if (item.name === 'Thepla' || item.name === 'Extra Thepla') {
+      minLimit = 6;
+      limit = MAX_ROTI_QTY;
+    } else if (item.name === 'Roti') {
       limit = MAX_ROTI_QTY;
     } else if (/^(extra\s+)?(roti|paratha|puri)$/i.test((item.name || '').trim()) || (item.name || '').toLowerCase().startsWith('extra ')) {
       limit = MAX_EXTRA_ROTI_QTY;
     }
-    if (!qty || qty < 1 || qty > limit) {
-      return res.status(400).json({ error: `Invalid quantity for "${item.name}". Must be 1–${limit}.` });
+    if (!qty || qty < minLimit || qty > limit) {
+      if ((item.name === 'Thepla' || item.name === 'Extra Thepla') && qty < 6) {
+        return res.status(400).json({ error: 'Minimum order quantity for Thepla is 6 pcs.' });
+      }
+      return res.status(400).json({ error: `Invalid quantity for "${item.name}". Must be ${minLimit}–${limit}.` });
     }
   }
 
@@ -385,7 +397,11 @@ app.post('/api/orders', orderLimiter, async (req, res) => {
     if (!serverData) {
       return res.status(400).json({ error: `Unknown or invalid item: "${item.name}"` });
     }
-    validatedItems.push({ name: item.name, price: serverData.price, quantity: parseInt(item.quantity, 10), category: serverData.category });
+    const qty = parseInt(item.quantity, 10);
+    if ((item.name === 'Thepla' || item.name === 'Extra Thepla') && qty < 6) {
+      return res.status(400).json({ error: 'Minimum order quantity for Thepla is 6 pcs.' });
+    }
+    validatedItems.push({ name: item.name, price: serverData.price, quantity: qty, category: serverData.category });
   }
 
   const now = new Date();
@@ -654,13 +670,22 @@ app.post('/api/orders/recurring', orderLimiter, async (req, res) => {
     const serverData = computeServerPrice(item, menuItems, metadata);
     if (!serverData) return res.status(400).json({ error: `Unknown item: ${item.name}` });
     const qty = parseInt(item.quantity, 10);
+    let minLimit = 1;
     let limit = 20;
-    if (item.name === 'Roti') {
+    if (item.name === 'Thepla' || item.name === 'Extra Thepla') {
+      minLimit = 6;
+      limit = 200;
+    } else if (item.name === 'Roti') {
       limit = 200;
     } else if (/^(extra\s+)?(roti|paratha|puri)$/i.test((item.name || '').trim()) || (item.name || '').toLowerCase().startsWith('extra ')) {
       limit = 50;
     }
-    if (!qty || qty < 1 || qty > limit) return res.status(400).json({ error: `Invalid quantity for "${item.name}". Must be 1–${limit}.` });
+    if (!qty || qty < minLimit || qty > limit) {
+      if ((item.name === 'Thepla' || item.name === 'Extra Thepla') && qty < 6) {
+        return res.status(400).json({ error: 'Minimum order quantity for Thepla is 6 pcs.' });
+      }
+      return res.status(400).json({ error: `Invalid quantity for "${item.name}". Must be ${minLimit}–${limit}.` });
+    }
     validatedItems.push({ name: item.name, price: serverData.price, quantity: qty, category: serverData.category });
   }
 
@@ -1016,13 +1041,22 @@ app.put('/api/orders/manage/:orderId', orderLimiter, async (req, res) => {
   if (items.length > MAX_ITEM_TYPES) return res.status(400).json({ error: 'Too many items' });
   for (const item of items) {
     const qty = parseInt(item.quantity, 10);
+    let minLimit = 1;
     let limit = MAX_QTY_PER_ITEM;
-    if (item.name === 'Roti') {
+    if (item.name === 'Thepla' || item.name === 'Extra Thepla') {
+      minLimit = 6;
+      limit = MAX_ROTI_QTY;
+    } else if (item.name === 'Roti') {
       limit = MAX_ROTI_QTY;
     } else if (/^(extra\s+)?(roti|paratha|puri)$/i.test((item.name || '').trim()) || (item.name || '').toLowerCase().startsWith('extra ')) {
       limit = MAX_EXTRA_ROTI_QTY;
     }
-    if (!qty || qty < 1 || qty > limit) return res.status(400).json({ error: `Invalid quantity for ${item.name}` });
+    if (!qty || qty < minLimit || qty > limit) {
+      if ((item.name === 'Thepla' || item.name === 'Extra Thepla') && qty < 6) {
+        return res.status(400).json({ error: 'Minimum order quantity for Thepla is 6 pcs.' });
+      }
+      return res.status(400).json({ error: `Invalid quantity for ${item.name}` });
+    }
   }
 
   try {
@@ -1101,7 +1135,11 @@ app.put('/api/orders/manage/:orderId', orderLimiter, async (req, res) => {
         return res.status(400).json({ error: 'Cannot add Lunch items to a Choviar order edit' });
       }
       
-      validatedItems.push({ name: item.name, price: serverData.price, quantity: parseInt(item.quantity, 10), category: serverData.category });
+      const qty = parseInt(item.quantity, 10);
+      if ((item.name === 'Thepla' || item.name === 'Extra Thepla') && qty < 6) {
+        return res.status(400).json({ error: 'Minimum order quantity for Thepla is 6 pcs.' });
+      }
+      validatedItems.push({ name: item.name, price: serverData.price, quantity: qty, category: serverData.category });
     }
 
     if (validatedItems.length === 0) return res.status(400).json({ error: 'No valid items provided' });
@@ -1276,6 +1314,9 @@ app.post('/api/admin/orders', adminLimiter, requireAdmin, express.json(), async 
   for (const item of items) {
     const qty = parseInt(item.quantity, 10);
     if (!qty || qty < 1) return res.status(400).json({ error: `Invalid quantity for "${item.name}".` });
+    if ((item.name === 'Thepla' || item.name === 'Extra Thepla') && qty < 6) {
+      return res.status(400).json({ error: 'Minimum order quantity for Thepla is 6 pcs.' });
+    }
     const serverData = computeServerPrice(item, menuItems, metadata);
     if (!serverData) {
       return res.status(400).json({ error: `Unknown or invalid item: "${item.name}"` });
@@ -1538,8 +1579,8 @@ app.put('/api/admin/menu', adminLimiter, requireAdmin, async (req, res) => {
 function getRawComponents(items, metadata) {
   const meta = metadata || MOCK_METADATA;
   const comp = { 
-    Roti: 0, Paratha: 0, Puri: 0, 
-    RotiPacks: [], ParathaPacks: [], PuriPacks: [],
+    Roti: 0, Paratha: 0, Puri: 0, Thepla: 0,
+    RotiPacks: [], ParathaPacks: [], PuriPacks: [], TheplaPacks: [],
     Sabji: 0, Dal: 0, Rice: 0, 
     SabjiFull: 0, SabjiHalf: 0,
     DalFull: 0, DalHalf: 0,
@@ -1599,6 +1640,8 @@ function getRawComponents(items, metadata) {
       // Individual items
       if (n.toLowerCase() === breadType.toLowerCase() || n.toLowerCase() === `extra ${breadType.toLowerCase()}` || n.toLowerCase() === 'extra roti' || n.toLowerCase() === 'roti') {
         comp[breadType] += 1 * q;
+      } else if (n.toLowerCase() === 'thepla' || n.toLowerCase() === 'extra thepla') {
+        comp.Thepla += 1 * q;
       } else if (n.toLowerCase().includes('sabji (half)')) {
         comp.SabjiHalf += q;
       } else if (n.toLowerCase().includes('sabji (full)')) {
@@ -1638,6 +1681,7 @@ function getRawComponents(items, metadata) {
   if (comp.Roti > 0) comp.RotiPacks = [comp.Roti];
   if (comp.Paratha > 0) comp.ParathaPacks = [comp.Paratha];
   if (comp.Puri > 0) comp.PuriPacks = [comp.Puri];
+  if (comp.Thepla > 0) comp.TheplaPacks = [comp.Thepla];
 
   comp.Bread = comp[breadType] || 0;
   comp.breadType = breadType;
@@ -1811,7 +1855,7 @@ app.get('/api/admin/kitchen', adminLimiter, requireAdmin, async (req, res) => {
   const choviarQtyItemName = choviarQtyItem ? choviarQtyItem.name.trim() : null;
   const choviarPacketSummary = {};
 
-  const grandTotals = { Roti: 0, Sabji: 0, Dal: 0, Rice: 0, Sweet: 0, Farsan: 0 };
+  const grandTotals = { Roti: 0, Paratha: 0, Puri: 0, Thepla: 0, Sabji: 0, Dal: 0, Rice: 0, Sweet: 0, Farsan: 0 };
   const kitchenOrders = [];
   
   const choviarGrandTotals = {};
@@ -1822,7 +1866,8 @@ app.get('/api/admin/kitchen', adminLimiter, requireAdmin, async (req, res) => {
     Dal: { Half: 0, Full: 0 },
     Rice: { Half: 0, Full: 0 },
     Sabji: { Half: 0, Full: 0 },
-    Bread: {}
+    Bread: {},
+    Thepla: {}
   };
   const outsideOrders = [];
 
@@ -1846,6 +1891,7 @@ app.get('/api/admin/kitchen', adminLimiter, requireAdmin, async (req, res) => {
     if (lunchItems.length > 0) {
       const comp = getRawComponents(lunchItems, metadata);
       grandTotals[breadType] = (grandTotals[breadType] || 0) + comp[breadType];
+      grandTotals.Thepla = (grandTotals.Thepla || 0) + (comp.Thepla || 0);
       grandTotals.Sabji += comp.Sabji;
       grandTotals.Dal += comp.Dal;
       grandTotals.Rice += comp.Rice;
@@ -1857,6 +1903,9 @@ app.get('/api/admin/kitchen', adminLimiter, requireAdmin, async (req, res) => {
 
       (comp[`${breadType}Packs`] || []).forEach(packSize => {
         packetSummary.Bread[packSize] = (packetSummary.Bread[packSize] || 0) + 1;
+      });
+      (comp.TheplaPacks || []).forEach(packSize => {
+        packetSummary.Thepla[packSize] = (packetSummary.Thepla[packSize] || 0) + 1;
       });
 
       kitchenOrders.push({
@@ -1889,6 +1938,8 @@ app.get('/api/admin/kitchen', adminLimiter, requireAdmin, async (req, res) => {
           packetSummary.Sabji.Full += q; packetSummary.Sabji.Half += q;
         } else if (n.toLowerCase() === breadType.toLowerCase() || n.toLowerCase() === `extra ${breadType.toLowerCase()}` || n.toLowerCase() === 'extra roti' || n.toLowerCase() === 'roti') {
           // Roti totals handled by grandTotals now
+        } else if (n.toLowerCase() === 'thepla' || n.toLowerCase() === 'extra thepla') {
+          // Thepla totals handled by grandTotals now
 
         } else if (n.startsWith('Sabji')) {
           if (n.includes('(Half)')) packetSummary.Sabji.Half += q;

@@ -260,5 +260,62 @@ describe('Order Endpoints', () => {
       // 180 + 40 = 220, already multiple of 5
       expect(res.body.grandTotal % 5).toBe(0);
     });
+
+    it('should reject Thepla order when quantity is less than 6', async () => {
+      const payload = {
+        customer: { ...baseCustomer, pincode: '400092' },
+        items: [{ name: 'Thepla', quantity: 4, price: 12 }],
+        paymentMode: 'Cash'
+      };
+      const res = await request(app).post('/api/orders').send(payload);
+      expect(res.statusCode).toEqual(400);
+      expect(res.body.error).toContain('Minimum order quantity for Thepla is 6 pcs.');
+    });
+
+    it('should accept valid Thepla order (qty >= 6) and calculate price with Borivali custom surcharge', async () => {
+      // 6 Thepla = 6 * 12 = 72. In Borivali under 250 => delivery surcharge 30.
+      // Exact = 72 + 30 = 102 => rounded to nearest 5 is 100.
+      const payload = {
+        customer: { ...baseCustomer, pincode: '400092' },
+        items: [{ name: 'Thepla', quantity: 6, price: 12 }],
+        paymentMode: 'Cash'
+      };
+      const res = await request(app).post('/api/orders').send(payload);
+      expect(res.statusCode).toEqual(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.surchargeTotal).toBe(30);
+      expect(res.body.grandTotal).toBe(100);
+    });
+
+    it('should NOT apply Borivali surcharge when Thepla order subtotal >= 250', async () => {
+      // 21 Thepla = 21 * 12 = 252 >= 250 => surcharge = 0.
+      // Exact = 252 => rounded to nearest 5 is 250.
+      const payload = {
+        customer: { ...baseCustomer, pincode: '400092' },
+        items: [{ name: 'Thepla', quantity: 21, price: 12 }],
+        paymentMode: 'Cash'
+      };
+      const res = await request(app).post('/api/orders').send(payload);
+      expect(res.statusCode).toEqual(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.surchargeTotal).toBe(0);
+      expect(res.body.grandTotal).toBe(250);
+    });
+
+    it('should apply Outside Borivali surcharge (40 per order) for Thepla custom order', async () => {
+      // 6 Thepla = 6 * 12 = 72. Outside Borivali => surcharge = 40.
+      // Exact = 72 + 40 = 112 => rounded to nearest 5 is 110.
+      const payload = {
+        customer: { ...baseCustomer, pincode: '400001' },
+        items: [{ name: 'Thepla', quantity: 6, price: 12 }],
+        paymentMode: 'Cash'
+      };
+      const res = await request(app).post('/api/orders').send(payload);
+      expect(res.statusCode).toEqual(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.surchargeTotal).toBe(40);
+      expect(res.body.grandTotal).toBe(110);
+    });
+  });
 });
-});
+

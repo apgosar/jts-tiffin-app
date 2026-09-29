@@ -12,7 +12,7 @@
 process.env.USE_MOCK_DATA = 'false';
 process.env.NODE_ENV = 'test';
 process.env.ADMIN_PASSWORD = 'changeme';
-process.env.BORIVALI_PINCODES = '400066,400067,400068,400091,400092';
+process.env.BORIVALI_PINCODES = '400066,400103,400068,400091,400092';
 
 // ─── Mock firebase-admin ──────────────────────────────────────────────────────
 const mockBatch = {

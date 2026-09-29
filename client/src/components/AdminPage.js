@@ -221,6 +221,7 @@ function AdminNewOrderModal({ password, currentMetadata, currentMenu, onClose, o
   const [hasChoviar, setHasChoviar] = useState(false);
   const [choviarQty, setChoviarQty] = useState(1);
   const [extraBreadQty, setExtraBreadQty] = useState(0);
+  const [theplaQty, setTheplaQty] = useState(0);
 
   // Custom Items
   const [customItems, setCustomItems] = useState([]);
@@ -288,6 +289,9 @@ function AdminNewOrderModal({ password, currentMetadata, currentMenu, onClose, o
     if (name === `Extra ${breadType}` || name === 'Extra Roti' || name === 'Roti') {
       return parseFloat(currentMetadata?.rotiPrice) || 8;
     }
+    if (name === 'Thepla' || name === 'Extra Thepla') {
+      return parseFloat(currentMetadata?.theplaPrice) || 12;
+    }
     return 0;
   };
 
@@ -301,6 +305,9 @@ function AdminNewOrderModal({ password, currentMetadata, currentMenu, onClose, o
     }
     if (extraBreadQty > 0) {
       items.push({ name: `Extra ${breadType}`, quantity: extraBreadQty, price: getItemPrice(`Extra ${breadType}`) });
+    }
+    if (theplaQty >= 6) {
+      items.push({ name: 'Thepla', quantity: theplaQty, price: getItemPrice('Thepla') });
     }
     customItems.forEach(ci => {
       items.push({ name: ci.name, quantity: ci.quantity, price: ci.price });
@@ -346,6 +353,7 @@ function AdminNewOrderModal({ password, currentMetadata, currentMenu, onClose, o
     if (!form.name.trim()) return setError('Please enter customer name.');
     if (!phone.trim() || phone.length !== 10) return setError('Please enter a valid 10-digit mobile number.');
     if (!form.pincode.trim() || form.pincode.length !== 6) return setError('Please enter a valid 6-digit pincode.');
+    if (theplaQty > 0 && theplaQty < 6) return setError('Minimum quantity for Thepla is 6 pcs.');
     if (itemsList.length === 0) return setError('Please select at least one meal or item.');
 
     setError('');
@@ -587,6 +595,15 @@ function AdminNewOrderModal({ password, currentMetadata, currentMenu, onClose, o
                   <button type="button" onClick={() => setExtraBreadQty(Math.min(50, extraBreadQty + 1))} className="w-6 h-6 rounded border border-jts-red bg-white text-jts-red font-bold">+</button>
                 </div>
               </div>
+
+              <div className="flex justify-between items-center text-xs">
+                <span className="font-bold text-gray-700">Thepla (₹{getItemPrice('Thepla')}/pc • Min 6)</span>
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={() => setTheplaQty(theplaQty <= 6 ? 0 : theplaQty - 1)} className="w-6 h-6 rounded border bg-white font-bold">-</button>
+                  <span className="w-5 text-center font-bold">{theplaQty}</span>
+                  <button type="button" onClick={() => setTheplaQty(theplaQty === 0 ? 6 : Math.min(50, theplaQty + 1))} className="w-6 h-6 rounded border border-jts-red bg-white text-jts-red font-bold">+</button>
+                </div>
+              </div>
             </div>
 
             {/* Additional Custom Menu Items */}
@@ -722,7 +739,7 @@ function MenuTab({ password, currentMenu, currentMetadata, onMenuSaved }) {
   const [metadata, setMetadata] = useState({
     sabji: '', sweet: '', dal: '', farsan: '', rice: '',
     breadType: 'Roti',
-    rotiPrice: '8', riceHalfPrice: '15', riceFullPrice: '30',
+    rotiPrice: '8', theplaPrice: '12', riceHalfPrice: '15', riceFullPrice: '30',
     sabjiHalfPrice: '25', sabjiFullPrice: '50',
     dalHalfPrice: '25', dalFullPrice: '50',
     farsanPrice: '0', farsanAvailable: 'No',
@@ -1742,6 +1759,9 @@ function KitchenTab({ password, currentMetadata, currentMenu }) {
 
     const lines = [`🍱 Kitchen Order Summary – ${convertDate(kitchenDate)}`, ''];
     lines.push(`Total ${bread}: ${total || 0}`);
+    if (summary.grandTotals?.Thepla > 0) {
+      lines.push(`Total Thepla: ${summary.grandTotals.Thepla}`);
+    }
     lines.push(`Total Sabji: ${summary.grandTotals?.Sabji || 0}`);
     lines.push(`Total Dal: ${summary.grandTotals?.Dal || 0}`);
     lines.push(`Total Rice: ${summary.grandTotals?.Rice || 0}`);
@@ -1924,6 +1944,7 @@ function KitchenTab({ password, currentMetadata, currentMenu }) {
                     { label: 'Roti', val: summary.grandTotals?.Roti },
                     { label: 'Paratha', val: summary.grandTotals?.Paratha },
                     { label: 'Puri', val: summary.grandTotals?.Puri },
+                    { label: 'Thepla', val: summary.grandTotals?.Thepla },
                     { label: 'Sabji', val: summary.grandTotals?.Sabji },
                     { label: 'Dal', val: summary.grandTotals?.Dal },
                     { label: 'Rice', val: summary.grandTotals?.Rice },
@@ -1943,7 +1964,7 @@ function KitchenTab({ password, currentMetadata, currentMenu }) {
                 {summary.packetSummary && (
                   <div className="mb-6 print:hidden">
                     <h4 className="text-sm font-bold text-gray-800 border-b pb-2 mb-4">📦 Packet Breakdown</h4>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                       {/* Dal/Rice/Sabji Table */}
                       <div className="overflow-x-auto">
                         <table className="w-full text-center text-sm border-collapse border border-gray-200 bg-white">
@@ -2003,6 +2024,35 @@ function KitchenTab({ password, currentMetadata, currentMenu }) {
                           </tbody>
                         </table>
                       </div>
+
+                      {/* Thepla Table */}
+                      {summary.packetSummary?.Thepla && Object.keys(summary.packetSummary.Thepla).length > 0 && (
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-center text-sm border-collapse border border-gray-200 bg-white max-w-[250px]">
+                            <thead>
+                              <tr className="bg-amber-100 text-amber-900">
+                                <th className="border border-gray-200 p-2">Thepla Pkt</th>
+                                <th className="border border-gray-200 p-2">Total Pkts</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {Object.entries(summary.packetSummary.Thepla || {})
+                                .sort((a, b) => Number(a[0]) - Number(b[0]))
+                                .map(([theplaCount, pktCount], i) => (
+                                  <tr key={theplaCount} className={i % 2 === 1 ? "bg-amber-50/50" : ""}>
+                                    <td className="border border-gray-200 p-2 text-gray-800">{theplaCount} pc pkt</td>
+                                    <td className="border border-gray-200 p-2 font-bold">{pktCount}</td>
+                                  </tr>
+                                ))
+                              }
+                              <tr className="bg-amber-50 border-t-2 border-amber-300">
+                                <td className="border border-gray-200 p-2 text-gray-800 text-left font-bold">Grand Total (Thepla)</td>
+                                <td className="border border-gray-200 p-2 font-bold text-amber-700">{summary.grandTotals?.Thepla || 0}</td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -2018,6 +2068,7 @@ function KitchenTab({ password, currentMetadata, currentMenu }) {
                           <th className="py-1.5 px-1 font-bold">Locality</th>
                           {summary.grandTotals?.Tiffins > 0 && <th className="py-1.5 px-1 text-center font-bold">Tiffins</th>}
                           <th className="py-1.5 px-1 text-center font-bold">{breadType}</th>
+                          {summary.grandTotals?.Thepla > 0 && <th className="py-1.5 px-1 text-center font-bold">Thepla</th>}
                           <th className="py-1.5 px-1 text-center font-bold">Sabji</th>
                           <th className="py-1.5 px-1 text-center font-bold">Dal</th>
                           <th className="py-1.5 px-1 text-center font-bold">Rice</th>
@@ -2037,6 +2088,7 @@ function KitchenTab({ password, currentMetadata, currentMenu }) {
                             <td className="py-2 px-1 text-gray-600 text-[10px] whitespace-normal min-w-[80px] leading-snug">{order.locality || '-'}</td>
                             {summary.grandTotals?.Tiffins > 0 && <td className="py-2 px-1 text-center text-gray-800 font-bold">{order.Tiffins || '-'}</td>}
                             <td className="py-2 px-1 text-center text-gray-800 font-bold">{order[breadType] || order.Bread || order.RotiStr || order.Roti || order.Paratha || order.Puri || '-'}</td>
+                            {summary.grandTotals?.Thepla > 0 && <td className="py-2 px-1 text-center text-gray-800 font-bold">{order.Thepla || '-'}</td>}
                             <td className="py-2 px-1 text-center text-gray-800 font-bold">{order.SabjiStr || order.Sabji || '-'}</td>
                             <td className="py-2 px-1 text-center text-gray-800 font-bold">{order.DalStr || order.Dal || '-'}</td>
                             <td className="py-2 px-1 text-center text-gray-800 font-bold">{order.RiceStr || order.Rice || '-'}</td>
@@ -2054,6 +2106,7 @@ function KitchenTab({ password, currentMetadata, currentMenu }) {
                           <th className="py-1.5 px-1 font-bold">Locality</th>
                           {summary.grandTotals?.Tiffins > 0 && <th className="py-1.5 px-1 text-center font-bold">Tiffins</th>}
                           <th className="py-1.5 px-1 text-center font-bold">{breadType}</th>
+                          {summary.grandTotals?.Thepla > 0 && <th className="py-1.5 px-1 text-center font-bold">Thepla</th>}
                           <th className="py-1.5 px-1 text-center font-bold">Sabji</th>
                           <th className="py-1.5 px-1 text-center font-bold">Dal</th>
                           <th className="py-1.5 px-1 text-center font-bold">Rice</th>
@@ -2070,6 +2123,9 @@ function KitchenTab({ password, currentMetadata, currentMenu }) {
                             <td className="py-2 px-1 text-center font-black">{summary.grandTotals.Tiffins}</td>
                           )}
                           <td className="py-2 px-1 text-center font-black text-jts-red">{breadGrandTotal}</td>
+                          {summary.grandTotals?.Thepla > 0 && (
+                            <td className="py-2 px-1 text-center font-black text-amber-700">{summary.grandTotals.Thepla}</td>
+                          )}
                           <td className="py-2 px-1 text-center font-black">{summary.grandTotals?.Sabji ?? 0}</td>
                           <td className="py-2 px-1 text-center font-black">{summary.grandTotals?.Dal ?? 0}</td>
                           <td className="py-2 px-1 text-center font-black">{summary.grandTotals?.Rice ?? 0}</td>
@@ -3276,6 +3332,10 @@ function SettingsTab({ password, currentMetadata, onMetadataSaved }) {
           <div>
             <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Roti Price</label>
             <input type="number" value={metadata.rotiPrice || ''} onChange={e => updateMeta('rotiPrice', e.target.value)} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Thepla Price</label>
+            <input type="number" value={metadata.theplaPrice || ''} onChange={e => updateMeta('theplaPrice', e.target.value)} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
           </div>
           <div>
             <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Sabji (Half)</label>

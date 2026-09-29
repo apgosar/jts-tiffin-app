@@ -185,4 +185,24 @@ describe('Kitchen component counts via GET /api/admin/kitchen', () => {
 
     expect(after.body.grandTotals.Roti).toEqual(rotisBefore + 9);
   });
+
+  it('should correctly sum Thepla and record Thepla packets in kitchen summary', async () => {
+    const todayStr = getTargetDateStr();
+
+    const before = await request(app)
+      .get(`/api/admin/kitchen?date=${todayStr}`)
+      .set('x-admin-password', 'changeme');
+    const theplaBefore = before.body.grandTotals?.Thepla || 0;
+
+    // Place Thepla order with qty = 6
+    await placeOrder([{ name: 'Thepla', quantity: 6, price: 12 }]);
+
+    const after = await request(app)
+      .get(`/api/admin/kitchen?date=${todayStr}`)
+      .set('x-admin-password', 'changeme');
+
+    expect(after.body.grandTotals.Thepla).toEqual(theplaBefore + 6);
+    expect(after.body.packetSummary.Thepla).toBeDefined();
+    expect(after.body.packetSummary.Thepla['6']).toBeGreaterThanOrEqual(1);
+  });
 });

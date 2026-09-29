@@ -342,6 +342,10 @@ export default function CheckoutPage() {
     } else if (zone === 'outside' && outsideBlocked) {
       e.pincode = 'Outside Borivali orders are closed because of Dabbawala Mama Holiday';
     }
+    const invalidThepla = cartItems.find(i => (i.name === 'Thepla' || i.name === 'Extra Thepla') && i.quantity < 6);
+    if (invalidThepla) {
+      e.thepla = 'Minimum order quantity for Thepla is 6 pcs.';
+    }
     return e;
   };
 
@@ -349,6 +353,11 @@ export default function CheckoutPage() {
   const executeOrder = async () => {
     if (zone === 'outside' && outsideBlocked) {
       setServerError('Outside Borivali orders are closed because of Dabbawala Mama Holiday');
+      return;
+    }
+    const invalidThepla = cartItems.find(i => (i.name === 'Thepla' || i.name === 'Extra Thepla') && i.quantity < 6);
+    if (invalidThepla) {
+      setServerError('Minimum order quantity for Thepla is 6 pcs.');
       return;
     }
     window.scrollTo({ top: 0, behavior: 'smooth' });
