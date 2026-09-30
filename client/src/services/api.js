@@ -13,6 +13,9 @@ export const updateOrder = (orderId, phone, payload) =>
 
 export const placeOrder = (data) => API.post('/api/orders', data);
 
+export const getCustomerBilling = (phone) =>
+  API.get('/api/customer/billing', { params: { phone } });
+
 // ─── Admin endpoints ──────────────────────────────────────────────────────────
 function adminHeaders(password) {
   return { headers: { 'x-admin-password': password } };

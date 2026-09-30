@@ -618,9 +618,10 @@ export default function MenuPage() {
                 </div>
                 
                 {status === 'LUNCH_CLOSED' || metadata.lunchClosed === 'Yes' ? (
-                  <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-col items-center justify-center opacity-70">
-                    <span className="text-xl mb-1">🚫</span>
-                    <p className="text-sm font-bold text-gray-600 text-center">No Lunch for {targetDateLabel}</p>
+                  <div className="bg-white rounded-2xl border border-gray-200 p-5 flex flex-col items-center justify-center shadow-sm text-center">
+                    <span className="text-2xl mb-1.5">🕒</span>
+                    <p className="text-sm font-bold text-gray-800">Lunch ordering window closed for {targetDateLabel}</p>
+                    <p className="text-[11px] text-gray-500 font-medium mt-0.5">Orders placed before cutoff will be delivered as scheduled.</p>
                   </div>
                 ) : (
                   <>
@@ -682,9 +683,10 @@ export default function MenuPage() {
                   )}
                 </div>
                 {status === 'CHOVIAR_CLOSED' || metadata.choviarClosed === 'Yes' ? (
-                  <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-col items-center justify-center opacity-70">
-                    <span className="text-xl mb-1">🚫</span>
-                    <p className="text-sm font-bold text-gray-600 text-center">No Choviar for {targetDateLabel}</p>
+                  <div className="bg-white rounded-2xl border border-gray-200 p-5 flex flex-col items-center justify-center shadow-sm text-center">
+                    <span className="text-2xl mb-1.5">🕒</span>
+                    <p className="text-sm font-bold text-gray-800">Choviar ordering window closed for {targetDateLabel}</p>
+                    <p className="text-[11px] text-gray-500 font-medium mt-0.5">Orders placed before cutoff will be delivered as scheduled.</p>
                   </div>
                 ) : (
                   <>

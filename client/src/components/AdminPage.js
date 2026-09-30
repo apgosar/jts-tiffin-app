@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import JtsLogo from './JtsLogo';
 import { getAdminOrders, updateAdminMenu, getKitchenSummary, updateAdminDeliveryBatch, createAdminOrder, lookupCustomer } from '../services/api';
 import { toBlob } from 'html-to-image';
+import * as XLSX from 'xlsx';
 
 // ─── Login ────────────────────────────────────────────────────────────────────
 function LoginScreen({ onLogin, authError }) {
@@ -1336,6 +1337,9 @@ function OrdersTab({ password, currentMetadata, currentMenu }) {
     'Lunch Orders': false,
     'Choviar Orders': false
   });
+  const [imageExportData, setImageExportData] = useState(null);
+  const [exportingGroup, setExportingGroup] = useState(null);
+  const ORDERS_PER_IMAGE_PAGE = 10;
 
   const toggleSection = (title) => {
     setCollapsedSections(prev => ({ ...prev, [title]: !prev[title] }));
@@ -1387,6 +1391,179 @@ function OrdersTab({ password, currentMetadata, currentMenu }) {
     } finally {
       setSavingAssignments(false);
     }
+  };
+
+  const handleDownloadXlsx = (title, groupOrders) => {
+    if (!groupOrders || groupOrders.length === 0) {
+      alert(`No orders found in ${title} to export.`);
+      return;
+    }
+
+    const targetDateStr = filterDate ? convertDate(filterDate) : (filterMonth ? convertMonth(filterMonth) : 'All');
+    const safeDateStr = (targetDateStr || 'orders').replace(/\//g, '-');
+    const isLunch = title.toLowerCase().includes('lunch');
+    const sheetName = isLunch ? 'Lunch Orders' : 'Choviar Orders';
+    const fileName = `JTS_${isLunch ? 'Lunch' : 'Choviar'}_Orders_${safeDateStr}.xlsx`;
+
+    const headers = [
+      'Seq',
+      'Order ID',
+      'Customer Name',
+      'Phone',
+      'Amount (₹)',
+      'Payment Method',
+      'Payment Status',
+      'Items',
+      'Full Address',
+      'Locality',
+      'Pincode',
+      'Zone',
+      'Driver',
+      'Special Instructions',
+      'Order Type'
+    ];
+
+    const dataRows = groupOrders.map(order => {
+      const assignedSeq = assignments[order.orderId]?.routeOrder;
+      const seq = (assignedSeq && assignedSeq !== 9999) ? assignedSeq : (order.routeOrder && order.routeOrder !== 9999 ? order.routeOrder : '');
+      const driver = assignments[order.orderId]?.deliveryPerson || order.deliveryPerson || 'Unassigned';
+      const itemsText = order.itemsSummary || (order.items || []).map(i => `${i.name}×${i.quantity}`).join(', ');
+      const paymentStatus = order.paymentReceived ? 'Received' : 'Pending';
+      const zoneText = order.zone === 'outside' ? 'Outside Borivali' : 'Borivali';
+      const orderType = order.isRecurring ? 'Recurring' : 'Daily';
+
+      return [
+        seq,
+        order.orderId,
+        order.name,
+        order.phone || '',
+        order.grandTotal,
+        order.paymentMethod || 'Cash',
+        paymentStatus,
+        itemsText,
+        order.address || '',
+        order.locality || '',
+        order.pincode || '',
+        zoneText,
+        driver,
+        order.instructions || '',
+        orderType
+      ];
+    });
+
+    const totalAmount = groupOrders.reduce((sum, o) => sum + (o.grandTotal || 0), 0);
+    const totalRow = [
+      'Total',
+      `${groupOrders.length} orders`,
+      '',
+      '',
+      totalAmount,
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      ''
+    ];
+
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...dataRows, totalRow]);
+    ws['!cols'] = [
+      { wch: 6 },  // Seq
+      { wch: 12 }, // Order ID
+      { wch: 22 }, // Customer Name
+      { wch: 14 }, // Phone
+      { wch: 12 }, // Amount
+      { wch: 15 }, // Payment Method
+      { wch: 15 }, // Payment Status
+      { wch: 32 }, // Items
+      { wch: 45 }, // Full Address
+      { wch: 18 }, // Locality
+      { wch: 10 }, // Pincode
+      { wch: 16 }, // Zone
+      { wch: 15 }, // Driver
+      { wch: 25 }, // Special Instructions
+      { wch: 12 }  // Order Type
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    XLSX.writeFile(wb, fileName);
+  };
+
+  const handleDownloadImages = async (title, groupOrders) => {
+    if (!groupOrders || groupOrders.length === 0) {
+      alert(`No orders found in ${title} to export.`);
+      return;
+    }
+
+    setExportingGroup(title);
+    const targetDateStr = filterDate ? convertDate(filterDate) : (filterMonth ? convertMonth(filterMonth) : 'All');
+    const totalPages = Math.max(1, Math.ceil(groupOrders.length / ORDERS_PER_IMAGE_PAGE));
+
+    setImageExportData({
+      title,
+      orders: groupOrders,
+      dateStr: targetDateStr,
+      totalPages
+    });
+
+    setTimeout(async () => {
+      try {
+        const nodes = document.querySelectorAll('.orders-capture-node');
+        if (!nodes || nodes.length === 0) {
+          throw new Error('Could not locate render nodes for image generation.');
+        }
+
+        const safeDateStr = (targetDateStr || 'orders').replace(/\//g, '-');
+        const isLunch = title.toLowerCase().includes('lunch');
+        const baseName = `JTS_${isLunch ? 'Lunch' : 'Choviar'}_Orders_${safeDateStr}`;
+        const files = [];
+
+        for (let i = 0; i < nodes.length; i++) {
+          const blob = await toBlob(nodes[i], { backgroundColor: '#ffffff', pixelRatio: 2 });
+          if (!blob) throw new Error(`Failed to render image for Part ${i + 1}`);
+          const fileName = totalPages > 1 ? `${baseName}_Part${i + 1}.png` : `${baseName}.png`;
+          files.push(new File([blob], fileName, { type: 'image/png' }));
+        }
+
+        const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+        if (isMobile && navigator.share && navigator.canShare && navigator.canShare({ files })) {
+          await navigator.share({
+            files,
+            title: `${title} - ${targetDateStr}`,
+            text: `${title} (${targetDateStr}) - ${groupOrders.length} orders across ${totalPages} image(s)`
+          });
+        } else {
+          for (let i = 0; i < files.length; i++) {
+            const f = files[i];
+            const url = URL.createObjectURL(f);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = f.name;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            if (i < files.length - 1) {
+              await new Promise(res => setTimeout(res, 400));
+            }
+          }
+        }
+
+        setMsg(`✅ Downloaded ${files.length} image(s) for ${title}!`);
+        setTimeout(() => setMsg(''), 4000);
+      } catch (err) {
+        console.error('Image export failed:', err);
+        alert('Failed to generate image(s): ' + (err.message || 'Unknown error'));
+      } finally {
+        setImageExportData(null);
+        setExportingGroup(null);
+      }
+    }, 200);
   };
 
   // Analytics
@@ -1565,17 +1742,36 @@ function OrdersTab({ password, currentMetadata, currentMenu }) {
                   </span>
                   <span className="text-sm font-bold text-gray-400">{isCollapsed ? '▼' : '▲'}</span>
                 </div>
-                <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center gap-2 flex-wrap" onClick={e => e.stopPropagation()}>
+                  <button
+                    type="button"
+                    onClick={() => handleDownloadXlsx(title, groupOrders)}
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold rounded-lg transition shadow-sm flex items-center gap-1.5"
+                    title={`Download ${title} as XLSX spreadsheet`}
+                  >
+                    <span>📊 Download XLSX</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDownloadImages(title, groupOrders)}
+                    disabled={exportingGroup === title}
+                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-xs font-bold rounded-lg transition shadow-sm flex items-center gap-1.5 disabled:bg-blue-300 disabled:cursor-not-allowed"
+                    title={`Download ${title} as Image(s)`}
+                  >
+                    <span>{exportingGroup === title ? '⏳ Generating...' : '🖼️ Download Image'}</span>
+                  </button>
                   {!isCollapsed && (
                     <button
+                      type="button"
                       onClick={() => handleSaveAssignments(groupOrders)}
                       disabled={savingAssignments}
-                      className={`px-4 py-1.5 text-white text-sm font-bold rounded-lg transition ${savingAssignments ? 'bg-red-300 cursor-not-allowed' : 'bg-jts-red hover:bg-jts-crimson shadow-sm'}`}
+                      className={`px-3 py-1.5 text-white text-xs font-bold rounded-lg transition ${savingAssignments ? 'bg-red-300 cursor-not-allowed' : 'bg-jts-red hover:bg-jts-crimson shadow-sm'}`}
                     >
-                      {savingAssignments ? 'Saving...' : '💾 Save Assignments'}
+                      {savingAssignments ? 'Saving...' : '💾 Save'}
                     </button>
                   )}
                   <button
+                    type="button"
                     onClick={() => toggleSection(title)}
                     className="p-1.5 text-gray-500 hover:text-gray-800 rounded-lg hover:bg-gray-100 transition"
                     title={isCollapsed ? `Expand ${title}` : `Collapse ${title}`}
@@ -1678,6 +1874,169 @@ function OrdersTab({ password, currentMetadata, currentMenu }) {
           </div>
         );
       })()}
+
+      {/* Hidden Orders Template for Image Capturing */}
+      {imageExportData && (
+        <div className="absolute top-[-9999px] left-[-9999px]" aria-hidden="true">
+          {Array.from({ length: imageExportData.totalPages }).map((_, pageIdx) => {
+            const pageOrders = imageExportData.orders.slice(
+              pageIdx * ORDERS_PER_IMAGE_PAGE,
+              (pageIdx + 1) * ORDERS_PER_IMAGE_PAGE
+            );
+            const isLastPage = pageIdx === imageExportData.totalPages - 1;
+            const startNum = pageIdx * ORDERS_PER_IMAGE_PAGE + 1;
+            const endNum = pageIdx * ORDERS_PER_IMAGE_PAGE + pageOrders.length;
+            const pageTotalAmt = pageOrders.reduce((sum, o) => sum + (o.grandTotal || 0), 0);
+
+            return (
+              <div
+                key={pageIdx}
+                className="orders-capture-node bg-white p-6 w-[780px] border border-gray-200 mb-8 font-sans text-gray-900"
+                style={{ boxSizing: 'border-box' }}
+              >
+                {/* Header */}
+                <div className="border-b-2 border-jts-red pb-3 mb-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2
+                        className="text-2xl font-black text-gray-900 uppercase tracking-tight"
+                        style={{ fontFamily: "'Oswald', sans-serif" }}
+                      >
+                        JAIN TIFFIN SERVICE
+                      </h2>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-sm font-bold text-jts-red uppercase tracking-wide">
+                          {imageExportData.title}
+                        </span>
+                        <span className="text-gray-300">•</span>
+                        <span className="text-xs font-semibold text-gray-600">
+                          📅 {imageExportData.dateStr}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <span className="inline-block bg-gray-100 text-gray-800 text-xs font-bold px-2.5 py-1 rounded-md border border-gray-300">
+                        Part {pageIdx + 1} of {imageExportData.totalPages}
+                      </span>
+                      <p className="text-[11px] text-gray-500 mt-1 font-medium">
+                        Orders {startNum}–{endNum} of {imageExportData.orders.length}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Table */}
+                <table className="w-full text-left border-collapse border border-gray-300 text-xs">
+                  <thead className="bg-gray-100 text-gray-800 font-bold uppercase tracking-wider text-[11px]">
+                    <tr>
+                      <th className="border border-gray-300 px-2 py-2 text-center w-12">Seq</th>
+                      <th className="border border-gray-300 px-2 py-2 w-36">Customer</th>
+                      <th className="border border-gray-300 px-2 py-2 w-44">Items</th>
+                      <th className="border border-gray-300 px-2 py-2">Address</th>
+                      <th className="border border-gray-300 px-2 py-2 text-center w-24">Driver</th>
+                      <th className="border border-gray-300 px-2 py-2 text-center w-16">Amt</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pageOrders.map((order, oIdx) => {
+                      const assignedSeq = assignments[order.orderId]?.routeOrder;
+                      const seq = (assignedSeq && assignedSeq !== 9999) ? assignedSeq : (order.routeOrder && order.routeOrder !== 9999 ? order.routeOrder : '-');
+                      const driver = assignments[order.orderId]?.deliveryPerson || order.deliveryPerson || '-';
+                      const itemsText = order.itemsSummary || (order.items || []).map(i => `${i.name}×${i.quantity}`).join(', ');
+
+                      return (
+                        <tr
+                          key={order.orderId || oIdx}
+                          className={`border-b border-gray-300 ${oIdx % 2 === 1 ? 'bg-gray-50/70' : 'bg-white'}`}
+                        >
+                          <td className="border-r border-gray-300 px-1 py-2 text-center align-middle font-black text-sm text-jts-red">
+                            {seq}
+                          </td>
+                          <td className="border-r border-gray-300 px-2 py-2 align-top">
+                            <div className="font-bold text-gray-900 leading-snug">{order.name}</div>
+                            <div className="text-[11px] text-gray-600 font-medium">{order.phone}</div>
+                            <div className="flex items-center gap-1 mt-1 flex-wrap">
+                              {order.zone === 'outside' && (
+                                <span className="text-[9px] bg-amber-100 text-amber-800 font-bold px-1 py-0.5 rounded border border-amber-300">
+                                  OUTSIDE
+                                </span>
+                              )}
+                              {order.isRecurring && (
+                                <span className="text-[9px] bg-purple-100 text-purple-800 font-bold px-1 py-0.5 rounded border border-purple-300">
+                                  RECURRING
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="border-r border-gray-300 px-2 py-2 align-top font-semibold text-gray-800 text-[11px] leading-snug">
+                            {itemsText}
+                          </td>
+                          <td className="border-r border-gray-300 px-2 py-2 align-top text-[11px] text-gray-700 leading-snug break-words">
+                            <div>{order.address}</div>
+                            {order.instructions && (
+                              <div className="mt-1 text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-300 px-1.5 py-0.5 rounded inline-block">
+                                📝 {order.instructions}
+                              </div>
+                            )}
+                          </td>
+                          <td className="border-r border-gray-300 px-1 py-2 text-center align-middle font-bold text-[11px]">
+                            {driver === 'Dabbawala' ? (
+                              <span className="bg-blue-50 text-blue-800 border border-blue-200 px-1.5 py-0.5 rounded inline-block">
+                                Dabbawala
+                              </span>
+                            ) : driver === 'Sagar' ? (
+                              <span className="bg-green-50 text-green-800 border border-green-200 px-1.5 py-0.5 rounded inline-block">
+                                Sagar
+                              </span>
+                            ) : (
+                              <span className="text-gray-400 font-normal">-</span>
+                            )}
+                          </td>
+                          <td className="px-2 py-2 text-center align-middle">
+                            <div className="font-black text-gray-900 text-sm">₹{order.grandTotal}</div>
+                            {order.paymentReceived ? (
+                              <span className="text-[9px] font-bold text-green-700 bg-green-50 px-1 py-0.5 rounded border border-green-200 inline-block mt-0.5">
+                                Paid
+                              </span>
+                            ) : (
+                              <span className="text-[9px] font-medium text-gray-500 inline-block mt-0.5">
+                                Collect
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot className="bg-gray-100 font-bold text-gray-800 text-[11px] border-t-2 border-gray-300">
+                    <tr>
+                      <td colSpan={5} className="border-r border-gray-300 px-3 py-2 text-right uppercase">
+                        {isLastPage
+                          ? `Total for ${imageExportData.title} (${imageExportData.orders.length} orders):`
+                          : `Page ${pageIdx + 1} Subtotal (${pageOrders.length} orders):`}
+                      </td>
+                      <td className="px-2 py-2 text-center text-sm font-black text-jts-red">
+                        ₹{isLastPage
+                          ? imageExportData.orders.reduce((s, o) => s + (o.grandTotal || 0), 0)
+                          : pageTotalAmt}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+
+                {/* Footer */}
+                <div className="flex items-center justify-between text-[10px] text-gray-400 mt-3 pt-2 border-t border-gray-200">
+                  <span>Jain Tiffin Service • Daily Orders Sheet</span>
+                  <span>
+                    Generated: {new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })} • Page{' '}
+                    {pageIdx + 1} of {imageExportData.totalPages}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

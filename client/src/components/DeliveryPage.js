@@ -4,7 +4,7 @@ function DeliveryPage() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [activeTab, setActiveTab] = useState('');
+  const [activeTab, setActiveTab] = useState('Sagar');
   const [savingOrderId, setSavingOrderId] = useState(null);
   const [collapsedSections, setCollapsedSections] = useState({});
 
@@ -23,11 +23,6 @@ function DeliveryPage() {
       if (!res.ok) throw new Error('Failed to fetch delivery orders');
       const data = await res.json();
       setOrders(data.orders || []);
-      
-      const riders = [...new Set((data.orders || []).map(o => o.deliveryPerson))];
-      if (riders.length > 0) {
-        setActiveTab(riders[0]);
-      }
       setLoading(false);
     } catch (err) {
       console.error(err);
@@ -104,10 +99,14 @@ function DeliveryPage() {
     </div>
   );
 
-  const riders = [...new Set(orders.map(o => o.deliveryPerson))];
+  const knownRiders = ['Sagar', 'Dabbawala'];
+  const otherRiders = [...new Set(orders.map(o => o.deliveryPerson).filter(Boolean))]
+    .filter(r => !knownRiders.some(kr => kr.toLowerCase() === r.toLowerCase()));
+  const riders = [...knownRiders, ...otherRiders];
+
   const activeOrders = orders
-    .filter(o => o.deliveryPerson === activeTab)
-    .sort((a, b) => a.routeOrder - b.routeOrder);
+    .filter(o => (o.deliveryPerson || '').toLowerCase() === activeTab.toLowerCase())
+    .sort((a, b) => (parseInt(a.routeOrder, 10) || 9999) - (parseInt(b.routeOrder, 10) || 9999));
 
   const lunchOrders = activeOrders.filter(o => o.category !== 'Choviar');
   const choviarOrders = activeOrders.filter(o => o.category === 'Choviar');
@@ -263,19 +262,33 @@ function DeliveryPage() {
       {riders.length > 0 && (
         <div className="flex flex-col bg-white shadow-sm sticky top-[68px] z-10 border-b border-gray-200">
           <div className="flex overflow-x-auto hide-scrollbar">
-            {riders.map(rider => (
-              <button
-                key={rider}
-                onClick={() => setActiveTab(rider)}
-                className={`flex-1 min-w-[120px] py-3 text-center font-bold text-lg border-b-4 transition-colors ${
-                  activeTab === rider 
-                    ? 'border-jts-red text-jts-red bg-red-50' 
-                    : 'border-transparent text-gray-500 hover:bg-gray-50'
-                }`}
-              >
-                {rider}
-              </button>
-            ))}
+            {riders.map(rider => {
+              const riderOrdersCount = orders.filter(
+                o => (o.deliveryPerson || '').toLowerCase() === rider.toLowerCase()
+              ).length;
+              const isSelected = activeTab.toLowerCase() === rider.toLowerCase();
+
+              return (
+                <button
+                  key={rider}
+                  onClick={() => setActiveTab(rider)}
+                  className={`flex-1 min-w-[130px] py-3 text-center font-bold text-base md:text-lg border-b-4 transition-colors flex items-center justify-center gap-2 ${
+                    isSelected 
+                      ? 'border-jts-red text-jts-red bg-red-50' 
+                      : 'border-transparent text-gray-500 hover:bg-gray-50'
+                  }`}
+                >
+                  <span>{rider}</span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${
+                    isSelected 
+                      ? 'bg-jts-red text-white' 
+                      : 'bg-gray-200 text-gray-700'
+                  }`}>
+                    {riderOrdersCount}
+                  </span>
+                </button>
+              );
+            })}
           </div>
           {/* Summary for active rider */}
           <div className="flex items-center justify-center gap-4 py-2 px-4 bg-gray-50 text-xs font-bold text-gray-600 border-t border-gray-100">
@@ -310,15 +323,18 @@ function DeliveryPage() {
         </div>
       )}
 
-      {riders.length === 0 && (
-        <div className="p-8 text-center text-gray-500 font-bold text-lg">
-          No orders assigned for today.
-        </div>
-      )}
-
       <div className="p-2 mx-auto max-w-4xl mt-2">
-        {renderOrderTable(lunchOrders, "Lunch Orders")}
-        {renderOrderTable(choviarOrders, "Choviar Orders")}
+        {activeOrders.length === 0 ? (
+          <div className="p-12 text-center text-gray-400 font-bold text-base bg-white rounded-xl shadow-sm border border-gray-100 my-4">
+            <p className="text-3xl mb-2">🛵</p>
+            <p>No orders assigned to {activeTab} for today.</p>
+          </div>
+        ) : (
+          <>
+            {renderOrderTable(lunchOrders, "Lunch Orders")}
+            {renderOrderTable(choviarOrders, "Choviar Orders")}
+          </>
+        )}
       </div>
     </div>
   );

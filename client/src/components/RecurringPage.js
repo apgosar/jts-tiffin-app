@@ -197,12 +197,12 @@ export default function RecurringPage() {
       }
 
       if (sIso === todayIso) {
-         if (orderStatus === 'LUNCH_CLOSED' && selectedItems.lunch) {
-           return setError('Lunch cutoff for today has passed. Please select a later start date or remove Lunch.');
-         }
-         if (orderStatus === 'CHOVIAR_CLOSED' && selectedItems.choviar) {
-           return setError('Choviar cutoff for today has passed. Please select a later start date or remove Choviar.');
-         }
+        if (orderStatus === 'LUNCH_CLOSED' && selectedItems.lunch) {
+          return setError('Lunch ordering window closed for today. Please select a later start date or remove Lunch.');
+        }
+        if (orderStatus === 'CHOVIAR_CLOSED' && selectedItems.choviar) {
+          return setError('Choviar ordering window closed for today. Please select a later start date or remove Choviar.');
+        }
       }
 
       const s = new Date(dateRange.startDate);

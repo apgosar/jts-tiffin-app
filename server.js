@@ -925,6 +925,101 @@ app.get('/api/orders/manage', publicLimiter, async (req, res) => {
   }
 });
 
+// GET /api/customer/billing?phone=XXXXXXXXXX
+app.get('/api/customer/billing', publicLimiter, async (req, res) => {
+  const { phone } = req.query;
+  if (!phone || !/^[6-9]\d{9}$/.test(phone.trim())) {
+    return res.status(400).json({ error: 'Invalid phone number' });
+  }
+
+  const queryPhone = phone.trim();
+
+  const parseDate = (dStr) => {
+    if (!dStr) return new Date(0);
+    const [day, month, year] = dStr.split('/');
+    return new Date(year, month - 1, day);
+  };
+
+  const mapBillingOrder = (o) => {
+    const grandTotal = Number(o.grandTotal) || 0;
+    let paid = 0;
+    let outstanding = grandTotal;
+
+    if (o.paymentReceived) {
+      if (o.amountReceived !== undefined && o.amountReceived !== '') {
+        const amt = Number(o.amountReceived);
+        if (!isNaN(amt)) {
+          paid = amt;
+          outstanding = grandTotal - paid;
+        } else {
+          paid = grandTotal;
+          outstanding = 0;
+        }
+      } else {
+        paid = grandTotal;
+        outstanding = 0;
+      }
+    }
+
+    return {
+      orderId: o.orderId || o.id,
+      date: o.date,
+      category: o.category || 'Lunch',
+      itemsSummary: o.itemsSummary || (o.items || []).map(i => `${i.name}x${i.quantity}`).join(', '),
+      grandTotal,
+      paid,
+      outstanding,
+      paymentReceived: !!o.paymentReceived,
+      paymentMethod: o.paymentMethod || 'Cash',
+      amountReceived: o.amountReceived || '',
+      paymentDate: o.paymentDate || '',
+      status: o.status || 'ACTIVE'
+    };
+  };
+
+  if (USE_MOCK) {
+    const orders = MOCK_ORDERS.filter(o => o.phone === queryPhone && o.status !== 'CANCELLED');
+    const mapped = orders.map(mapBillingOrder).sort((a, b) => parseDate(b.date) - parseDate(a.date));
+    const customer = MOCK_CUSTOMERS.find(c => c.phone === queryPhone) || { phone: queryPhone };
+    return res.json({
+      success: true,
+      customer: {
+        name: customer.name || 'Customer',
+        phone: customer.phone,
+        address: customer.address || ''
+      },
+      orders: mapped
+    });
+  }
+
+  try {
+    const [ordersSnap, custSnap] = await Promise.all([
+      db.collection('orders').where('phone', '==', queryPhone).get(),
+      db.collection('customers').doc(queryPhone).get()
+    ]);
+
+    const orders = ordersSnap.docs
+      .map(doc => ({ id: doc.id, ...doc.data() }))
+      .filter(o => o.status !== 'CANCELLED');
+
+    const mapped = orders.map(mapBillingOrder).sort((a, b) => parseDate(b.date) - parseDate(a.date));
+    const custData = custSnap.exists ? custSnap.data() : {};
+
+    res.json({
+      success: true,
+      customer: {
+        name: custData.name || (orders[0] && orders[0].name) || 'Customer',
+        phone: queryPhone,
+        address: custData.address || (orders[0] && orders[0].address) || ''
+      },
+      orders: mapped
+    });
+  } catch (err) {
+    console.error('Error fetching customer billing:', err.message);
+    res.status(500).json({ error: 'Failed to fetch billing information.' });
+  }
+});
+
 // DELETE /api/orders/manage/:orderId?phone=XXXXXXXXXX
 app.delete('/api/orders/manage/:orderId', publicLimiter, async (req, res) => {
   const { phone } = req.query;
@@ -2077,9 +2172,11 @@ app.get('/api/delivery/orders', publicLimiter, async (req, res) => {
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
-      const deliveryPerson = row.deliveryPerson || '';
+      let deliveryPerson = (row.deliveryPerson || '').trim();
+      if (deliveryPerson.toLowerCase() === 'dabbawala') deliveryPerson = 'Dabbawala';
+      if (deliveryPerson.toLowerCase() === 'sagar') deliveryPerson = 'Sagar';
       
-      if (deliveryPerson.trim().length > 0 && deliveryPerson.trim().toLowerCase() !== 'dabbawala') {
+      if (deliveryPerson.length > 0) {
         let category = row.category;
         if (!category) {
           const items = row.items || [];
