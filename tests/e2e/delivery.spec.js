@@ -8,9 +8,13 @@ test.describe('JTS Delivery Portal End-to-End', () => {
     // Verify header title
     await expect(page.locator('text=JTS Delivery Portal')).toBeVisible();
 
-    // Verify it handles loading state
+    // Verify rider tabs (Sagar and Dabbawala)
+    await expect(page.locator('button:has-text("Sagar")')).toBeVisible();
+    await expect(page.locator('button:has-text("Dabbawala")')).toBeVisible();
+
+    // Verify it handles empty state
     // Because USE_MOCK_DATA=true returns { success: true, orders: [] } instantly,
-    // we should see the "No orders assigned for today" message.
-    await expect(page.locator('text=No orders assigned for today.')).toBeVisible();
+    // we should see the "No orders assigned to Sagar for today." message.
+    await expect(page.locator('text=/No orders assigned.*for today/')).toBeVisible();
   });
 });
