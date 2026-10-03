@@ -29,18 +29,14 @@ if (ADMIN_PASSWORD === 'changeme') {
 }
 const SURCHARGE_AMOUNT = parseInt(process.env.OUTSIDE_DELIVERY_SURCHARGE || '40', 10);
 
-// Borivali pincodes: comma or space-separated list.
-// Fail-safe: defaults to official Borivali pincodes (400066, 400103, 400068, 400091, 400092).
-// Explicit guard: 400067 (Kandivali West) is strictly excluded; 400103 is strictly included.
-const DEFAULT_BORIVALI_PINCODES = '400066,400103,400068,400091,400092';
-const rawPincodes = process.env.BORIVALI_PINCODES || DEFAULT_BORIVALI_PINCODES;
+// Borivali pincodes: comma or space-separated list configured via BORIVALI_PINCODES environment variable.
+const rawPincodes = process.env.BORIVALI_PINCODES || '';
 const BORIVALI_PINCODES = new Set(
   rawPincodes
     .split(/[,| \t]+/)
-    .map(p => p.trim())
-    .filter(p => p && p !== '400067')
+    .map(p => p.trim().replace(/^["']+|["']+$/g, ''))
+    .filter(p => /^\d{6}$/.test(p))
 );
-BORIVALI_PINCODES.add('400103');
 
 // ─── Firebase Initialization ─────────────────────────────────────────────────
 if (!USE_MOCK && !process.env.FIREBASE_CREDENTIALS_PATH && process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'test') {
