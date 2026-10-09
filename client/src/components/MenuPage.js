@@ -585,7 +585,7 @@ export default function MenuPage() {
           </div>
         ) : null}
 
-        {isMenuLive && status !== 'CLOSED' && loading && <LoadingSpinner message="Loading today's menu…" />}
+        {isMenuLive && status !== 'CLOSED' && loading && <LoadingSpinner message="Loading menu…" />}
 
         {isMenuLive && status !== 'CLOSED' && error && (
           <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-jts-red">
@@ -628,7 +628,7 @@ export default function MenuPage() {
                     {/* Metadata Banner */}
                     {metadata && (metadata.sabji || (metadata.sweetAvailable === 'Yes' && metadata.sweet) || metadata.dal || (metadata.farsanAvailable === 'Yes' && metadata.farsan) || metadata.rice || metadata.namkeenAvailable === 'Yes' || metadata.saladAvailable === 'Yes') && (
                       <div className="bg-white border-2 border-jts-gold rounded-xl p-3 shadow-sm relative overflow-hidden mb-6">
-                        <div className="absolute top-0 right-0 bg-jts-gold text-jts-navy text-[10px] font-bold px-2 py-1 rounded-bl-lg">TODAY'S MENU</div>
+                        <div className="absolute top-0 right-0 bg-jts-gold text-jts-navy text-[10px] font-bold px-2 py-1 rounded-bl-lg">LUNCH MENU</div>
                         <div className="grid grid-cols-2 gap-y-2 gap-x-4 mt-1">
                           {metadata.breadType && <div><span className="text-[10px] text-gray-500 font-bold uppercase tracking-wide block">Bread</span><span className="text-sm font-semibold text-gray-800">{metadata.breadType}</span></div>}
                           {metadata.sabji && <div><span className="text-[10px] text-gray-500 font-bold uppercase tracking-wide block">Sabji</span><span className="text-sm font-semibold text-gray-800">{metadata.sabji}</span></div>}
