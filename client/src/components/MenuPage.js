@@ -301,19 +301,6 @@ const TheplaItem = ({ metadata, cart, updateQuantity }) => {
     }
   };
 
-  const handleInputChange = (e) => {
-    const val = parseInt(e.target.value, 10);
-    if (isNaN(val) || val <= 0) {
-      if (quantity > 0) updateQuantity(name, -quantity);
-      return;
-    }
-    const clamped = Math.min(50, Math.max(6, val));
-    const diff = clamped - quantity;
-    if (diff !== 0) {
-      updateQuantity(name, diff, { name, price, available: true, category: 'Individual' });
-    }
-  };
-
   return (
     <div className="flex items-center justify-between py-3 border-b border-gray-100 last:border-0">
       <div>
@@ -322,39 +309,7 @@ const TheplaItem = ({ metadata, cart, updateQuantity }) => {
           ₹{price} / pc <span className="text-jts-red font-semibold ml-1">(Min 6 pcs)</span>
         </p>
       </div>
-      <div className="flex items-center gap-1.5">
-        <button
-          type="button"
-          onClick={handleDec}
-          disabled={quantity === 0}
-          className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-base transition-colors ${
-            quantity === 0
-              ? 'bg-gray-100 text-gray-300 cursor-not-allowed'
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200 active:bg-gray-300'
-          }`}
-          aria-label="Decrease Thepla"
-        >
-          -
-        </button>
-        <input 
-          type="number" 
-          min="0"
-          max="50"
-          value={quantity || ''}
-          onChange={handleInputChange}
-          className="w-14 text-center text-sm font-bold border border-gray-300 rounded-lg px-1 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none"
-          placeholder="0"
-        />
-        <button
-          type="button"
-          onClick={handleInc}
-          className="w-7 h-7 rounded-lg flex items-center justify-center font-bold text-base bg-jts-red text-white hover:bg-jts-crimson active:bg-red-800 transition-colors shadow-sm"
-          aria-label="Increase Thepla"
-        >
-          +
-        </button>
-        <span className="text-xs font-bold text-gray-500 ml-0.5">pcs</span>
-      </div>
+      <QuantityStepper quantity={quantity} onIncrement={handleInc} onDecrement={handleDec} />
     </div>
   );
 };
