@@ -36,3 +36,6 @@ export const updateAdminDeliveryBatch = (updates, password) =>
 export const createAdminOrder = (data, password) =>
   API.post('/api/admin/orders', data, adminHeaders(password));
 
+export const recalculateRecurringOrders = (date, password) =>
+  API.post('/api/admin/orders/recalculate-recurring', { date }, adminHeaders(password));
+

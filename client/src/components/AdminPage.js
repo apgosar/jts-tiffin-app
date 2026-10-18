@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import JtsLogo from './JtsLogo';
-import { getAdminOrders, updateAdminMenu, getKitchenSummary, updateAdminDeliveryBatch, createAdminOrder, lookupCustomer } from '../services/api';
+import { getAdminOrders, updateAdminMenu, getKitchenSummary, updateAdminDeliveryBatch, createAdminOrder, lookupCustomer, recalculateRecurringOrders } from '../services/api';
 import { toBlob } from 'html-to-image';
 import * as XLSX from 'xlsx';
 
@@ -915,15 +915,17 @@ function MenuTab({ password, currentMenu, currentMetadata, onMenuSaved }) {
     setSaving(true);
     setMsg('');
     try {
-      await updateAdminMenu({ items, metadata }, password);
-      setMsg('✅ Menu saved successfully! Customers will see the updated menu immediately.');
+      const res = await updateAdminMenu({ items, metadata }, password);
+      const updatedCount = res.data?.updatedRecurringCount;
+      const recMsg = updatedCount > 0 ? ` Applied new prices to ${updatedCount} recurring orders.` : '';
+      setMsg(`✅ Menu saved successfully!${recMsg}`);
       // Notify parent so currentMenu stays in sync — prevents qty/fields resetting on tab switch
       if (onMenuSaved) onMenuSaved(items, metadata);
     } catch (err) {
       setMsg('❌ ' + (err.response?.data?.error || 'Failed to save menu.'));
     } finally {
       setSaving(false);
-      setTimeout(() => setMsg(''), 4000);
+      setTimeout(() => setMsg(''), 5000);
     }
   };
 
@@ -940,14 +942,32 @@ function MenuTab({ password, currentMenu, currentMetadata, onMenuSaved }) {
     setSaving(true);
     setMsg('');
     try {
-      await updateAdminMenu({ items, metadata: newMeta }, password);
-      setMsg(`✅ Menu is now LIVE for ${target === 'today' ? 'TODAY' : 'TOMORROW'} (${dateStr})!`);
+      const res = await updateAdminMenu({ items, metadata: newMeta }, password);
+      const updatedCount = res.data?.updatedRecurringCount;
+      const recMsg = updatedCount > 0 ? ` Applied new prices to ${updatedCount} recurring orders.` : '';
+      setMsg(`✅ Menu is now LIVE for ${target === 'today' ? 'TODAY' : 'TOMORROW'} (${dateStr})!${recMsg}`);
       if (onMenuSaved) onMenuSaved(items, newMeta);
     } catch (err) {
       setMsg('❌ ' + (err.response?.data?.error || 'Failed to make menu live.'));
     } finally {
       setSaving(false);
-      setTimeout(() => setMsg(''), 4000);
+      setTimeout(() => setMsg(''), 5000);
+    }
+  };
+
+  const handleSyncRecurring = async () => {
+    if (!metadata.liveMenuDate) return;
+    setSaving(true);
+    setMsg('');
+    try {
+      const res = await recalculateRecurringOrders(metadata.liveMenuDate, password);
+      const count = res.data?.count || 0;
+      setMsg(`✅ Synced ${count} recurring orders for ${metadata.liveMenuDate} with latest menu prices!`);
+    } catch (err) {
+      setMsg('❌ ' + (err.response?.data?.error || 'Failed to sync recurring orders.'));
+    } finally {
+      setSaving(false);
+      setTimeout(() => setMsg(''), 5000);
     }
   };
 
@@ -963,7 +983,7 @@ function MenuTab({ password, currentMenu, currentMetadata, onMenuSaved }) {
   return (
     <div className="flex flex-col gap-4">
       <div className="bg-jts-gold/20 border border-jts-gold rounded-xl px-4 py-2.5 text-sm text-jts-navy font-semibold flex flex-wrap justify-between items-center gap-2">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <span>📅 Currently Live:</span>
           {metadata.liveMenuDate ? (
             <span className="font-bold text-green-800 bg-green-100 border border-green-300 px-2.5 py-0.5 rounded-full text-xs">
@@ -973,6 +993,17 @@ function MenuTab({ password, currentMenu, currentMetadata, onMenuSaved }) {
             <span className="font-bold text-gray-600 bg-gray-100 border border-gray-300 px-2.5 py-0.5 rounded-full text-xs">
               ⚪ None
             </span>
+          )}
+          {metadata.liveMenuDate && (
+            <button
+              type="button"
+              onClick={handleSyncRecurring}
+              disabled={saving}
+              className="bg-emerald-700 hover:bg-emerald-800 text-white px-2.5 py-0.5 rounded-full text-xs font-bold transition shadow-sm disabled:opacity-50 flex items-center gap-1"
+              title="Re-apply current menu prices to all active recurring orders for this date"
+            >
+              🔄 Sync Recurring
+            </button>
           )}
         </div>
         <div className="flex gap-2">

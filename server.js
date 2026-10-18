@@ -140,74 +140,11 @@ async function getMenuForPricing() {
 function computeServerPrice(itemObj, menuItems, metadata) {
   const itemName = itemObj.name || '';
   const clientCategory = itemObj.category;
+  const meta = metadata || {};
 
-  if (clientCategory === 'Choviar') {
-    if (itemName === 'Full Choviar' || itemName === 'Choviar' || itemName === 'Choviar Special') {
-      const choviarItems = (menuItems || []).filter(m => m.category === 'Choviar' && m.name !== 'Full Choviar' && m.name !== 'Choviar' && m.name !== 'Choviar Special');
-      if (choviarItems.length > 0) {
-        const exactPrice = choviarItems.reduce((sum, item) => {
-          const qty = Number(item.qty) || 1;
-          const rate = Number(item.price) || 0;
-          return sum + (qty * rate);
-        }, 0);
-        const price = Math.round(exactPrice / 5) * 5;
-        return { price, category: 'Choviar' };
-      }
-      return { price: 150, category: 'Choviar' };
-    }
-
-    let matchName = itemName;
-    let isSingle = false;
-    if (itemName.endsWith(' (Single)')) {
-      matchName = itemName.replace(' (Single)', '');
-      isSingle = true;
-    } else if (itemName.endsWith(' (Full Plate)')) {
-      matchName = itemName.replace(' (Full Plate)', '');
-    }
-
-    const chItem = menuItems.find(m => m.category === 'Choviar' && m.name === matchName);
-    if (chItem) {
-      if (!isSingle && chItem.qty > 1) {
-        return { price: Number(chItem.price) * Number(chItem.qty), category: 'Choviar' };
-      }
-      return { price: Number(chItem.price), category: 'Choviar' };
-    }
-  }
-
-  const breadType = metadata.breadType || 'Roti';
-  if (itemName === breadType || itemName === 'Roti' || itemName === `Extra ${breadType}` || itemName === 'Extra Roti') {
-    return { price: parseFloat(metadata.rotiPrice) || 8, category: 'Individual' };
-  }
-  if (itemName === 'Thepla' || itemName === 'Extra Thepla') {
-    return { price: parseFloat(metadata.theplaPrice) || 12, category: 'Individual' };
-  }
-
-  // Custom Order Items
-  const sabjiNameHalf = metadata.sabji ? `Sabji (Half) - ${metadata.sabji}` : 'Sabji (Half)';
-  const sabjiNameFull = metadata.sabji ? `Sabji (Full) - ${metadata.sabji}` : 'Sabji (Full)';
-  const dalNameHalf = metadata.dal ? `Dal (Half) - ${metadata.dal}` : 'Dal (Half)';
-  const dalNameFull = metadata.dal ? `Dal (Full) - ${metadata.dal}` : 'Dal (Full)';
-  const riceNameHalf = metadata.rice ? `Rice (Half) - ${metadata.rice}` : 'Rice (Half)';
-  const riceNameFull = metadata.rice ? `Rice (Full) - ${metadata.rice}` : 'Rice (Full)';
-  const farsanName = metadata.farsan ? `Farsan - ${metadata.farsan}` : 'Farsan';
-  const sweetName = metadata.sweet ? `Sweet - ${metadata.sweet}` : 'Sweet';
-
-  if (itemName === sabjiNameHalf) return { price: parseFloat(metadata.sabjiHalfPrice) || 0, category: 'Individual' };
-  if (itemName === sabjiNameFull) return { price: parseFloat(metadata.sabjiFullPrice) || 0, category: 'Individual' };
-  if (itemName === dalNameHalf) return { price: parseFloat(metadata.dalHalfPrice) || 0, category: 'Individual' };
-  if (itemName === dalNameFull) return { price: parseFloat(metadata.dalFullPrice) || 0, category: 'Individual' };
-  if (itemName === riceNameHalf || itemName === `Rice (Half)`) return { price: parseFloat(metadata.riceHalfPrice) || 0, category: 'Individual' };
-  if (itemName === riceNameFull || itemName === `Rice (Full)`) return { price: parseFloat(metadata.riceFullPrice) || 0, category: 'Individual' };
-  if (itemName === `Rice`) return { price: parseFloat(metadata.ricePrice) || 0, category: 'Individual' };
-  if (itemName === farsanName) return { price: parseFloat(metadata.farsanPrice) || 0, category: 'Individual' };
-  if (itemName === sweetName) return { price: parseFloat(metadata.sweetPrice) || 0, category: 'Individual' };
-
-  // Regular menu item (Lunch / Choviar fallback)
-  const item = menuItems.find(m => m.name === itemName);
-  if (item) return { price: item.price, category: item.category || 'Lunch' };
-
-  if (itemName === 'Full Choviar' || itemName === 'Choviar' || itemName === 'Choviar Special' || itemName === 'Family Choviar') {
-    const choviarItems = (menuItems || []).filter(m => m.category === 'Choviar' && m.name !== 'Full Choviar' && m.name !== 'Choviar' && m.name !== 'Choviar Special' && m.name !== 'Family Choviar');
+  const isChoviarCombo = itemName === 'Full Choviar' || itemName === 'Choviar' || itemName === 'Choviar Special' || itemName === 'Family Choviar';
+  if (isChoviarCombo) {
+    const choviarItems = (menuItems || []).filter(m => m.category === 'Choviar' && m.name && m.name.trim() && !['Full Choviar', 'Choviar', 'Choviar Special', 'Family Choviar'].includes(m.name.trim()));
     if (choviarItems.length > 0) {
       const exactPrice = choviarItems.reduce((sum, item) => {
         const qty = Number(item.qty) || 1;
@@ -222,9 +159,195 @@ function computeServerPrice(itemObj, menuItems, metadata) {
         return { price, category: 'Choviar' };
       }
     }
-    return { price: itemName === 'Family Choviar' ? 225 : 150, category: 'Choviar' }; // Fallback
+    const directItem = (menuItems || []).find(m => m.name === itemName);
+    if (directItem && Number(directItem.price) > 0) {
+      return { price: Number(directItem.price), category: 'Choviar' };
+    }
+    return { price: itemName === 'Family Choviar' ? 225 : 150, category: 'Choviar' };
   }
+
+  if (clientCategory === 'Choviar') {
+    let matchName = itemName;
+    let isSingle = false;
+    if (itemName.endsWith(' (Single)')) {
+      matchName = itemName.replace(' (Single)', '');
+      isSingle = true;
+    } else if (itemName.endsWith(' (Full Plate)')) {
+      matchName = itemName.replace(' (Full Plate)', '');
+    }
+
+    const chItem = (menuItems || []).find(m => m.category === 'Choviar' && m.name === matchName);
+    if (chItem) {
+      if (!isSingle && chItem.qty > 1) {
+        return { price: Number(chItem.price) * Number(chItem.qty), category: 'Choviar' };
+      }
+      return { price: Number(chItem.price), category: 'Choviar' };
+    }
+  }
+
+  const breadType = meta.breadType || 'Roti';
+  if (itemName === breadType || itemName === 'Roti' || itemName === `Extra ${breadType}` || itemName === 'Extra Roti') {
+    return { price: parseFloat(meta.rotiPrice) || 8, category: 'Individual' };
+  }
+  if (itemName === 'Thepla' || itemName === 'Extra Thepla') {
+    return { price: parseFloat(meta.theplaPrice) || 12, category: 'Individual' };
+  }
+
+  // Custom Order Items
+  const sabjiNameHalf = meta.sabji ? `Sabji (Half) - ${meta.sabji}` : 'Sabji (Half)';
+  const sabjiNameFull = meta.sabji ? `Sabji (Full) - ${meta.sabji}` : 'Sabji (Full)';
+  const dalNameHalf = meta.dal ? `Dal (Half) - ${meta.dal}` : 'Dal (Half)';
+  const dalNameFull = meta.dal ? `Dal (Full) - ${meta.dal}` : 'Dal (Full)';
+  const riceNameHalf = meta.rice ? `Rice (Half) - ${meta.rice}` : 'Rice (Half)';
+  const riceNameFull = meta.rice ? `Rice (Full) - ${meta.rice}` : 'Rice (Full)';
+  const farsanName = meta.farsan ? `Farsan - ${meta.farsan}` : 'Farsan';
+  const sweetName = meta.sweet ? `Sweet - ${meta.sweet}` : 'Sweet';
+
+  if (itemName === sabjiNameHalf) return { price: parseFloat(meta.sabjiHalfPrice) || 0, category: 'Individual' };
+  if (itemName === sabjiNameFull) return { price: parseFloat(meta.sabjiFullPrice) || 0, category: 'Individual' };
+  if (itemName === dalNameHalf) return { price: parseFloat(meta.dalHalfPrice) || 0, category: 'Individual' };
+  if (itemName === dalNameFull) return { price: parseFloat(meta.dalFullPrice) || 0, category: 'Individual' };
+  if (itemName === riceNameHalf || itemName === `Rice (Half)`) return { price: parseFloat(meta.riceHalfPrice) || 0, category: 'Individual' };
+  if (itemName === riceNameFull || itemName === `Rice (Full)`) return { price: parseFloat(meta.riceFullPrice) || 0, category: 'Individual' };
+  if (itemName === `Rice`) return { price: parseFloat(meta.ricePrice) || 0, category: 'Individual' };
+  if (itemName === farsanName) return { price: parseFloat(meta.farsanPrice) || 0, category: 'Individual' };
+  if (itemName === sweetName) return { price: parseFloat(meta.sweetPrice) || 0, category: 'Individual' };
+
+  // Regular menu item (Lunch / Choviar fallback)
+  const item = (menuItems || []).find(m => m.name === itemName);
+  if (item) return { price: item.price, category: item.category || 'Lunch' };
+
   return null;
+}
+
+function recalculateOrderTotals(order, updatedItems) {
+  const zone = order.zone || getZone(order.pincode || '');
+
+  const lunchItems = updatedItems.filter(i => i.category !== 'Choviar');
+  const choviarItems = updatedItems.filter(i => i.category === 'Choviar');
+
+  const lunchSubtotal = lunchItems.reduce((s, i) => s + (Number(i.price) || 0) * (Number(i.quantity) || 1), 0);
+  const choviarSubtotal = choviarItems.reduce((s, i) => s + (Number(i.price) || 0) * (Number(i.quantity) || 1), 0);
+
+  let lunchSurcharge = 0;
+  let choviarSurcharge = 0;
+
+  if (zone === 'outside') {
+    let lunchOutsideTiffins = lunchItems.filter(i => i.name.includes('Lunch') || i.name.includes('Meal') || i.name.includes('Brunch')).reduce((s, i) => s + (Number(i.quantity) || 1), 0);
+    if (lunchOutsideTiffins === 0 && lunchItems.length > 0) lunchOutsideTiffins = 1;
+
+    let choviarOutsideTiffins = choviarItems.filter(i => i.name.includes('Choviar') || i.name.includes('Meal')).reduce((s, i) => s + (Number(i.quantity) || 1), 0);
+    if (choviarOutsideTiffins === 0 && choviarItems.length > 0) choviarOutsideTiffins = 1;
+
+    lunchSurcharge = lunchItems.length > 0 ? 40 * lunchOutsideTiffins : 0;
+    choviarSurcharge = choviarItems.length > 0 ? 40 * choviarOutsideTiffins : 0;
+  } else if (zone === 'borivali') {
+    const hasLunchMeal = lunchItems.some(i => ['Mini Lunch', 'Brunch', 'Full Lunch', 'Family Meal'].includes(i.name));
+    const hasFullChoviar = choviarItems.some(i => ['Choviar Special', 'Full Choviar', 'Choviar', 'Family Choviar'].includes(i.name));
+
+    if (lunchItems.length > 0 && !hasLunchMeal && lunchSubtotal < 250) lunchSurcharge = 30;
+    if (choviarItems.length > 0 && !hasFullChoviar && choviarSubtotal < 250) choviarSurcharge = 30;
+  }
+
+  const exactLunchTotal = lunchItems.length > 0 ? lunchSubtotal + lunchSurcharge : 0;
+  const exactChoviarTotal = choviarItems.length > 0 ? choviarSubtotal + choviarSurcharge : 0;
+
+  const roundedLunchTotal = Math.round(exactLunchTotal / 5) * 5;
+  const roundedChoviarTotal = Math.round(exactChoviarTotal / 5) * 5;
+
+  let surchargeTotal = 0;
+  let grandTotal = 0;
+
+  if (order.category === 'Lunch') {
+    surchargeTotal = lunchSurcharge;
+    grandTotal = roundedLunchTotal;
+  } else if (order.category === 'Choviar') {
+    surchargeTotal = choviarSurcharge;
+    grandTotal = roundedChoviarTotal;
+  } else {
+    surchargeTotal = lunchSurcharge + choviarSurcharge;
+    grandTotal = roundedLunchTotal + roundedChoviarTotal;
+  }
+
+  return {
+    items: updatedItems,
+    itemsSummary: updatedItems.map(i => `${i.name}×${i.quantity}`).join(', '),
+    surchargeTotal,
+    grandTotal,
+  };
+}
+
+async function syncRecurringOrdersForDate(targetDate, menuItems, metadata, existingBatch = null) {
+  if (!targetDate || typeof targetDate !== 'string' || !/^\d{2}\/\d{2}\/\d{4}$/.test(targetDate.trim())) {
+    return 0;
+  }
+  const dateStr = targetDate.trim();
+
+  if (USE_MOCK) {
+    const activeRecurring = MOCK_ORDERS.filter(o => o.date === dateStr && o.isRecurring && o.status === 'ACTIVE');
+    for (const ord of activeRecurring) {
+      const updatedItems = (ord.items || []).map(item => {
+        const serverData = computeServerPrice(item, menuItems, metadata);
+        if (serverData && typeof serverData.price === 'number') {
+          return {
+            ...item,
+            price: serverData.price,
+            category: serverData.category || item.category || ord.category || 'Lunch',
+          };
+        }
+        return item;
+      });
+      const recalculated = recalculateOrderTotals(ord, updatedItems);
+      ord.items = recalculated.items;
+      ord.itemsSummary = recalculated.itemsSummary;
+      ord.surchargeTotal = recalculated.surchargeTotal;
+      ord.grandTotal = recalculated.grandTotal;
+    }
+    return activeRecurring.length;
+  }
+
+  const snap = await db.collection('orders')
+    .where('date', '==', dateStr)
+    .where('isRecurring', '==', true)
+    .where('status', '==', 'ACTIVE')
+    .get();
+
+  const docs = snap.docs || [];
+  if (docs.length === 0) return 0;
+
+  const batch = existingBatch || db.batch();
+  let updatedCount = 0;
+
+  for (const doc of docs) {
+    const orderData = typeof doc.data === 'function' ? doc.data() : (doc.ref ? doc.ref : {});
+    const currentItems = orderData.items || [];
+    const updatedItems = currentItems.map(item => {
+      const serverData = computeServerPrice(item, menuItems, metadata);
+      if (serverData && typeof serverData.price === 'number') {
+        return {
+          ...item,
+          price: serverData.price,
+          category: serverData.category || item.category || orderData.category || 'Lunch',
+        };
+      }
+      return item;
+    });
+
+    const recalculated = recalculateOrderTotals(orderData, updatedItems);
+    batch.update(doc.ref, {
+      items: recalculated.items,
+      itemsSummary: recalculated.itemsSummary,
+      surchargeTotal: recalculated.surchargeTotal,
+      grandTotal: recalculated.grandTotal,
+    });
+    updatedCount++;
+  }
+
+  if (!existingBatch) {
+    await batch.commit();
+  }
+
+  return updatedCount;
 }
 
 function getZone(pincode) {
@@ -1616,6 +1739,8 @@ app.put('/api/admin/menu', adminLimiter, requireAdmin, async (req, res) => {
     return res.status(400).json({ error: 'items array is required' });
   }
 
+  let effectiveMetadata = { ...(metadata || {}) };
+
   if (USE_MOCK) {
     MOCK_MENU = items.map((item, index) => ({
       name:        String(item.name || '').trim(),
@@ -1626,24 +1751,36 @@ app.put('/api/admin/menu', adminLimiter, requireAdmin, async (req, res) => {
       qty:         item.qty ? parseInt(item.qty, 10) : null,
       order:       index,
     }));
-    if (metadata) MOCK_METADATA = { ...metadata };
-    return res.json({ success: true });
+    if (metadata) MOCK_METADATA = { ...MOCK_METADATA, ...metadata };
+    effectiveMetadata = { ...MOCK_METADATA };
+
+    const targetDate = req.body.targetDate || (metadata && metadata.liveMenuDate) || effectiveMetadata.liveMenuDate;
+    const updatedCount = await syncRecurringOrdersForDate(targetDate, MOCK_MENU, effectiveMetadata);
+    return res.json({ success: true, updatedRecurringCount: updatedCount });
   }
 
   try {
+    const metaRef = db.collection('metadata').doc('global');
+    const existingMetaDoc = await metaRef.get();
+    const existingMetadata = existingMetaDoc.exists ? existingMetaDoc.data() : {};
+    effectiveMetadata = { ...existingMetadata, ...(metadata || {}) };
+
     const batch = db.batch();
     
     // Clear old menu docs
     const menuSnap = await db.collection('menu').get();
-    menuSnap.forEach(doc => {
+    (menuSnap.docs || []).forEach(doc => {
       batch.delete(doc.ref);
     });
 
     // Add new menu docs
+    const validMenuItems = [];
     items.forEach((item, index) => {
+      const trimmedName = String(item.name || '').trim();
+      if (!trimmedName) return; // Skip blank items
       const docRef = db.collection('menu').doc();
       const docData = {
-        name:        String(item.name || '').trim(),
+        name:        trimmedName,
         description: String(item.description || '').trim(),
         price:       parseFloat(item.price) || 0,
         available:   item.available !== false,
@@ -1655,19 +1792,39 @@ app.put('/api/admin/menu', adminLimiter, requireAdmin, async (req, res) => {
         docData.qty = parseInt(item.qty, 10);
       }
       batch.set(docRef, docData);
+      validMenuItems.push(docData);
     });
 
     // Update metadata
     if (metadata) {
-      const metaRef = db.collection('metadata').doc('global');
-      batch.set(metaRef, metadata);
+      batch.set(metaRef, effectiveMetadata);
     }
 
+    const targetDate = req.body.targetDate || (metadata && metadata.liveMenuDate) || effectiveMetadata.liveMenuDate;
+    const updatedRecurringCount = await syncRecurringOrdersForDate(targetDate, validMenuItems, effectiveMetadata, batch);
+
     await batch.commit();
-    res.json({ success: true });
+    res.json({ success: true, updatedRecurringCount });
   } catch (err) {
     console.error('Error saving menu:', err.message);
     res.status(500).json({ error: 'Failed to save menu.' });
+  }
+});
+
+app.post('/api/admin/orders/recalculate-recurring', adminLimiter, requireAdmin, async (req, res) => {
+  try {
+    const { menuItems, metadata } = await getMenuForPricing();
+    const targetDate = req.body.date || req.body.targetDate || metadata.liveMenuDate;
+    if (!targetDate || !/^\d{2}\/\d{2}\/\d{4}$/.test(String(targetDate).trim())) {
+      return res.status(400).json({ error: 'Valid date (DD/MM/YYYY) is required' });
+    }
+
+    const dateStr = String(targetDate).trim();
+    const count = await syncRecurringOrdersForDate(dateStr, menuItems, metadata);
+    res.json({ success: true, count, date: dateStr });
+  } catch (err) {
+    console.error('Error recalculating recurring orders:', err.message);
+    res.status(500).json({ error: 'Failed to recalculate recurring orders.' });
   }
 });
 
@@ -2319,6 +2476,9 @@ if (process.env.NODE_ENV !== 'test') {
 }
 
 module.exports = app;
+module.exports.computeServerPrice = computeServerPrice;
+module.exports.recalculateOrderTotals = recalculateOrderTotals;
+module.exports.syncRecurringOrdersForDate = syncRecurringOrdersForDate;
 if (USE_MOCK) {
   module.exports.MOCK_ORDERS = MOCK_ORDERS;
 }

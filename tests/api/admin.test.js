@@ -68,6 +68,144 @@ describe('Admin Endpoints', () => {
       expect(res.statusCode).toEqual(200);
       expect(res.body.success).toBe(true);
     });
+
+    it('should recalculate active recurring orders when lunch or choviar price is updated for a day', async () => {
+      const { MOCK_ORDERS } = require('../../server');
+      const testDate = '28/10/2026';
+
+      // Seed an active lunch recurring order with old price
+      const activeLunchOrder = {
+        orderId: 'REC-LUNCH-1',
+        date: testDate,
+        time: '12:00',
+        isRecurring: true,
+        name: 'Recurring Lunch User',
+        phone: '9820000001',
+        zone: 'borivali',
+        category: 'Lunch',
+        items: [{ name: 'Mini Lunch', price: 140, quantity: 1, category: 'Lunch' }],
+        itemsSummary: 'Mini Lunch×1',
+        surchargeTotal: 0,
+        grandTotal: 140,
+        status: 'ACTIVE',
+        paymentReceived: false,
+      };
+
+      // Seed an active choviar recurring order with old price and outside surcharge
+      const activeChoviarOrder = {
+        orderId: 'REC-CHOV-1',
+        date: testDate,
+        time: '12:00',
+        isRecurring: true,
+        name: 'Recurring Choviar User',
+        phone: '9820000002',
+        zone: 'outside',
+        category: 'Choviar',
+        items: [{ name: 'Choviar', price: 160, quantity: 1, category: 'Choviar' }],
+        itemsSummary: 'Choviar×1',
+        surchargeTotal: 40,
+        grandTotal: 200,
+        status: 'ACTIVE',
+        paymentReceived: false,
+      };
+
+      // Seed a cancelled order that should NOT be modified
+      const cancelledOrder = {
+        orderId: 'REC-CANCELLED',
+        date: testDate,
+        time: '12:00',
+        isRecurring: true,
+        name: 'Cancelled User',
+        phone: '9820000003',
+        zone: 'borivali',
+        category: 'Lunch',
+        items: [{ name: 'Mini Lunch', price: 140, quantity: 1, category: 'Lunch' }],
+        itemsSummary: 'Mini Lunch×1',
+        surchargeTotal: 0,
+        grandTotal: 140,
+        status: 'CANCELLED',
+        paymentReceived: false,
+      };
+
+      MOCK_ORDERS.push(activeLunchOrder, activeChoviarOrder, cancelledOrder);
+
+      const updatePayload = {
+        items: [
+          { name: 'Mini Lunch', price: 180, category: 'Lunch', available: true },
+          { name: 'Paratha', price: 12, qty: 2, category: 'Choviar', available: true },
+          { name: 'Sabji', price: 176, qty: 1, category: 'Choviar', available: true }, // 2*12 + 176 = 200
+        ],
+        metadata: {
+          liveMenuDate: testDate,
+          rotiPrice: '8',
+        }
+      };
+
+      const res = await request(app)
+        .put('/api/admin/menu')
+        .set('x-admin-password', 'changeme')
+        .send(updatePayload);
+
+      expect(res.statusCode).toEqual(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.updatedRecurringCount).toBeGreaterThanOrEqual(2);
+
+      // Verify active lunch order updated to 180
+      expect(activeLunchOrder.items[0].price).toBe(180);
+      expect(activeLunchOrder.grandTotal).toBe(180);
+
+      // Verify active choviar order updated to 200 + 40 outside surcharge = 240
+      expect(activeChoviarOrder.items[0].price).toBe(200);
+      expect(activeChoviarOrder.surchargeTotal).toBe(40);
+      expect(activeChoviarOrder.grandTotal).toBe(240);
+
+      // Verify cancelled order remained untouched
+      expect(cancelledOrder.items[0].price).toBe(140);
+      expect(cancelledOrder.grandTotal).toBe(140);
+      expect(cancelledOrder.status).toBe('CANCELLED');
+    });
+  });
+
+  describe('POST /api/admin/orders/recalculate-recurring', () => {
+    it('should reject without valid date', async () => {
+      const res = await request(app)
+        .post('/api/admin/orders/recalculate-recurring')
+        .set('x-admin-password', 'changeme')
+        .send({ date: 'invalid-date' });
+      expect(res.statusCode).toEqual(400);
+    });
+
+    it('should successfully recalculate recurring orders for specified date', async () => {
+      const { MOCK_ORDERS } = require('../../server');
+      const testDate = '29/10/2026';
+
+      const order = {
+        orderId: 'REC-RECALC-TEST',
+        date: testDate,
+        time: '12:00',
+        isRecurring: true,
+        name: 'Recalc User',
+        phone: '9820000009',
+        zone: 'borivali',
+        category: 'Lunch',
+        items: [{ name: 'Mini Lunch', price: 140, quantity: 1, category: 'Lunch' }],
+        itemsSummary: 'Mini Lunch×1',
+        surchargeTotal: 0,
+        grandTotal: 140,
+        status: 'ACTIVE',
+      };
+      MOCK_ORDERS.push(order);
+
+      const res = await request(app)
+        .post('/api/admin/orders/recalculate-recurring')
+        .set('x-admin-password', 'changeme')
+        .send({ date: testDate });
+
+      expect(res.statusCode).toEqual(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.date).toBe(testDate);
+      expect(res.body.count).toBeGreaterThanOrEqual(1);
+    });
   });
 
   describe('GET /api/admin/kitchen', () => {
