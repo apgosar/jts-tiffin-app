@@ -286,8 +286,19 @@ function AdminNewOrderModal({ password, currentMetadata, currentMenu, onClose, o
     if (name === 'Brunch') return 180;
     if (name === 'Full Lunch') return 220;
     if (name === 'Family Meal') return 320;
-    if (name === 'Choviar Special' || name === 'Choviar' || name === 'Full Choviar') return 160;
-    if (name === `Extra ${breadType}` || name === 'Extra Roti' || name === 'Roti') {
+    if (name === 'Extra Paratha' || name === 'Paratha') {
+      return parseFloat(currentMetadata?.parathaPrice) || 12;
+    }
+    if (name === 'Extra Puri' || name === 'Puri') {
+      return parseFloat(currentMetadata?.puriPrice) || 5;
+    }
+    if (name === 'Extra Roti' || name === 'Roti') {
+      return parseFloat(currentMetadata?.rotiPrice) || 8;
+    }
+    if (name === `Extra ${breadType}` || name === breadType) {
+      const bType = (breadType || '').toLowerCase();
+      if (bType === 'puri') return parseFloat(currentMetadata?.puriPrice) || 5;
+      if (bType === 'paratha') return parseFloat(currentMetadata?.parathaPrice) || 12;
       return parseFloat(currentMetadata?.rotiPrice) || 8;
     }
     if (name === 'Thepla' || name === 'Extra Thepla') {
@@ -740,7 +751,7 @@ function MenuTab({ password, currentMenu, currentMetadata, onMenuSaved }) {
   const [metadata, setMetadata] = useState({
     sabji: '', sweet: '', dal: '', farsan: '', rice: '',
     breadType: 'Roti',
-    rotiPrice: '8', theplaPrice: '12', riceHalfPrice: '15', riceFullPrice: '30',
+    rotiPrice: '8', puriPrice: '5', parathaPrice: '12', theplaPrice: '12', riceHalfPrice: '15', riceFullPrice: '30',
     sabjiHalfPrice: '25', sabjiFullPrice: '50',
     dalHalfPrice: '25', dalFullPrice: '50',
     farsanPrice: '0', farsanAvailable: 'No',
@@ -1062,7 +1073,11 @@ function MenuTab({ password, currentMenu, currentMetadata, onMenuSaved }) {
         <div className="mb-2 border-b border-gray-100 pb-4">
           <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide block mb-2">Bread of the Day</label>
           <div className="flex gap-4">
-            {['Roti', 'Paratha', 'Puri'].map(bType => (
+            {[
+              { type: 'Roti', price: metadata.rotiPrice || '8' },
+              { type: 'Paratha', price: metadata.parathaPrice || '12' },
+              { type: 'Puri', price: metadata.puriPrice || '5' }
+            ].map(({ type: bType, price: bPrice }) => (
               <label key={bType} className="flex items-center gap-1.5 cursor-pointer text-xs font-bold text-gray-700">
                 <input
                   type="radio"
@@ -1072,7 +1087,7 @@ function MenuTab({ password, currentMenu, currentMetadata, onMenuSaved }) {
                   onChange={e => updateMeta('breadType', e.target.value)}
                   className="w-4 h-4 text-jts-red focus:ring-jts-red"
                 />
-                {bType}
+                {bType} <span className="text-[10px] text-gray-400 font-normal">(₹{bPrice})</span>
               </label>
             ))}
           </div>
@@ -3722,6 +3737,14 @@ function SettingsTab({ password, currentMetadata, onMetadataSaved }) {
           <div>
             <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Roti Price</label>
             <input type="number" value={metadata.rotiPrice || ''} onChange={e => updateMeta('rotiPrice', e.target.value)} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Puri Price</label>
+            <input type="number" value={metadata.puriPrice || ''} onChange={e => updateMeta('puriPrice', e.target.value)} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Paratha Price</label>
+            <input type="number" value={metadata.parathaPrice || ''} onChange={e => updateMeta('parathaPrice', e.target.value)} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
           </div>
           <div>
             <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Thepla Price</label>

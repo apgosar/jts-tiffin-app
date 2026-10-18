@@ -391,6 +391,30 @@ describe('Order Endpoints', () => {
       expect(res.body.surchargeTotal).toBe(40);
       expect(res.body.grandTotal).toBe(110);
     });
+
+    it('should price Puri at ₹5 and Paratha at ₹12 in custom orders', async () => {
+      // Test Puri: 10 * 5 = 50 + 30 surcharge = 80
+      const puriPayload = {
+        customer: { ...baseCustomer, pincode: '400092' },
+        items: [{ name: 'Extra Puri', quantity: 10, price: 5 }],
+        paymentMode: 'Cash'
+      };
+      const puriRes = await request(app).post('/api/orders').send(puriPayload);
+      expect(puriRes.statusCode).toEqual(200);
+      expect(puriRes.body.success).toBe(true);
+      expect(puriRes.body.grandTotal).toBe(80);
+
+      // Test Paratha: 10 * 12 = 120 + 30 surcharge = 150
+      const parathaPayload = {
+        customer: { ...baseCustomer, pincode: '400092' },
+        items: [{ name: 'Extra Paratha', quantity: 10, price: 12 }],
+        paymentMode: 'Cash'
+      };
+      const parathaRes = await request(app).post('/api/orders').send(parathaPayload);
+      expect(parathaRes.statusCode).toEqual(200);
+      expect(parathaRes.body.success).toBe(true);
+      expect(parathaRes.body.grandTotal).toBe(150);
+    });
   });
 });
 

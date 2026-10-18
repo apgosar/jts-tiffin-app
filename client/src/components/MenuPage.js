@@ -245,7 +245,13 @@ const VariantItem = ({ title, subtitle, namePrefix, halfPrice, fullPrice, cart, 
 const RotiItem = ({ metadata, cart, updateQuantity }) => {
   const breadType = metadata?.breadType || 'Roti';
   const name = `Extra ${breadType}`;
-  const price = Number(metadata?.rotiPrice) || 8;
+  const getBreadPrice = (type) => {
+    const t = (type || '').toLowerCase();
+    if (t === 'puri') return Number(metadata?.puriPrice) || 5;
+    if (t === 'paratha') return Number(metadata?.parathaPrice) || 12;
+    return Number(metadata?.rotiPrice) || 8;
+  };
+  const price = getBreadPrice(breadType);
   const quantity = cart[name]?.quantity || 0;
   
   const handleSetQuantity = (val) => {

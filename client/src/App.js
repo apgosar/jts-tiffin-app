@@ -173,6 +173,48 @@ export default function App() {
     } catch { /* ignore */ }
   }, [lastOrder]);
 
+  // Keep cart item prices synchronized with updated menu and metadata
+  useEffect(() => {
+    if ((!menu || menu.length === 0) && (!metadata || Object.keys(metadata).length === 0)) return;
+    setCart(prev => {
+      let changed = false;
+      const updated = { ...prev };
+      const breadType = metadata?.breadType || 'Roti';
+      const getBreadPrice = (type) => {
+        const t = (type || '').toLowerCase();
+        if (t === 'puri') return Number(metadata?.puriPrice) || 5;
+        if (t === 'paratha') return Number(metadata?.parathaPrice) || 12;
+        return Number(metadata?.rotiPrice) || 8;
+      };
+
+      for (const [key, item] of Object.entries(updated)) {
+        if (!item) continue;
+        let correctPrice = item.price;
+        if (item.name === 'Extra Paratha' || item.name === 'Paratha') {
+          correctPrice = Number(metadata?.parathaPrice) || 12;
+        } else if (item.name === 'Extra Puri' || item.name === 'Puri') {
+          correctPrice = Number(metadata?.puriPrice) || 5;
+        } else if (item.name === 'Extra Roti' || item.name === 'Roti') {
+          correctPrice = Number(metadata?.rotiPrice) || 8;
+        } else if (item.name === `Extra ${breadType}`) {
+          correctPrice = getBreadPrice(breadType);
+        } else if (item.name === 'Thepla' || item.name === 'Extra Thepla') {
+          correctPrice = Number(metadata?.theplaPrice) || 12;
+        } else {
+          const menuItem = menu.find(m => m.name === item.name);
+          if (menuItem && Number(menuItem.price) && menuItem.price !== item.price) {
+            correctPrice = menuItem.price;
+          }
+        }
+        if (correctPrice !== undefined && correctPrice !== item.price) {
+          updated[key] = { ...item, price: correctPrice };
+          changed = true;
+        }
+      }
+      return changed ? updated : prev;
+    });
+  }, [menu, metadata]);
+
   // ── Cart operations ──────────────────────────────────────────────────────────
   const updateQuantity = (itemName, delta, customItem = null) => {
     setCart(prev => {
@@ -188,6 +230,9 @@ export default function App() {
       }
 
       const base = prev[itemName] || (menuItem ? { ...menuItem } : { name: itemName, price: 0 });
+      if (customItem && customItem.price !== undefined) {
+        base.price = customItem.price;
+      }
       return { ...prev, [itemName]: { ...base, quantity: newQty } };
     });
   };

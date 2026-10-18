@@ -90,6 +90,8 @@ let MOCK_METADATA = {
   betaTesting: 'Yes',
   breadType: 'Roti',
   rotiPrice: 8,
+  puriPrice: 5,
+  parathaPrice: 12,
   theplaPrice: 12,
   lunchCutoff: '05:00',
   choviarCutoff: '11:00',
@@ -186,8 +188,24 @@ function computeServerPrice(itemObj, menuItems, metadata) {
   }
 
   const breadType = meta.breadType || 'Roti';
-  if (itemName === breadType || itemName === 'Roti' || itemName === `Extra ${breadType}` || itemName === 'Extra Roti') {
+  const getBreadPrice = (type) => {
+    const t = (type || '').toLowerCase();
+    if (t === 'puri') return parseFloat(meta.puriPrice) || 5;
+    if (t === 'paratha') return parseFloat(meta.parathaPrice) || 12;
+    return parseFloat(meta.rotiPrice) || 8;
+  };
+
+  if (itemName === 'Paratha' || itemName === 'Extra Paratha') {
+    return { price: parseFloat(meta.parathaPrice) || 12, category: 'Individual' };
+  }
+  if (itemName === 'Puri' || itemName === 'Extra Puri') {
+    return { price: parseFloat(meta.puriPrice) || 5, category: 'Individual' };
+  }
+  if (itemName === 'Roti' || itemName === 'Extra Roti') {
     return { price: parseFloat(meta.rotiPrice) || 8, category: 'Individual' };
+  }
+  if (itemName === breadType || itemName === `Extra ${breadType}`) {
+    return { price: getBreadPrice(breadType), category: 'Individual' };
   }
   if (itemName === 'Thepla' || itemName === 'Extra Thepla') {
     return { price: parseFloat(meta.theplaPrice) || 12, category: 'Individual' };
@@ -1891,8 +1909,14 @@ function getRawComponents(items, metadata) {
       if (saladOn) comp.Salad += (tMatrix.Salad || 0) * q;
     } else {
       // Individual items
-      if (n.toLowerCase() === breadType.toLowerCase() || n.toLowerCase() === `extra ${breadType.toLowerCase()}` || n.toLowerCase() === 'extra roti' || n.toLowerCase() === 'roti') {
+      if (n.toLowerCase() === breadType.toLowerCase() || n.toLowerCase() === `extra ${breadType.toLowerCase()}`) {
         comp[breadType] += 1 * q;
+      } else if (n.toLowerCase() === 'extra roti' || n.toLowerCase() === 'roti') {
+        comp.Roti += 1 * q;
+      } else if (n.toLowerCase() === 'extra paratha' || n.toLowerCase() === 'paratha') {
+        comp.Paratha += 1 * q;
+      } else if (n.toLowerCase() === 'extra puri' || n.toLowerCase() === 'puri') {
+        comp.Puri += 1 * q;
       } else if (n.toLowerCase() === 'thepla' || n.toLowerCase() === 'extra thepla') {
         comp.Thepla += 1 * q;
       } else if (n.toLowerCase().includes('sabji (half)')) {
@@ -2189,8 +2213,8 @@ app.get('/api/admin/kitchen', adminLimiter, requireAdmin, async (req, res) => {
           packetSummary.Dal.Full += q; packetSummary.Dal.Half += q;
           packetSummary.Rice.Full += q; packetSummary.Rice.Half += q;
           packetSummary.Sabji.Full += q; packetSummary.Sabji.Half += q;
-        } else if (n.toLowerCase() === breadType.toLowerCase() || n.toLowerCase() === `extra ${breadType.toLowerCase()}` || n.toLowerCase() === 'extra roti' || n.toLowerCase() === 'roti') {
-          // Roti totals handled by grandTotals now
+        } else if (n.toLowerCase() === breadType.toLowerCase() || n.toLowerCase() === `extra ${breadType.toLowerCase()}` || n.toLowerCase() === 'extra roti' || n.toLowerCase() === 'roti' || n.toLowerCase() === 'extra paratha' || n.toLowerCase() === 'paratha' || n.toLowerCase() === 'extra puri' || n.toLowerCase() === 'puri') {
+          // Bread totals handled by grandTotals now
         } else if (n.toLowerCase() === 'thepla' || n.toLowerCase() === 'extra thepla') {
           // Thepla totals handled by grandTotals now
 
