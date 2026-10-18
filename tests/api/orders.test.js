@@ -34,7 +34,82 @@ describe('Order Endpoints', () => {
       expect(res.statusCode).toEqual(200);
       expect(res.body.success).toBe(true);
       expect(res.body.orderId).toBeDefined();
+    });
 
+    it('should reject lunch order with specific date message when lunchClosed is Yes', async () => {
+      const initial = await request(app).get('/api/menu');
+      const initialItems = initial.body.menu;
+      const initialMeta = initial.body.metadata;
+
+      // Set lunchClosed = 'Yes' in mock metadata
+      await request(app)
+        .put('/api/admin/menu')
+        .set('x-admin-password', 'changeme')
+        .send({
+          items: initialItems,
+          metadata: { ...initialMeta, lunchClosed: 'Yes', betaTesting: 'No' }
+        });
+
+      const orderPayload = {
+        customer: {
+          name: 'Test Customer', phone: '9999999999', pincode: '400092',
+          address: 'Test Addr', locality: 'Test Loc', wingFlat: 'A1',
+          building: 'Bldg', street: 'St'
+        },
+        items: [{ name: 'Full Lunch', quantity: 1, price: 120 }],
+        paymentMode: 'Cash'
+      };
+
+      const res = await request(app).post('/api/orders').send(orderPayload);
+      expect(res.statusCode).toEqual(400);
+      expect(res.body.error).toMatch(/^Lunch is closed for \d{2}\/\d{2}\/\d{4}\.$/);
+
+      // Reset lunchClosed
+      await request(app)
+        .put('/api/admin/menu')
+        .set('x-admin-password', 'changeme')
+        .send({
+          items: initialItems,
+          metadata: initialMeta
+        });
+    });
+
+    it('should reject choviar order with specific date message when choviarClosed is Yes', async () => {
+      const initial = await request(app).get('/api/menu');
+      const initialItems = initial.body.menu;
+      const initialMeta = initial.body.metadata;
+
+      // Set choviarClosed = 'Yes' in mock metadata
+      await request(app)
+        .put('/api/admin/menu')
+        .set('x-admin-password', 'changeme')
+        .send({
+          items: initialItems,
+          metadata: { ...initialMeta, choviarClosed: 'Yes', betaTesting: 'No' }
+        });
+
+      const orderPayload = {
+        customer: {
+          name: 'Test Customer', phone: '9999999999', pincode: '400092',
+          address: 'Test Addr', locality: 'Test Loc', wingFlat: 'A1',
+          building: 'Bldg', street: 'St'
+        },
+        items: [{ name: 'Choviar', quantity: 1, price: 160 }],
+        paymentMode: 'Cash'
+      };
+
+      const res = await request(app).post('/api/orders').send(orderPayload);
+      expect(res.statusCode).toEqual(400);
+      expect(res.body.error).toMatch(/^Choviar is closed for \d{2}\/\d{2}\/\d{4}\.$/);
+
+      // Reset choviarClosed
+      await request(app)
+        .put('/api/admin/menu')
+        .set('x-admin-password', 'changeme')
+        .send({
+          items: initialItems,
+          metadata: initialMeta
+        });
     });
   });
 

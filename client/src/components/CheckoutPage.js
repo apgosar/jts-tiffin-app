@@ -117,7 +117,7 @@ export default function CheckoutPage() {
   const { cartItems, cartSubtotal, updateQuantity, clearCart, setLastOrder, metadata, editOrder, setEditOrder } = useCart();
 
   // ── Ordering cutoffs & delivery date ─────────────────────────────────────────
-  const { status, targetDate, targetDateStr } = getOrderingState(metadata);
+  const { status, targetDate, targetDateStr, targetDateLabel } = getOrderingState(metadata);
   const deliveryDateStr = targetDateStr || (targetDate ? `${String(targetDate.getDate()).padStart(2, '0')}/${String(targetDate.getMonth() + 1).padStart(2, '0')}/${targetDate.getFullYear()}` : null);
   const outsideBlocked = isOutsideBlocked(deliveryDateStr, metadata);
 
@@ -226,8 +226,18 @@ export default function CheckoutPage() {
   // Submission
   const [submitting, setSubmitting]   = useState(false);
   const [serverError, setServerError] = useState('');
-  const hasLunch = cartItems.some(item => item.category === 'Lunch' || !item.category);
-  const isCheckoutBlocked = status === 'CLOSED' || (status === 'LUNCH_CLOSED' && hasLunch);
+  const hasLunch = cartItems.some(item => item.category === 'Lunch' || item.category === 'Individual' || !item.category);
+  const hasChoviar = cartItems.some(item => item.category === 'Choviar');
+
+  const lunchClosed = metadata.lunchClosed === 'Yes';
+  const choviarClosed = metadata.choviarClosed === 'Yes';
+  const lunchCutoffPassed = status === 'LUNCH_CLOSED' || status === 'CLOSED';
+  const choviarCutoffPassed = status === 'CHOVIAR_CLOSED' || status === 'CLOSED';
+
+  const isCheckoutBlocked =
+    status === 'CLOSED' ||
+    (hasLunch && (lunchCutoffPassed || lunchClosed)) ||
+    (hasChoviar && (choviarCutoffPassed || choviarClosed));
   
   const isCustomOrder = cartItems.some(i => i.category === 'Individual' || i.isCustom);
   
@@ -572,13 +582,33 @@ export default function CheckoutPage() {
 
         {isCheckoutBlocked ? (
           <div className="bg-red-50 border-2 border-jts-red rounded-2xl shadow-sm p-6 text-center">
-            <p className="text-3xl mb-2">⏰</p>
-            <h2 className="text-lg font-bold text-jts-red mb-1">Order Cutoff Passed</h2>
-            <p className="text-sm text-gray-700 font-medium">
-              {status === 'CLOSED' 
-                ? "We are now closed for today's orders. We will be back post 7 PM."
-                : "Lunch orders are only accepted till 5 AM. Please remove lunch items from your cart to proceed with Choviar orders."}
-            </p>
+            {hasLunch && lunchClosed ? (
+              <>
+                <p className="text-3xl mb-2">🚫</p>
+                <h2 className="text-lg font-bold text-jts-red mb-1">Lunch is Closed</h2>
+                <p className="text-sm text-gray-700 font-medium">
+                  Lunch orders are closed for {targetDateLabel}. Please remove lunch items from your cart to proceed.
+                </p>
+              </>
+            ) : hasChoviar && choviarClosed ? (
+              <>
+                <p className="text-3xl mb-2">🚫</p>
+                <h2 className="text-lg font-bold text-jts-red mb-1">Choviar is Closed</h2>
+                <p className="text-sm text-gray-700 font-medium">
+                  Choviar orders are closed for {targetDateLabel}. Please remove choviar items from your cart to proceed.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-3xl mb-2">⏰</p>
+                <h2 className="text-lg font-bold text-jts-red mb-1">Order Cutoff Passed</h2>
+                <p className="text-sm text-gray-700 font-medium">
+                  {status === 'CLOSED' 
+                    ? "We are now closed for today's orders. We will be back post 7 PM."
+                    : `Lunch order cutoff has passed for ${targetDateLabel}. Please remove lunch items from your cart to proceed with Choviar orders.`}
+                </p>
+              </>
+            )}
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex flex-col gap-4" noValidate>

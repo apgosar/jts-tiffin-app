@@ -558,15 +558,17 @@ app.post('/api/orders', orderLimiter, async (req, res) => {
     deliveryTime.setHours(0, 0, 0, 0);
   }
   
+  const date = `${String(deliveryTime.getDate()).padStart(2, '0')}/${String(deliveryTime.getMonth() + 1).padStart(2, '0')}/${deliveryTime.getFullYear()}`;
+
   if (!betaTesting) {
     const hasLunch = validatedItems.some(i => i.category !== 'Choviar');
     const hasChoviar = validatedItems.some(i => i.category === 'Choviar');
 
     if (hasLunch && metadata.lunchClosed === 'Yes') {
-      return res.status(400).json({ error: 'Lunch orders are closed for tomorrow.' });
+      return res.status(400).json({ error: `Lunch is closed for ${date}.` });
     }
     if (hasChoviar && metadata.choviarClosed === 'Yes') {
-      return res.status(400).json({ error: 'Choviar orders are closed for tomorrow.' });
+      return res.status(400).json({ error: `Choviar is closed for ${date}.` });
     }
 
     if (hasLunch) {
@@ -602,7 +604,6 @@ app.post('/api/orders', orderLimiter, async (req, res) => {
   const subtotal = validatedItems.reduce((s, i) => s + i.price * i.quantity, 0);
   
   const baseOrderId  = uuidv4().slice(0, 8).toUpperCase();
-  const date = `${String(deliveryTime.getDate()).padStart(2, '0')}/${String(deliveryTime.getMonth() + 1).padStart(2, '0')}/${deliveryTime.getFullYear()}`;
 
   if (zone === 'outside') {
     const isBlocked = metadata.outsideBlockedDate === date || (Array.isArray(metadata.outsideBlockedDates) && metadata.outsideBlockedDates.includes(date));

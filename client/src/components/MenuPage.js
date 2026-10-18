@@ -572,10 +572,16 @@ export default function MenuPage() {
                   )}
                 </div>
                 
-                {status === 'LUNCH_CLOSED' || metadata.lunchClosed === 'Yes' ? (
+                {metadata.lunchClosed === 'Yes' ? (
+                  <div className="bg-red-50/70 rounded-2xl border border-red-200 p-5 flex flex-col items-center justify-center shadow-sm text-center">
+                    <span className="text-2xl mb-1.5">🚫</span>
+                    <p className="text-sm font-bold text-red-700">Lunch is closed for {targetDateLabel}</p>
+                    <p className="text-[11px] text-gray-500 font-medium mt-0.5">We are not accepting lunch orders for this date. We apologize for the inconvenience.</p>
+                  </div>
+                ) : status === 'LUNCH_CLOSED' ? (
                   <div className="bg-white rounded-2xl border border-gray-200 p-5 flex flex-col items-center justify-center shadow-sm text-center">
                     <span className="text-2xl mb-1.5">🕒</span>
-                    <p className="text-sm font-bold text-gray-800">Lunch ordering window closed for {targetDateLabel}</p>
+                    <p className="text-sm font-bold text-gray-800">Lunch order cutoff has passed for {targetDateLabel}</p>
                     <p className="text-[11px] text-gray-500 font-medium mt-0.5">Orders placed before cutoff will be delivered as scheduled.</p>
                   </div>
                 ) : (
@@ -637,10 +643,16 @@ export default function MenuPage() {
                     <CountdownBanner cutoffTime={choviarCutoffTime} targetDate={targetDate} />
                   )}
                 </div>
-                {status === 'CHOVIAR_CLOSED' || metadata.choviarClosed === 'Yes' ? (
+                {metadata.choviarClosed === 'Yes' ? (
+                  <div className="bg-red-50/70 rounded-2xl border border-red-200 p-5 flex flex-col items-center justify-center shadow-sm text-center">
+                    <span className="text-2xl mb-1.5">🚫</span>
+                    <p className="text-sm font-bold text-red-700">Choviar is closed for {targetDateLabel}</p>
+                    <p className="text-[11px] text-gray-500 font-medium mt-0.5">We are not accepting Choviar orders for this date. We apologize for the inconvenience.</p>
+                  </div>
+                ) : status === 'CHOVIAR_CLOSED' ? (
                   <div className="bg-white rounded-2xl border border-gray-200 p-5 flex flex-col items-center justify-center shadow-sm text-center">
                     <span className="text-2xl mb-1.5">🕒</span>
-                    <p className="text-sm font-bold text-gray-800">Choviar ordering window closed for {targetDateLabel}</p>
+                    <p className="text-sm font-bold text-gray-800">Choviar order cutoff has passed for {targetDateLabel}</p>
                     <p className="text-[11px] text-gray-500 font-medium mt-0.5">Orders placed before cutoff will be delivered as scheduled.</p>
                   </div>
                 ) : (

@@ -1129,13 +1129,13 @@ function MenuTab({ password, currentMenu, currentMetadata, onMenuSaved }) {
 
         {/* Closed Status */}
         <div className="col-span-1 sm:col-span-2 pt-2 border-t border-gray-100 mt-2 flex flex-wrap gap-4">
-          <label className="flex items-center gap-2 cursor-pointer text-sm font-bold text-red-600 bg-red-50 border border-red-200 px-3 py-2 rounded-xl flex-1 justify-center transition hover:bg-red-100">
+          <label className={`flex items-center gap-2 cursor-pointer text-sm font-bold px-3 py-2 rounded-xl flex-1 justify-center transition border ${metadata.lunchClosed === 'Yes' ? 'text-white bg-red-600 border-red-700 shadow-sm' : 'text-red-600 bg-red-50 border-red-200 hover:bg-red-100'}`}>
             <input type="checkbox" checked={metadata.lunchClosed === 'Yes'} onChange={e => updateMeta('lunchClosed', e.target.checked ? 'Yes' : 'No')} className="w-4 h-4 text-red-600" />
-            Close Lunch Orders
+            Close Lunch Orders {metadata.liveMenuDate ? `(${metadata.liveMenuDate})` : ''}
           </label>
-          <label className="flex items-center gap-2 cursor-pointer text-sm font-bold text-red-600 bg-red-50 border border-red-200 px-3 py-2 rounded-xl flex-1 justify-center transition hover:bg-red-100">
+          <label className={`flex items-center gap-2 cursor-pointer text-sm font-bold px-3 py-2 rounded-xl flex-1 justify-center transition border ${metadata.choviarClosed === 'Yes' ? 'text-white bg-red-600 border-red-700 shadow-sm' : 'text-red-600 bg-red-50 border-red-200 hover:bg-red-100'}`}>
             <input type="checkbox" checked={metadata.choviarClosed === 'Yes'} onChange={e => updateMeta('choviarClosed', e.target.checked ? 'Yes' : 'No')} className="w-4 h-4 text-red-600" />
-            Close Choviar Orders
+            Close Choviar Orders {metadata.liveMenuDate ? `(${metadata.liveMenuDate})` : ''}
           </label>
         </div>
 
