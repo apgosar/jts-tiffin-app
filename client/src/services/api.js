@@ -39,3 +39,15 @@ export const createAdminOrder = (data, password) =>
 export const recalculateRecurringOrders = (date, password) =>
   API.post('/api/admin/orders/recalculate-recurring', { date }, adminHeaders(password));
 
+export const getAdminCustomers = (params, password) =>
+  API.get('/api/admin/customers', { params, ...adminHeaders(password) });
+
+export const createAdminCustomer = (data, password) =>
+  API.post('/api/admin/customers', data, adminHeaders(password));
+
+export const updateAdminCustomer = (phone, data, password) =>
+  API.put(`/api/admin/customers/${phone}`, data, adminHeaders(password));
+
+export const createAdminBulkOrder = (data, password) =>
+  API.post('/api/admin/orders/bulk', data, adminHeaders(password));
+

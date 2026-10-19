@@ -320,4 +320,171 @@ describe('Admin Endpoints', () => {
       expect(res.body.success).toBe(true);
     });
   });
+
+  describe('Customer Management Endpoints', () => {
+    it('GET /api/admin/customers should reject without admin auth', async () => {
+      const res = await request(app).get('/api/admin/customers');
+      expect(res.statusCode).toEqual(401);
+    });
+
+    it('GET /api/admin/customers should return customers and filter by search query', async () => {
+      const allRes = await request(app)
+        .get('/api/admin/customers')
+        .set('x-admin-password', 'changeme');
+      expect(allRes.statusCode).toEqual(200);
+      expect(allRes.body.success).toBe(true);
+      expect(Array.isArray(allRes.body.customers)).toBe(true);
+      expect(allRes.body.customers.length).toBeGreaterThan(0);
+
+      const sample = allRes.body.customers[0];
+      const searchKey = sample.name.substring(0, 3);
+      const res = await request(app)
+        .get(`/api/admin/customers?search=${encodeURIComponent(searchKey)}`)
+        .set('x-admin-password', 'changeme');
+      expect(res.statusCode).toEqual(200);
+      expect(res.body.success).toBe(true);
+      expect(Array.isArray(res.body.customers)).toBe(true);
+      expect(res.body.customers.some(c => c.phone === sample.phone)).toBe(true);
+    });
+
+    it('POST /api/admin/customers should reject invalid data', async () => {
+      const res = await request(app)
+        .post('/api/admin/customers')
+        .set('x-admin-password', 'changeme')
+        .send({ name: '' });
+      expect(res.statusCode).toEqual(400);
+    });
+
+    it('POST /api/admin/customers should create customer with address profile', async () => {
+      const payload = {
+        name: 'Meena Mehta',
+        phone: '9820011223',
+        wingFlat: 'B-302',
+        building: 'Sheetal Heights',
+        street: 'Factory Lane',
+        locality: 'Borivali West',
+        pincode: '400092',
+        instructions: 'Call before delivery'
+      };
+      const res = await request(app)
+        .post('/api/admin/customers')
+        .set('x-admin-password', 'changeme')
+        .send(payload);
+      expect(res.statusCode).toEqual(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.customer.name).toBe('Meena Mehta');
+      expect(res.body.customer.addresses.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('PUT /api/admin/customers/:phone should update customer address', async () => {
+      const updatePayload = {
+        name: 'Meena M. Mehta',
+        wingFlat: 'B-303',
+        building: 'Sheetal Heights',
+        street: 'Factory Lane',
+        locality: 'Borivali West',
+        pincode: '400092',
+        addresses: [
+          {
+            id: 'addr_1',
+            name: 'Home',
+            wingFlat: 'B-303',
+            building: 'Sheetal Heights',
+            street: 'Factory Lane',
+            locality: 'Borivali West',
+            pincode: '400092',
+            address: 'B-303, Sheetal Heights, Factory Lane, Borivali West – 400092',
+            instructions: 'Ring doorbell twice',
+            isDefault: true
+          },
+          {
+            id: 'addr_2',
+            name: 'Office',
+            wingFlat: 'Shop 4',
+            building: 'Market Plaza',
+            street: 'Station Road',
+            locality: 'Borivali West',
+            pincode: '400092',
+            address: 'Shop 4, Market Plaza, Station Road, Borivali West – 400092',
+            instructions: 'Leave at counter',
+            isDefault: false
+          }
+        ]
+      };
+      const res = await request(app)
+        .put('/api/admin/customers/9820011223')
+        .set('x-admin-password', 'changeme')
+        .send(updatePayload);
+      expect(res.statusCode).toEqual(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.customer.addresses.length).toBe(2);
+    });
+  });
+
+  describe('Bulk Food Order Logging Endpoints', () => {
+    it('POST /api/admin/orders/bulk should reject missing fields', async () => {
+      const res = await request(app)
+        .post('/api/admin/orders/bulk')
+        .set('x-admin-password', 'changeme')
+        .send({});
+      expect(res.statusCode).toEqual(400);
+    });
+
+    it('POST /api/admin/orders/bulk should reject orders exceeding 20 rows', async () => {
+      const tooManyItems = Array.from({ length: 21 }, (_, idx) => ({
+        name: `Item ${idx + 1}`,
+        quantity: 2,
+        price: 50
+      }));
+      const res = await request(app)
+        .post('/api/admin/orders/bulk')
+        .set('x-admin-password', 'changeme')
+        .send({
+          customer: { name: 'Bulk Client', phone: '9820099887', locality: 'Borivali' },
+          date: '25/11/2026',
+          items: tooManyItems
+        });
+      expect(res.statusCode).toEqual(400);
+      expect(res.body.error).toContain('Maximum 20 items');
+    });
+
+    it('POST /api/admin/orders/bulk should log order and reflect in monthly billing', async () => {
+      const bulkPayload = {
+        customer: {
+          name: 'Bulk Party Client',
+          phone: '9820099887',
+          wingFlat: 'Hall A',
+          building: 'Jain Derasar Complex',
+          street: 'Main Road',
+          locality: 'Borivali West',
+          pincode: '400092'
+        },
+        date: '25/11/2026',
+        items: [
+          { name: 'Khandvi (Plates)', quantity: 30, price: 60 },
+          { name: 'Gujarati Dal (Litres)', quantity: 15, price: 120 },
+          { name: 'Gulab Jamun (Pieces)', quantity: 60, price: 15 }
+        ],
+        notes: 'Deliver hot before 12:30 PM'
+      };
+      // Total: 30*60 (1800) + 15*120 (1800) + 60*15 (900) = 4500
+      const res = await request(app)
+        .post('/api/admin/orders/bulk')
+        .set('x-admin-password', 'changeme')
+        .send(bulkPayload);
+      expect(res.statusCode).toEqual(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.order.grandTotal).toBe(4500);
+      expect(res.body.order.category).toBe('Bulk Food');
+      expect(res.body.order.isBulk).toBe(true);
+
+      // Verify it appears in monthly orders query (11/2026) for Billing
+      const billingRes = await request(app)
+        .get('/api/admin/orders?month=11/2026')
+        .set('x-admin-password', 'changeme');
+      expect(billingRes.statusCode).toEqual(200);
+      expect(billingRes.body.orders.some(o => o.orderId === res.body.orderId)).toBe(true);
+    });
+  });
 });
+

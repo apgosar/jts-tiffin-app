@@ -1,6 +1,18 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import JtsLogo from './JtsLogo';
-import { getAdminOrders, updateAdminMenu, getKitchenSummary, updateAdminDeliveryBatch, createAdminOrder, lookupCustomer, recalculateRecurringOrders } from '../services/api';
+import {
+  getAdminOrders,
+  updateAdminMenu,
+  getKitchenSummary,
+  updateAdminDeliveryBatch,
+  createAdminOrder,
+  lookupCustomer,
+  recalculateRecurringOrders,
+  getAdminCustomers,
+  createAdminCustomer,
+  updateAdminCustomer,
+  createAdminBulkOrder
+} from '../services/api';
 import { toBlob } from 'html-to-image';
 import * as XLSX from 'xlsx';
 
@@ -1746,8 +1758,10 @@ function OrdersTab({ password, currentMetadata, currentMenu }) {
 
       {!loading && orders.length > 0 && (() => {
         const activeOrdersList = orders.filter(o => o.status !== 'CANCELLED');
-        const lunchOrders = activeOrdersList.filter(o => o.items.some(i => i.category !== 'Choviar'));
-        const choviarOrders = activeOrdersList.filter(o => o.items.every(i => i.category === 'Choviar'));
+        const bulkOrders = activeOrdersList.filter(o => o.isBulk || o.category === 'Bulk Food');
+        const regularOrders = activeOrdersList.filter(o => !o.isBulk && o.category !== 'Bulk Food');
+        const lunchOrders = regularOrders.filter(o => o.items.some(i => i.category !== 'Choviar'));
+        const choviarOrders = regularOrders.filter(o => o.items.every(i => i.category === 'Choviar'));
         
         const sortByRoute = (a, b) => {
           const rA = parseInt(a.routeOrder, 10) || 9999;
@@ -1915,6 +1929,50 @@ function OrdersTab({ password, currentMetadata, currentMenu }) {
 
         return (
           <div className="flex flex-col gap-4">
+            {bulkOrders.length > 0 && (
+              <div className="bg-white rounded-xl border border-amber-200 overflow-hidden shadow-sm mt-4">
+                <div className="bg-gradient-to-r from-amber-500 to-amber-600 text-white px-4 py-2.5 flex justify-between items-center">
+                  <div className="flex items-center gap-2">
+                    <span className="text-base">🍲</span>
+                    <h3 className="font-bold text-sm tracking-wide">BULK FOOD ORDERS ({bulkOrders.length})</h3>
+                  </div>
+                  <span className="text-xs bg-white/20 font-bold px-2.5 py-0.5 rounded-full">
+                    Total: ₹{bulkOrders.reduce((sum, o) => sum + (o.grandTotal || 0), 0).toLocaleString('en-IN')}
+                  </span>
+                </div>
+                <div className="divide-y divide-gray-100 p-2">
+                  {bulkOrders.map(order => (
+                    <div key={order.orderId} className="p-3 hover:bg-amber-50/40 transition rounded-lg">
+                      <div className="flex justify-between items-start gap-3">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-gray-900 text-sm">{order.customer?.name || order.customerName}</span>
+                            <span className="text-xs font-mono text-gray-500">#{order.orderId}</span>
+                            <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${order.paymentReceived ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-800'}`}>
+                              {order.paymentReceived ? 'Paid' : 'Payment Pending'}
+                            </span>
+                          </div>
+                          <p className="text-xs text-gray-600 mt-0.5">📞 {order.customer?.phone || order.phone}</p>
+                          <p className="text-xs text-gray-700 mt-1">
+                            📍 {order.customer?.address || `${order.customer?.wingFlat ? order.customer?.wingFlat + ', ' : ''}${order.customer?.building ? order.customer?.building + ', ' : ''}${order.customer?.locality || ''}`}
+                          </p>
+                          <p className="text-xs text-amber-900 font-semibold mt-1.5 bg-amber-50 inline-block px-2 py-1 rounded border border-amber-200">
+                            📦 {order.itemsSummary || (order.items || []).map(i => `${i.item || i.name} x${i.quantity}`).join(', ')}
+                          </p>
+                          {order.notes && (
+                            <p className="text-xs text-gray-500 italic mt-1">Note: {order.notes}</p>
+                          )}
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <span className="text-lg font-black text-jts-red">₹{order.grandTotal}</span>
+                          <p className="text-xs text-gray-400 mt-0.5">{order.paymentMode || 'Cash'}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             {renderGroup('Lunch Orders', sortedLunch)}
             {renderGroup('Choviar Orders', sortedChoviar)}
           </div>
@@ -2852,6 +2910,1331 @@ function ManageUsersView({ adminPassword }) {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+// ─── Customer Search Dropdown ─────────────────────────────────────────────────
+function CustomerSearchDropdown({
+  password,
+  selectedCustomer,
+  onSelectCustomer,
+  onClear,
+  onPromptAddCustomer,
+  placeholder = 'Search by name or 10-digit mobile number...'
+}) {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
+  const wrapperRef = useRef(null);
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const runSearch = useCallback(async (text) => {
+    const q = text.trim();
+    if (!q) {
+      setResults([]);
+      setIsOpen(false);
+      setHasSearched(false);
+      return;
+    }
+
+    const isNumeric = /^\d+$/.test(q);
+    if (isNumeric && q.length < 10) {
+      setResults([]);
+      setIsOpen(false);
+      setHasSearched(false);
+      return;
+    }
+
+    setLoading(true);
+    setHasSearched(true);
+    try {
+      const res = await getAdminCustomers({ search: q }, password);
+      const list = res.data?.customers || [];
+      setResults(list);
+      setIsOpen(true);
+    } catch (err) {
+      console.error('Customer search error:', err);
+      setResults([]);
+      setIsOpen(true);
+    } finally {
+      setLoading(false);
+    }
+  }, [password]);
+
+  useEffect(() => {
+    if (selectedCustomer) return;
+    const q = query.trim();
+    if (!q) {
+      setResults([]);
+      setIsOpen(false);
+      setHasSearched(false);
+      return;
+    }
+
+    const isNumeric = /^\d+$/.test(q);
+    if (isNumeric) {
+      if (q.length === 10) {
+        runSearch(q);
+      } else {
+        setResults([]);
+        setIsOpen(false);
+        setHasSearched(false);
+      }
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      runSearch(q);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [query, selectedCustomer, runSearch]);
+
+  const handleSelect = (cust) => {
+    onSelectCustomer(cust);
+    setQuery('');
+    setIsOpen(false);
+  };
+
+  const handleClear = () => {
+    setQuery('');
+    setResults([]);
+    setIsOpen(false);
+    setHasSearched(false);
+    if (onClear) onClear();
+  };
+
+  const cleanQuery = query.trim();
+  const isNumeric = /^\d+$/.test(cleanQuery);
+  const showNumericHint = isNumeric && cleanQuery.length > 0 && cleanQuery.length < 10;
+
+  return (
+    <div ref={wrapperRef} className="relative w-full">
+      <div className="relative">
+        <input
+          type="text"
+          value={selectedCustomer ? `${selectedCustomer.name} (${selectedCustomer.phone})` : query}
+          onChange={e => {
+            if (selectedCustomer && onClear) onClear();
+            setQuery(e.target.value);
+          }}
+          onFocus={() => {
+            if (results.length > 0) setIsOpen(true);
+          }}
+          placeholder={placeholder}
+          className={`w-full px-3.5 py-2.5 pr-10 border rounded-xl text-sm transition focus:outline-none focus:ring-2 focus:ring-jts-red ${
+            selectedCustomer ? 'bg-red-50/50 border-red-200 font-bold text-gray-800' : 'bg-white border-gray-200'
+          }`}
+        />
+        {loading && (
+          <div className="absolute right-3 top-1/2 -translate-y-1/2">
+            <div className="w-4 h-4 border-2 border-red-200 border-t-jts-red rounded-full animate-spin" />
+          </div>
+        )}
+        {!loading && (query || selectedCustomer) && (
+          <button
+            type="button"
+            onClick={handleClear}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 font-bold text-sm"
+          >
+            ✕
+          </button>
+        )}
+      </div>
+
+      {showNumericHint && (
+        <p className="text-[11px] text-gray-500 mt-1 pl-1">
+          📱 Enter full 10-digit mobile number ({10 - cleanQuery.length} digits left)
+        </p>
+      )}
+
+      {/* Dynamic Dropdown */}
+      {isOpen && !selectedCustomer && (
+        <div className="absolute z-50 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-xl max-h-64 overflow-y-auto divide-y divide-gray-100">
+          {results.length > 0 ? (
+            results.map(cust => (
+              <div
+                key={cust.phone}
+                onClick={() => handleSelect(cust)}
+                className="p-3 hover:bg-red-50/60 cursor-pointer transition flex justify-between items-center"
+              >
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-gray-900 text-sm">{cust.name}</span>
+                    <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded font-mono font-medium">
+                      {cust.phone}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">
+                    {cust.address || `${cust.wingFlat ? cust.wingFlat + ', ' : ''}${cust.building ? cust.building + ', ' : ''}${cust.locality || ''}${cust.pincode ? ' - ' + cust.pincode : ''}`}
+                  </p>
+                </div>
+                <span className="text-xs text-jts-red font-bold">Select →</span>
+              </div>
+            ))
+          ) : hasSearched && !loading ? (
+            <div className="p-4 text-center">
+              <p className="text-xs text-gray-500 mb-2">
+                No customer found matching "<strong>{cleanQuery}</strong>"
+              </p>
+              {onPromptAddCustomer && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsOpen(false);
+                    onPromptAddCustomer(cleanQuery);
+                  }}
+                  className="px-3 py-1.5 bg-jts-red text-white text-xs font-bold rounded-lg hover:bg-jts-crimson transition shadow-sm"
+                >
+                  ➕ Add New Customer "{cleanQuery}"
+                </button>
+              )}
+            </div>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Add Customer Modal ───────────────────────────────────────────────────────
+function AddCustomerModal({ isOpen, onClose, onCustomerCreated, initialQuery, password }) {
+  const [form, setForm] = useState({
+    name: '',
+    phone: '',
+    wingFlat: '',
+    building: '',
+    street: '',
+    landmark: '',
+    locality: '',
+    pincode: '',
+    instructions: ''
+  });
+  const [zone, setZone] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (isOpen) {
+      setError('');
+      const q = (initialQuery || '').trim();
+      if (/^\d{1,10}$/.test(q)) {
+        setForm({
+          name: '',
+          phone: q,
+          wingFlat: '',
+          building: '',
+          street: '',
+          landmark: '',
+          locality: '',
+          pincode: '',
+          instructions: ''
+        });
+      } else {
+        setForm({
+          name: q,
+          phone: '',
+          wingFlat: '',
+          building: '',
+          street: '',
+          landmark: '',
+          locality: '',
+          pincode: '',
+          instructions: ''
+        });
+      }
+      setZone(null);
+    }
+  }, [isOpen, initialQuery]);
+
+  if (!isOpen) return null;
+
+  const checkPincode = (pin) => {
+    if (/^\d{6}$/.test(pin)) {
+      fetch(`/api/check-pincode?pincode=${pin}`)
+        .then(r => r.json())
+        .then(d => setZone(d.zone || null))
+        .catch(() => setZone(null));
+    } else {
+      setZone(null);
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!form.name.trim()) return setError('Please enter customer name');
+    if (!/^[6-9]\d{9}$/.test(form.phone.trim())) {
+      return setError('Please enter a valid 10-digit Indian mobile number (starts with 6-9)');
+    }
+
+    setSubmitting(true);
+    setError('');
+    try {
+      const res = await createAdminCustomer(form, password);
+      if (res.data?.success) {
+        onCustomerCreated(res.data.customer);
+        onClose();
+      } else {
+        setError(res.data?.error || 'Failed to create customer');
+      }
+    } catch (err) {
+      setError(err.response?.data?.error || err.message || 'Error creating customer');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+      <div className="bg-white rounded-2xl shadow-xl border border-gray-100 w-full max-w-lg p-5 my-8">
+        <div className="flex justify-between items-center mb-4 pb-2 border-b border-gray-100">
+          <div className="flex items-center gap-2">
+            <span className="text-xl">👤</span>
+            <h2 className="font-bold text-gray-900 text-base">Add New Customer</h2>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 font-bold text-lg">✕</button>
+        </div>
+
+        {error && (
+          <div className="mb-3 p-2.5 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl font-medium">
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wide block mb-1">Customer Name *</label>
+              <input
+                type="text"
+                placeholder="Full Name"
+                value={form.name}
+                onChange={e => setForm({ ...form, name: e.target.value })}
+                className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-jts-red focus:outline-none"
+                required
+              />
+            </div>
+            <div>
+              <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wide block mb-1">Mobile Number *</label>
+              <input
+                type="tel"
+                maxLength="10"
+                placeholder="10-digit mobile"
+                value={form.phone}
+                onChange={e => setForm({ ...form, phone: e.target.value })}
+                className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-jts-red focus:outline-none font-bold"
+                required
+              />
+            </div>
+          </div>
+
+          <div className="border-t border-gray-100 pt-2">
+            <label className="text-[11px] font-bold text-gray-700 uppercase tracking-wide block mb-2">Delivery Address</label>
+            <div className="grid grid-cols-2 gap-2 mb-2">
+              <input
+                type="text"
+                placeholder="Flat / Wing No."
+                value={form.wingFlat}
+                onChange={e => setForm({ ...form, wingFlat: e.target.value })}
+                className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-jts-red focus:outline-none"
+              />
+              <input
+                type="text"
+                placeholder="Building / Society"
+                value={form.building}
+                onChange={e => setForm({ ...form, building: e.target.value })}
+                className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-jts-red focus:outline-none"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 mb-2">
+              <input
+                type="text"
+                placeholder="Street / Road"
+                value={form.street}
+                onChange={e => setForm({ ...form, street: e.target.value })}
+                className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-jts-red focus:outline-none"
+              />
+              <input
+                type="text"
+                placeholder="Landmark (opt)"
+                value={form.landmark}
+                onChange={e => setForm({ ...form, landmark: e.target.value })}
+                className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-jts-red focus:outline-none"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 mb-2">
+              <input
+                type="text"
+                placeholder="Locality (e.g. Borivali W)"
+                value={form.locality}
+                onChange={e => setForm({ ...form, locality: e.target.value })}
+                className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-jts-red focus:outline-none"
+              />
+              <div>
+                <input
+                  type="text"
+                  maxLength="6"
+                  placeholder="Pincode (6-digit)"
+                  value={form.pincode}
+                  onChange={e => {
+                    setForm({ ...form, pincode: e.target.value });
+                    checkPincode(e.target.value);
+                  }}
+                  className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs font-semibold focus:ring-2 focus:ring-jts-red focus:outline-none"
+                />
+                {zone && (
+                  <p className={`text-[10px] mt-0.5 font-bold ${zone === 'inside' ? 'text-green-600' : 'text-orange-600'}`}>
+                    {zone === 'inside' ? '✓ Free Delivery (Borivali)' : 'ℹ Outside Borivali Delivery'}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <textarea
+              placeholder="Delivery Instructions (e.g. Leave at security, call on arrival)"
+              value={form.instructions}
+              onChange={e => setForm({ ...form, instructions: e.target.value })}
+              rows={2}
+              className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-jts-red focus:outline-none"
+            />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={submitting}
+              className="px-4 py-2 text-xs font-bold text-gray-600 hover:bg-gray-100 rounded-xl transition"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="px-5 py-2 bg-jts-red hover:bg-jts-crimson text-white text-xs font-bold rounded-xl transition shadow-sm"
+            >
+              {submitting ? 'Saving...' : 'Save Customer'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ─── Tab: Customers Management ────────────────────────────────────────────────
+function CustomersTab({ password }) {
+  const [selectedCustomer, setSelectedCustomer] = useState(null);
+  const [name, setName] = useState('');
+  const [addresses, setAddresses] = useState([]);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [initialModalQuery, setInitialModalQuery] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState('');
+  const [saveError, setSaveError] = useState('');
+
+  const handleSelectCustomer = (cust) => {
+    setSelectedCustomer(cust);
+    setName(cust.name || '');
+    const addrs = (cust.addresses && Array.isArray(cust.addresses) && cust.addresses.length > 0)
+      ? cust.addresses
+      : [{
+          id: 'addr_1',
+          name: 'Home',
+          wingFlat: cust.wingFlat || '',
+          building: cust.building || '',
+          street: cust.street || '',
+          landmark: cust.landmark || '',
+          locality: cust.locality || '',
+          pincode: cust.pincode || '',
+          instructions: cust.instructions || '',
+          isDefault: true
+        }];
+    setAddresses(addrs);
+    setSaveSuccess('');
+    setSaveError('');
+  };
+
+  const handleClearCustomer = () => {
+    setSelectedCustomer(null);
+    setName('');
+    setAddresses([]);
+    setSaveSuccess('');
+    setSaveError('');
+  };
+
+  const handleAddressChange = (index, field, value) => {
+    setAddresses(prev => {
+      const copy = [...prev];
+      copy[index] = { ...copy[index], [field]: value };
+      return copy;
+    });
+  };
+
+  const handleSetDefaultAddress = (index) => {
+    setAddresses(prev => prev.map((a, i) => ({
+      ...a,
+      isDefault: i === index
+    })));
+  };
+
+  const handleAddAddress = () => {
+    setAddresses(prev => [
+      ...prev,
+      {
+        id: `addr_${Date.now()}`,
+        name: `Address ${prev.length + 1}`,
+        wingFlat: '',
+        building: '',
+        street: '',
+        landmark: '',
+        locality: '',
+        pincode: '',
+        instructions: '',
+        isDefault: prev.length === 0
+      }
+    ]);
+  };
+
+  const handleRemoveAddress = (index) => {
+    if (addresses.length <= 1) return;
+    setAddresses(prev => {
+      const copy = prev.filter((_, i) => i !== index);
+      if (!copy.some(a => a.isDefault) && copy.length > 0) {
+        copy[0].isDefault = true;
+      }
+      return copy;
+    });
+  };
+
+  const handleSaveCustomer = async (e) => {
+    e.preventDefault();
+    if (!selectedCustomer) return;
+    if (!name.trim()) {
+      setSaveError('Customer name cannot be empty');
+      return;
+    }
+
+    setSaving(true);
+    setSaveSuccess('');
+    setSaveError('');
+
+    try {
+      const defaultAddr = addresses.find(a => a.isDefault) || addresses[0] || {};
+      const payload = {
+        name: name.trim(),
+        wingFlat: defaultAddr.wingFlat || '',
+        building: defaultAddr.building || '',
+        street: defaultAddr.street || '',
+        landmark: defaultAddr.landmark || '',
+        locality: defaultAddr.locality || '',
+        pincode: defaultAddr.pincode || '',
+        instructions: defaultAddr.instructions || '',
+        addresses: addresses.map(a => ({
+          ...a,
+          name: a.name || 'Address'
+        }))
+      };
+
+      const res = await updateAdminCustomer(selectedCustomer.phone, payload, password);
+      if (res.data?.success) {
+        setSaveSuccess('✅ Customer details and addresses updated successfully!');
+        setSelectedCustomer(res.data.customer);
+        setTimeout(() => setSaveSuccess(''), 4000);
+      } else {
+        setSaveError(res.data?.error || 'Failed to update customer');
+      }
+    } catch (err) {
+      setSaveError(err.response?.data?.error || err.message || 'Error updating customer');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* Header card */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+        <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
+          <div>
+            <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
+              <span>👥</span> Customer Management
+            </h2>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Search by name (dynamic autocomplete) or 10-digit mobile number to view and edit customer addresses
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setInitialModalQuery('');
+              setIsAddModalOpen(true);
+            }}
+            className="px-3.5 py-2 bg-jts-red hover:bg-jts-crimson text-white text-xs font-bold rounded-xl transition shadow-sm flex items-center gap-1.5"
+          >
+            <span>➕ Add Customer</span>
+          </button>
+        </div>
+
+        {/* Dynamic Search Bar */}
+        <CustomerSearchDropdown
+          password={password}
+          selectedCustomer={selectedCustomer}
+          onSelectCustomer={handleSelectCustomer}
+          onClear={handleClearCustomer}
+          onPromptAddCustomer={(query) => {
+            setInitialModalQuery(query);
+            setIsAddModalOpen(true);
+          }}
+          placeholder="Type name (autocomplete) or 10-digit phone number..."
+        />
+      </div>
+
+      {saveSuccess && (
+        <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-xl text-xs font-medium">
+          {saveSuccess}
+        </div>
+      )}
+
+      {saveError && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-xs font-medium">
+          {saveError}
+        </div>
+      )}
+
+      {/* Customer Edit View */}
+      {selectedCustomer ? (
+        <form onSubmit={handleSaveCustomer} className="flex flex-col gap-4">
+          {/* Customer Summary Card */}
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+            <div className="flex justify-between items-center mb-3">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500">
+                Customer Details
+              </h3>
+              <a
+                href={`https://wa.me/91${selectedCustomer.phone}`}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 text-xs text-emerald-600 font-bold hover:text-emerald-700"
+              >
+                <WhatsAppIcon className="w-3.5 h-3.5 text-emerald-600" /> WhatsApp
+              </a>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wide block mb-1">
+                  Customer Name *
+                </label>
+                <input
+                  type="text"
+                  value={name}
+                  onChange={e => setName(e.target.value)}
+                  placeholder="Customer Name"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:ring-2 focus:ring-jts-red focus:outline-none"
+                  required
+                />
+              </div>
+              <div>
+                <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wide block mb-1">
+                  Mobile Number (Primary ID)
+                </label>
+                <input
+                  type="text"
+                  value={selectedCustomer.phone}
+                  disabled
+                  className="w-full px-3 py-2 border border-gray-100 bg-gray-50 rounded-xl text-sm font-bold text-gray-600 cursor-not-allowed"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Addresses Section */}
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+            <div className="flex justify-between items-center mb-4">
+              <div>
+                <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                  <span>📍</span> Associated Addresses ({addresses.length})
+                </h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  View, edit, or add multiple delivery addresses for this customer
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleAddAddress}
+                className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-lg transition"
+              >
+                ➕ Add Address
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {addresses.map((addr, idx) => (
+                <div
+                  key={addr.id || idx}
+                  className={`p-4 rounded-xl border transition ${
+                    addr.isDefault ? 'border-red-300 bg-red-50/20' : 'border-gray-200 bg-white'
+                  }`}
+                >
+                  <div className="flex justify-between items-center mb-3">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={addr.name || `Address ${idx + 1}`}
+                        onChange={e => handleAddressChange(idx, 'name', e.target.value)}
+                        placeholder="Address Label (e.g. Home, Office)"
+                        className="px-2.5 py-1 text-xs font-bold border border-gray-200 rounded-lg text-gray-800 focus:outline-none focus:ring-1 focus:ring-jts-red bg-white"
+                      />
+                      {addr.isDefault ? (
+                        <span className="text-[10px] bg-red-100 text-jts-red font-bold px-2 py-0.5 rounded-full">
+                          ★ Default Address
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleSetDefaultAddress(idx)}
+                          className="text-[10px] text-gray-500 hover:text-jts-red font-bold underline"
+                        >
+                          Set as Default
+                        </button>
+                      )}
+                    </div>
+                    {addresses.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveAddress(idx)}
+                        className="text-xs text-red-500 hover:text-red-700 font-bold px-2 py-1 rounded hover:bg-red-50 transition"
+                        title="Delete Address"
+                      >
+                        ✕ Remove
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 mb-2">
+                    <input
+                      type="text"
+                      placeholder="Wing / Flat No."
+                      value={addr.wingFlat || ''}
+                      onChange={e => handleAddressChange(idx, 'wingFlat', e.target.value)}
+                      className="px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs focus:ring-1 focus:ring-jts-red focus:outline-none"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Building / Society"
+                      value={addr.building || ''}
+                      onChange={e => handleAddressChange(idx, 'building', e.target.value)}
+                      className="px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs focus:ring-1 focus:ring-jts-red focus:outline-none"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 mb-2">
+                    <input
+                      type="text"
+                      placeholder="Street / Road"
+                      value={addr.street || ''}
+                      onChange={e => handleAddressChange(idx, 'street', e.target.value)}
+                      className="px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs focus:ring-1 focus:ring-jts-red focus:outline-none"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Landmark (opt)"
+                      value={addr.landmark || ''}
+                      onChange={e => handleAddressChange(idx, 'landmark', e.target.value)}
+                      className="px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs focus:ring-1 focus:ring-jts-red focus:outline-none"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 mb-2">
+                    <input
+                      type="text"
+                      placeholder="Locality (e.g. Borivali W)"
+                      value={addr.locality || ''}
+                      onChange={e => handleAddressChange(idx, 'locality', e.target.value)}
+                      className="px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs focus:ring-1 focus:ring-jts-red focus:outline-none"
+                    />
+                    <input
+                      type="text"
+                      maxLength="6"
+                      placeholder="Pincode (6-digit)"
+                      value={addr.pincode || ''}
+                      onChange={e => handleAddressChange(idx, 'pincode', e.target.value)}
+                      className="px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs font-semibold focus:ring-1 focus:ring-jts-red focus:outline-none"
+                    />
+                  </div>
+
+                  <textarea
+                    placeholder="Delivery Instructions (e.g. Leave at gate, call on arrival)"
+                    value={addr.instructions || ''}
+                    onChange={e => handleAddressChange(idx, 'instructions', e.target.value)}
+                    rows={1}
+                    className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs focus:ring-1 focus:ring-jts-red focus:outline-none"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Action buttons */}
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={handleClearCustomer}
+              className="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-xl transition"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="px-6 py-2.5 bg-jts-red hover:bg-jts-crimson text-white text-xs font-bold rounded-xl transition shadow-sm flex items-center gap-2"
+            >
+              {saving ? 'Saving Changes...' : '💾 Save Customer & Addresses'}
+            </button>
+          </div>
+        </form>
+      ) : (
+        <div className="bg-white rounded-2xl border border-gray-100 p-8 text-center text-gray-400">
+          <p className="text-3xl mb-2">🔍</p>
+          <p className="text-sm font-semibold text-gray-600">No customer selected</p>
+          <p className="text-xs text-gray-400 mt-1 max-w-sm mx-auto">
+            Use the search box above to find any customer by typing their name or full 10-digit mobile number, or click "Add Customer" to register a new one.
+          </p>
+        </div>
+      )}
+
+      {/* Add Customer Modal */}
+      <AddCustomerModal
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+        onCustomerCreated={handleSelectCustomer}
+        initialQuery={initialModalQuery}
+        password={password}
+      />
+    </div>
+  );
+}
+
+// ─── Tab: Bulk Food Logging ───────────────────────────────────────────────────
+function BulkFoodTab({ password, onSwitchToBilling }) {
+  const getTomorrowDate = () => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    const offset = d.getTimezoneOffset();
+    const local = new Date(d.getTime() - (offset * 60 * 1000));
+    return local.toISOString().split('T')[0];
+  };
+
+  const [date, setDate] = useState(getTomorrowDate());
+  const [selectedCustomer, setSelectedCustomer] = useState(null);
+  const [selectedAddressIndex, setSelectedAddressIndex] = useState(0);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [promptQuery, setPromptQuery] = useState('');
+
+  // Up to 20 food items
+  const [items, setItems] = useState([
+    { id: 1, item: '', quantity: 1, price: '' }
+  ]);
+
+  const [paymentMode, setPaymentMode] = useState('Cash');
+  const [paymentStatus, setPaymentStatus] = useState('Pending');
+  const [notes, setNotes] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const [createdOrder, setCreatedOrder] = useState(null);
+
+  const handleSelectCustomer = (cust) => {
+    setSelectedCustomer(cust);
+    setSelectedAddressIndex(0);
+    setError('');
+    setCreatedOrder(null);
+  };
+
+  const handleClearCustomer = () => {
+    setSelectedCustomer(null);
+    setSelectedAddressIndex(0);
+  };
+
+  const handleItemChange = (index, field, value) => {
+    setItems(prev => {
+      const copy = [...prev];
+      copy[index] = { ...copy[index], [field]: value };
+      return copy;
+    });
+  };
+
+  const handleAddRow = () => {
+    if (items.length >= 20) return;
+    setItems(prev => [
+      ...prev,
+      { id: Date.now(), item: '', quantity: 1, price: '' }
+    ]);
+  };
+
+  const handleRemoveRow = (index) => {
+    if (items.length <= 1) return;
+    setItems(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const totalAmount = items.reduce((sum, i) => {
+    const q = Number(i.quantity) || 0;
+    const p = Number(i.price) || 0;
+    return sum + (q * p);
+  }, 0);
+
+  const totalQuantity = items.reduce((sum, i) => sum + (Number(i.quantity) || 0), 0);
+
+  const handleSubmitBulkOrder = async (e) => {
+    e.preventDefault();
+    setError('');
+    setCreatedOrder(null);
+
+    if (!selectedCustomer) {
+      setError('Please select or add a customer first.');
+      return;
+    }
+    if (!date) {
+      setError('Please pick a valid delivery / function date.');
+      return;
+    }
+
+    const validItems = items.filter(i => (i.item || '').trim().length > 0);
+    if (validItems.length === 0) {
+      setError('Please enter at least one food item with quantity and price.');
+      return;
+    }
+    if (validItems.length > 20) {
+      setError('A maximum of 20 items can be added per bulk order.');
+      return;
+    }
+
+    for (let i = 0; i < validItems.length; i++) {
+      const it = validItems[i];
+      if (Number(it.quantity) <= 0) {
+        setError(`Quantity for "${it.item}" must be greater than 0.`);
+        return;
+      }
+      if (Number(it.price) < 0 || isNaN(Number(it.price))) {
+        setError(`Please enter a valid price for "${it.item}".`);
+        return;
+      }
+    }
+
+    setSubmitting(true);
+    try {
+      const [year, month, day] = date.split('-');
+      const formattedDate = `${day}/${month}/${year}`;
+
+      const addrList = selectedCustomer.addresses || [];
+      const chosenAddr = addrList[selectedAddressIndex] || addrList[0] || selectedCustomer;
+
+      const payload = {
+        date: formattedDate,
+        customer: {
+          phone: selectedCustomer.phone,
+          name: selectedCustomer.name,
+          wingFlat: chosenAddr.wingFlat || selectedCustomer.wingFlat || '',
+          building: chosenAddr.building || selectedCustomer.building || '',
+          street: chosenAddr.street || selectedCustomer.street || '',
+          landmark: chosenAddr.landmark || selectedCustomer.landmark || '',
+          locality: chosenAddr.locality || selectedCustomer.locality || '',
+          pincode: chosenAddr.pincode || selectedCustomer.pincode || '',
+          address: chosenAddr.address || selectedCustomer.address || '',
+          instructions: chosenAddr.instructions || selectedCustomer.instructions || ''
+        },
+        items: validItems.map(i => ({
+          item: i.item.trim(),
+          quantity: Number(i.quantity),
+          price: Number(i.price)
+        })),
+        paymentMode,
+        paymentStatus,
+        notes: notes.trim()
+      };
+
+      const res = await createAdminBulkOrder(payload, password);
+      if (res.data?.success) {
+        setCreatedOrder(res.data.order);
+        setItems([{ id: Date.now(), item: '', quantity: 1, price: '' }]);
+        setNotes('');
+      } else {
+        setError(res.data?.error || 'Failed to log bulk order.');
+      }
+    } catch (err) {
+      setError(err.response?.data?.error || err.message || 'Error logging bulk order.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* Header card */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+        <h2 className="text-base font-bold text-gray-900 flex items-center gap-2 mb-1">
+          <span>🍲</span> Bulk Food Order Logging
+        </h2>
+        <p className="text-xs text-gray-500">
+          Log catering, events, and large quantity orders. Orders automatically show in the <strong>Billing</strong> section.
+        </p>
+      </div>
+
+      {createdOrder && (
+        <div className="bg-green-50 border border-green-200 rounded-2xl p-5 shadow-sm">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xl">✅</span>
+                <h3 className="font-bold text-green-900 text-sm">
+                  Bulk Food Order #{createdOrder.orderId} Recorded!
+                </h3>
+              </div>
+              <p className="text-xs text-green-800 mt-1">
+                <strong>{createdOrder.customerName}</strong> ({createdOrder.phone}) • {createdOrder.date}
+              </p>
+              <p className="text-xs text-green-700 mt-0.5">
+                Total Amount: <span className="font-black text-sm">₹{createdOrder.grandTotal}</span> • Status: <strong>{createdOrder.paymentReceived ? 'Paid' : 'Pending'}</strong>
+              </p>
+              <p className="text-[11px] text-green-600 mt-2 font-medium">
+                💡 This order has been added to customer billing for {createdOrder.date.split('/').slice(1).join('/')} and will appear in monthly statements.
+              </p>
+            </div>
+            <div className="flex flex-col gap-2">
+              {onSwitchToBilling && (
+                <button
+                  type="button"
+                  onClick={onSwitchToBilling}
+                  className="px-3.5 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-bold rounded-xl transition shadow-sm whitespace-nowrap"
+                >
+                  💰 View in Billing Tab →
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setCreatedOrder(null)}
+                className="px-3.5 py-1.5 bg-white border border-green-300 text-green-800 text-xs font-bold rounded-xl hover:bg-green-50 transition"
+              >
+                Log Another Order
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-xs font-medium">
+          {error}
+        </div>
+      )}
+
+      <form onSubmit={handleSubmitBulkOrder} className="flex flex-col gap-4">
+        {/* Customer & Date Selection */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-4">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500">
+            Step 1: Customer & Function Date
+          </h3>
+
+          <div className="space-y-2">
+            <label className="text-[11px] font-bold text-gray-700 uppercase tracking-wide block">
+              Customer (Search Name or Mobile) *
+            </label>
+            <CustomerSearchDropdown
+              password={password}
+              selectedCustomer={selectedCustomer}
+              onSelectCustomer={handleSelectCustomer}
+              onClear={handleClearCustomer}
+              onPromptAddCustomer={(query) => {
+                setPromptQuery(query);
+                setIsAddModalOpen(true);
+              }}
+              placeholder="Enter name (dropdown) or 10-digit mobile number..."
+            />
+          </div>
+
+          {selectedCustomer && (
+            <div className="p-3.5 bg-red-50/40 border border-red-100 rounded-xl space-y-2">
+              <div className="flex justify-between items-center">
+                <div>
+                  <span className="font-bold text-gray-900 text-sm">{selectedCustomer.name}</span>
+                  <span className="text-xs text-gray-500 ml-2 font-mono">{selectedCustomer.phone}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleClearCustomer}
+                  className="text-xs text-red-600 font-bold hover:underline"
+                >
+                  Change
+                </button>
+              </div>
+
+              {selectedCustomer.addresses && selectedCustomer.addresses.length > 1 && (
+                <div>
+                  <label className="text-[11px] font-bold text-gray-600 block mb-1">
+                    Select Delivery Address for this Order:
+                  </label>
+                  <select
+                    value={selectedAddressIndex}
+                    onChange={e => setSelectedAddressIndex(Number(e.target.value))}
+                    className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs bg-white focus:outline-none focus:ring-1 focus:ring-jts-red font-medium"
+                  >
+                    {selectedCustomer.addresses.map((a, i) => (
+                      <option key={a.id || i} value={i}>
+                        {a.name || `Address ${i + 1}`}: {a.wingFlat ? a.wingFlat + ', ' : ''}{a.building || ''} ({a.locality || ''}) {a.isDefault ? '★ Default' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div>
+            <label className="text-[11px] font-bold text-gray-700 uppercase tracking-wide block mb-1">
+              Function / Delivery Date *
+            </label>
+            <input
+              type="date"
+              value={date}
+              onChange={e => setDate(e.target.value)}
+              className="w-full sm:w-64 px-3 py-2 border border-gray-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-jts-red"
+              required
+            />
+          </div>
+        </div>
+
+        {/* 20 Food Item Rows */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+          <div className="flex justify-between items-center mb-3">
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500">
+                Step 2: Food Items (Up to 20 Rows)
+              </h3>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Add each food item, quantity, and unit price
+              </p>
+            </div>
+            <span className="text-xs font-bold text-gray-600 bg-gray-100 px-2.5 py-1 rounded-lg">
+              {items.length} / 20 rows
+            </span>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-gray-200 text-gray-500 font-bold uppercase tracking-wider">
+                  <th className="py-2 px-1 w-8 text-center">#</th>
+                  <th className="py-2 px-2">Item Name *</th>
+                  <th className="py-2 px-2 w-24">Qty *</th>
+                  <th className="py-2 px-2 w-28">Price (₹) *</th>
+                  <th className="py-2 px-2 w-28 text-right">Total (₹)</th>
+                  <th className="py-2 px-1 w-10 text-center"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {items.map((row, idx) => {
+                  const q = Number(row.quantity) || 0;
+                  const p = Number(row.price) || 0;
+                  const rowTotal = q * p;
+
+                  return (
+                    <tr key={row.id || idx} className="hover:bg-gray-50/50">
+                      <td className="py-2 px-1 text-center font-bold text-gray-400">
+                        {idx + 1}
+                      </td>
+                      <td className="py-2 px-2">
+                        <input
+                          type="text"
+                          placeholder="Item Name"
+                          value={row.item}
+                          onChange={e => handleItemChange(idx, 'item', e.target.value)}
+                          className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-jts-red"
+                          required
+                        />
+                      </td>
+                      <td className="py-2 px-2">
+                        <input
+                          type="number"
+                          min="1"
+                          step="1"
+                          placeholder="Qty"
+                          value={row.quantity}
+                          onChange={e => handleItemChange(idx, 'quantity', e.target.value)}
+                          className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs font-bold text-center focus:outline-none focus:ring-1 focus:ring-jts-red"
+                          required
+                        />
+                      </td>
+                      <td className="py-2 px-2">
+                        <input
+                          type="number"
+                          min="0"
+                          step="any"
+                          placeholder="Rate ₹"
+                          value={row.price}
+                          onChange={e => handleItemChange(idx, 'price', e.target.value)}
+                          className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs font-bold text-right focus:outline-none focus:ring-1 focus:ring-jts-red"
+                          required
+                        />
+                      </td>
+                      <td className="py-2 px-2 text-right font-black text-gray-800 text-xs">
+                        ₹{rowTotal.toLocaleString('en-IN')}
+                      </td>
+                      <td className="py-2 px-1 text-center">
+                        {items.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveRow(idx)}
+                            className="text-gray-400 hover:text-red-600 font-bold p-1 rounded"
+                            title="Delete row"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="flex justify-between items-center mt-3 pt-3 border-t border-gray-100 flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={handleAddRow}
+              disabled={items.length >= 20}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition flex items-center gap-1.5 ${
+                items.length >= 20
+                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                  : 'bg-red-50 text-jts-red hover:bg-red-100'
+              }`}
+            >
+              <span>➕ Add Item Row</span>
+              {items.length >= 20 && <span className="text-[10px] font-normal">(Max 20 reached)</span>}
+            </button>
+
+            <div className="text-right">
+              <span className="text-xs text-gray-500 mr-3">
+                Total Qty: <strong>{totalQuantity}</strong>
+              </span>
+              <span className="text-xs text-gray-500 mr-2">Grand Total:</span>
+              <span className="text-lg font-black text-jts-red">
+                ₹{totalAmount.toLocaleString('en-IN')}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Step 3: Payment & Notes */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-3">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500">
+            Step 3: Payment & Instructions
+          </h3>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="text-[11px] font-bold text-gray-600 block mb-1">
+                Payment Status
+              </label>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPaymentStatus('Pending')}
+                  className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition border ${
+                    paymentStatus === 'Pending'
+                      ? 'bg-amber-500 text-white border-amber-500 shadow-sm'
+                      : 'bg-white text-gray-700 border-gray-200'
+                  }`}
+                >
+                  Payment Pending
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPaymentStatus('Paid')}
+                  className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition border ${
+                    paymentStatus === 'Paid'
+                      ? 'bg-green-600 text-white border-green-600 shadow-sm'
+                      : 'bg-white text-gray-700 border-gray-200'
+                  }`}
+                >
+                  Already Paid
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="text-[11px] font-bold text-gray-600 block mb-1">
+                Payment Method
+              </label>
+              <div className="flex gap-2">
+                {['Cash', 'Online', 'UPI'].map(m => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setPaymentMode(m)}
+                    className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition border ${
+                      paymentMode === m
+                        ? 'bg-jts-red text-white border-jts-red shadow-sm'
+                        : 'bg-white text-gray-700 border-gray-200'
+                    }`}
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-[11px] font-bold text-gray-600 block mb-1">
+              Order Notes / Special Catering Instructions (Optional)
+            </label>
+            <textarea
+              rows={2}
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+              placeholder="e.g. Function time: 12:30 PM, delivery at gate, pack separate spoons"
+              className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs focus:ring-1 focus:ring-jts-red focus:outline-none"
+            />
+          </div>
+        </div>
+
+        {/* Submit Button */}
+        <button
+          type="submit"
+          disabled={submitting || !selectedCustomer}
+          className={`w-full py-3.5 rounded-xl font-black text-sm text-white shadow-md transition flex items-center justify-center gap-2 ${
+            submitting || !selectedCustomer
+              ? 'bg-gray-300 cursor-not-allowed'
+              : 'bg-jts-red hover:bg-jts-crimson active:scale-[0.99]'
+          }`}
+        >
+          <span>🍲</span>
+          <span>{submitting ? 'Logging Bulk Food Order...' : `Log Bulk Food Order • ₹${totalAmount.toLocaleString('en-IN')}`}</span>
+        </button>
+      </form>
+
+      {/* Add Customer Modal */}
+      <AddCustomerModal
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+        onCustomerCreated={handleSelectCustomer}
+        initialQuery={promptQuery}
+        password={password}
+      />
     </div>
   );
 }
@@ -3970,6 +5353,8 @@ export default function AdminPage() {
           <TabBtn active={activeTab === 'orders'}  onClick={() => setActiveTab('orders')}>📋 Orders</TabBtn>
           <TabBtn active={activeTab === 'kitchen'} onClick={() => setActiveTab('kitchen')}>👨‍🍳 Kitchen</TabBtn>
           <TabBtn active={activeTab === 'billing'} onClick={() => setActiveTab('billing')}>💰 Billing</TabBtn>
+          <TabBtn active={activeTab === 'customers'} onClick={() => setActiveTab('customers')}>👥 Customers</TabBtn>
+          <TabBtn active={activeTab === 'bulk'}    onClick={() => setActiveTab('bulk')}>🍲 Bulk Food</TabBtn>
           <TabBtn active={activeTab === 'settings'} onClick={() => setActiveTab('settings')}>⚙️ Settings</TabBtn>
         </div>
       </div>
@@ -3980,6 +5365,8 @@ export default function AdminPage() {
         {activeTab === 'orders'  && <OrdersTab  password={adminPassword} currentMetadata={currentMetadata} currentMenu={currentMenu} />}
         {activeTab === 'kitchen' && <KitchenTab password={adminPassword} currentMetadata={currentMetadata} currentMenu={currentMenu} />}
         {activeTab === 'billing' && <BillingTab password={adminPassword} />}
+        {activeTab === 'customers' && <CustomersTab password={adminPassword} />}
+        {activeTab === 'bulk' && <BulkFoodTab password={adminPassword} onSwitchToBilling={() => setActiveTab('billing')} />}
         {activeTab === 'settings' && <SettingsTab password={adminPassword} currentMetadata={currentMetadata} onMetadataSaved={(savedMeta) => setCurrentMetadata(savedMeta)} />}
         {activeTab === 'manage' && (
           <ManageUsersView adminPassword={adminPassword} />

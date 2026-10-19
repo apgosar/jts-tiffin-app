@@ -108,7 +108,35 @@ let MOCK_METADATA = {
 };
 
 let MOCK_ORDERS    = [];
-let MOCK_CUSTOMERS = []; // [{ name, phone, wingFlat, building, street, landmark, locality, pincode, lastOrderDate }]
+let MOCK_CUSTOMERS = [
+  {
+    name: 'Keyur Shah',
+    phone: '9876543210',
+    wingFlat: 'A-101',
+    building: 'Shanti Sadan',
+    street: 'Station Road',
+    landmark: 'Near Jain Temple',
+    locality: 'Borivali West',
+    pincode: '400092',
+    address: 'A-101, Shanti Sadan, Station Road, Near Jain Temple, Borivali West – 400092',
+    instructions: 'Leave at security',
+    addresses: [
+      {
+        id: 'addr_1',
+        name: 'Keyur Shah (Home)',
+        wingFlat: 'A-101',
+        building: 'Shanti Sadan',
+        street: 'Station Road',
+        landmark: 'Near Jain Temple',
+        locality: 'Borivali West',
+        pincode: '400092',
+        address: 'A-101, Shanti Sadan, Station Road, Near Jain Temple, Borivali West – 400092',
+        instructions: 'Leave at security',
+        isDefault: true
+      }
+    ]
+  }
+];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function parseJsonSafe(str, fallback = []) {
@@ -430,7 +458,12 @@ app.get('/api/customer/lookup', lookupLimiter, async (req, res) => {
   let existingOrders = [];
 
   if (USE_MOCK) {
-    const profiles = MOCK_CUSTOMERS.filter(c => c.phone === queryPhone);
+    const customer = MOCK_CUSTOMERS.find(c => c.phone === queryPhone);
+    const profiles = customer
+      ? ((customer.addresses && Array.isArray(customer.addresses) && customer.addresses.length > 0)
+          ? customer.addresses.map(a => ({ ...a, phone: customer.phone, name: a.name || customer.name }))
+          : [customer])
+      : [];
     if (date) {
       existingOrders = MOCK_ORDERS.filter(o => o.phone === queryPhone && o.date === date && o.status !== 'CANCELLED')
         .map(o => ({
@@ -471,7 +504,11 @@ app.get('/api/customer/lookup', lookupLimiter, async (req, res) => {
     }
 
     if (customerDoc.exists) {
-      return res.json({ found: true, profiles: [customerDoc.data()], existingOrders });
+      const data = customerDoc.data();
+      const profiles = (data.addresses && Array.isArray(data.addresses) && data.addresses.length > 0)
+        ? data.addresses.map(a => ({ ...a, phone: data.phone, name: a.name || data.name }))
+        : [data];
+      return res.json({ found: true, profiles, existingOrders });
     } else {
       return res.json({ found: false, profiles: [], existingOrders });
     }
@@ -1487,7 +1524,9 @@ app.get('/api/admin/orders', adminLimiter, requireAdmin, async (req, res) => {
   if (!date && !month) return res.json({ success: true, orders: [] });
 
   if (USE_MOCK) {
-    const filtered = MOCK_ORDERS.filter(o => o.date === date);
+    let filtered = MOCK_ORDERS;
+    if (date) filtered = filtered.filter(o => o.date === date);
+    if (month) filtered = filtered.filter(o => o.date && o.date.substring(3) === month);
     return res.json({ success: true, orders: filtered });
   }
 
@@ -1862,6 +1901,335 @@ app.post('/api/admin/orders/recalculate-recurring', adminLimiter, requireAdmin, 
   }
 });
 
+// ─── Admin Customer Management Endpoints ─────────────────────────────────────
+function normalizeCustomerAddresses(cust) {
+  if (cust.addresses && Array.isArray(cust.addresses) && cust.addresses.length > 0) {
+    return cust.addresses;
+  }
+  const addr = cust.address || [cust.wingFlat, cust.building, cust.street, cust.locality].filter(Boolean).join(', ');
+  return [{
+    id: 'addr_1',
+    name: cust.name ? `${cust.name} (Default)` : 'Default Address',
+    wingFlat: cust.wingFlat || '',
+    building: cust.building || '',
+    street: cust.street || '',
+    landmark: cust.landmark || '',
+    locality: cust.locality || '',
+    pincode: cust.pincode || '',
+    address: addr,
+    instructions: cust.instructions || '',
+    isDefault: true
+  }];
+}
+
+// GET /api/admin/customers - List or search customers
+app.get('/api/admin/customers', adminLimiter, requireAdmin, async (req, res) => {
+  const { search } = req.query;
+  const q = (search || '').trim().toLowerCase();
+
+  if (USE_MOCK) {
+    let list = MOCK_CUSTOMERS.map(c => ({
+      ...c,
+      addresses: normalizeCustomerAddresses(c)
+    }));
+    if (q) {
+      list = list.filter(c => 
+        (c.name && c.name.toLowerCase().includes(q)) || 
+        (c.phone && c.phone.includes(q))
+      );
+    }
+    list.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    return res.json({ success: true, customers: list });
+  }
+
+  try {
+    const snapshot = await db.collection('customers').get();
+    let customers = snapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        ...data,
+        addresses: normalizeCustomerAddresses(data)
+      };
+    });
+
+    if (q) {
+      customers = customers.filter(c => 
+        (c.name && c.name.toLowerCase().includes(q)) || 
+        (c.phone && c.phone.includes(q))
+      );
+    }
+    customers.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    res.json({ success: true, customers });
+  } catch (err) {
+    console.error('Error fetching admin customers:', err.message);
+    res.status(500).json({ error: 'Failed to fetch customers.' });
+  }
+});
+
+// POST /api/admin/customers - Add a new customer
+app.post('/api/admin/customers', adminLimiter, requireAdmin, express.json(), async (req, res) => {
+  const { name, phone, wingFlat, building, street, landmark, locality, pincode, instructions, addresses } = req.body;
+
+  if (!name || !name.trim()) {
+    return res.status(400).json({ error: 'Customer name is required.' });
+  }
+  if (!phone || !/^[6-9]\d{9}$/.test(phone.trim())) {
+    return res.status(400).json({ error: 'Valid 10-digit mobile number starting 6-9 is required.' });
+  }
+
+  const cleanPhone = phone.trim();
+  const formattedAddress = req.body.address || [
+    [wingFlat, building, street].filter(Boolean).join(', '),
+    landmark ? `, ${landmark.trim()}` : '',
+    locality ? `, ${locality.trim()}` : '',
+    pincode ? ` – ${pincode.trim()}` : ''
+  ].join('');
+
+  const initialAddresses = (Array.isArray(addresses) && addresses.length > 0)
+    ? addresses
+    : [{
+        id: `addr_${Date.now()}`,
+        name: `${name.trim()} (Primary)`,
+        wingFlat: (wingFlat || '').trim(),
+        building: (building || '').trim(),
+        street: (street || '').trim(),
+        landmark: (landmark || '').trim(),
+        locality: (locality || '').trim(),
+        pincode: (pincode || '').trim(),
+        address: formattedAddress,
+        instructions: (instructions || '').trim(),
+        isDefault: true
+      }];
+
+  const primaryAddr = initialAddresses.find(a => a.isDefault) || initialAddresses[0];
+
+  const customerRecord = {
+    name: name.trim(),
+    phone: cleanPhone,
+    wingFlat: primaryAddr.wingFlat || (wingFlat || '').trim(),
+    building: primaryAddr.building || (building || '').trim(),
+    street: primaryAddr.street || (street || '').trim(),
+    landmark: primaryAddr.landmark || (landmark || '').trim(),
+    locality: primaryAddr.locality || (locality || '').trim(),
+    pincode: primaryAddr.pincode || (pincode || '').trim(),
+    address: primaryAddr.address || formattedAddress,
+    instructions: primaryAddr.instructions || (instructions || '').trim(),
+    addresses: initialAddresses,
+    updatedAt: new Date().toISOString()
+  };
+
+  if (USE_MOCK) {
+    const existingIdx = MOCK_CUSTOMERS.findIndex(c => c.phone === cleanPhone);
+    if (existingIdx >= 0) {
+      MOCK_CUSTOMERS[existingIdx] = customerRecord;
+    } else {
+      MOCK_CUSTOMERS.push(customerRecord);
+    }
+    return res.json({ success: true, customer: customerRecord });
+  }
+
+  try {
+    await db.collection('customers').doc(cleanPhone).set(customerRecord, { merge: true });
+    res.json({ success: true, customer: customerRecord });
+  } catch (err) {
+    console.error('Error creating customer:', err.message);
+    res.status(500).json({ error: 'Failed to create customer.' });
+  }
+});
+
+// PUT /api/admin/customers/:phone - Update customer and associated addresses
+app.put('/api/admin/customers/:phone', adminLimiter, requireAdmin, express.json(), async (req, res) => {
+  const { phone } = req.params;
+  if (!phone || !/^[6-9]\d{9}$/.test(phone.trim())) {
+    return res.status(400).json({ error: 'Valid 10-digit mobile number required.' });
+  }
+  const cleanPhone = phone.trim();
+  const { name, wingFlat, building, street, landmark, locality, pincode, instructions, addresses } = req.body;
+
+  let formattedAddress = req.body.address;
+  if (!formattedAddress && (wingFlat || building || street || locality)) {
+    formattedAddress = [
+      [wingFlat, building, street].filter(Boolean).join(', '),
+      landmark ? `, ${landmark.trim()}` : '',
+      locality ? `, ${locality.trim()}` : '',
+      pincode ? ` – ${pincode.trim()}` : ''
+    ].join('');
+  }
+
+  let finalAddresses = Array.isArray(addresses) ? addresses : undefined;
+  let primaryAddr = finalAddresses ? (finalAddresses.find(a => a.isDefault) || finalAddresses[0]) : null;
+
+  const updateFields = {
+    updatedAt: new Date().toISOString()
+  };
+  if (name !== undefined) updateFields.name = name.trim();
+  if (finalAddresses !== undefined) updateFields.addresses = finalAddresses;
+
+  if (primaryAddr) {
+    updateFields.wingFlat = primaryAddr.wingFlat || '';
+    updateFields.building = primaryAddr.building || '';
+    updateFields.street = primaryAddr.street || '';
+    updateFields.landmark = primaryAddr.landmark || '';
+    updateFields.locality = primaryAddr.locality || '';
+    updateFields.pincode = primaryAddr.pincode || '';
+    updateFields.address = primaryAddr.address || '';
+    updateFields.instructions = primaryAddr.instructions || '';
+  } else {
+    if (wingFlat !== undefined) updateFields.wingFlat = wingFlat.trim();
+    if (building !== undefined) updateFields.building = building.trim();
+    if (street !== undefined) updateFields.street = street.trim();
+    if (landmark !== undefined) updateFields.landmark = landmark.trim();
+    if (locality !== undefined) updateFields.locality = locality.trim();
+    if (pincode !== undefined) updateFields.pincode = pincode.trim();
+    if (formattedAddress !== undefined) updateFields.address = formattedAddress.trim();
+    if (instructions !== undefined) updateFields.instructions = instructions.trim();
+  }
+
+  if (USE_MOCK) {
+    const idx = MOCK_CUSTOMERS.findIndex(c => c.phone === cleanPhone);
+    if (idx >= 0) {
+      MOCK_CUSTOMERS[idx] = { ...MOCK_CUSTOMERS[idx], ...updateFields, phone: cleanPhone };
+      return res.json({ success: true, customer: MOCK_CUSTOMERS[idx] });
+    } else {
+      const newCust = { phone: cleanPhone, ...updateFields };
+      MOCK_CUSTOMERS.push(newCust);
+      return res.json({ success: true, customer: newCust });
+    }
+  }
+
+  try {
+    await db.collection('customers').doc(cleanPhone).set(updateFields, { merge: true });
+    const updatedDoc = await db.collection('customers').doc(cleanPhone).get();
+    res.json({ success: true, customer: updatedDoc.data() });
+  } catch (err) {
+    console.error('Error updating customer:', err.message);
+    res.status(500).json({ error: 'Failed to update customer.' });
+  }
+});
+
+// POST /api/admin/orders/bulk - Log a bulk food order (up to 20 rows)
+app.post('/api/admin/orders/bulk', adminLimiter, requireAdmin, express.json(), async (req, res) => {
+  const { customer, date, items, time = '12:00', paymentReceived = false, paymentMethod = 'Cash', notes = '' } = req.body;
+
+  if (!customer || !customer.name || !customer.phone) {
+    return res.status(400).json({ error: 'Customer name and mobile number are required.' });
+  }
+  if (!/^[6-9]\d{9}$/.test(customer.phone.trim())) {
+    return res.status(400).json({ error: 'Valid 10-digit mobile number starting 6-9 is required.' });
+  }
+  if (!date || !/^\d{2}\/\d{2}\/\d{4}$/.test(date.trim())) {
+    return res.status(400).json({ error: 'Delivery date is required in DD/MM/YYYY format.' });
+  }
+  if (!items || !Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ error: 'At least one food item row is required.' });
+  }
+  if (items.length > 20) {
+    return res.status(400).json({ error: 'Maximum 20 items allowed for bulk food logging.' });
+  }
+
+  const validatedItems = [];
+  for (let idx = 0; idx < items.length; idx++) {
+    const it = items[idx];
+    const name = (it.name || '').trim();
+    const qty = parseInt(it.quantity, 10);
+    const price = parseFloat(it.price);
+
+    if (!name) {
+      return res.status(400).json({ error: `Row #${idx + 1}: Item name is required.` });
+    }
+    if (isNaN(qty) || qty < 1) {
+      return res.status(400).json({ error: `Row #${idx + 1}: Quantity must be at least 1.` });
+    }
+    if (isNaN(price) || price < 0) {
+      return res.status(400).json({ error: `Row #${idx + 1}: Price must be a valid amount (>= 0).` });
+    }
+
+    validatedItems.push({
+      name,
+      quantity: qty,
+      price,
+      total: qty * price,
+      category: 'Bulk Food'
+    });
+  }
+
+  const grandTotal = validatedItems.reduce((sum, i) => sum + i.total, 0);
+  const itemsSummary = validatedItems.map(i => `${i.name}×${i.quantity}`).join(', ');
+  const orderId = `B-${uuidv4().slice(0, 6).toUpperCase()}`;
+
+  const formattedAddress = customer.address || [
+    [customer.wingFlat, customer.building, customer.street].filter(Boolean).join(', '),
+    customer.locality,
+    customer.pincode ? `– ${customer.pincode}` : ''
+  ].filter(Boolean).join(', ');
+
+  const orderRecord = {
+    orderId,
+    date: date.trim(),
+    time,
+    createdAt: USE_MOCK ? new Date().toISOString() : FieldValue.serverTimestamp(),
+    name: customer.name.trim(),
+    phone: customer.phone.trim(),
+    address: formattedAddress,
+    wingFlat: customer.wingFlat || '',
+    building: customer.building || '',
+    street: customer.street || '',
+    locality: customer.locality || '',
+    pincode: customer.pincode || '',
+    items: validatedItems,
+    itemsSummary,
+    subtotal: grandTotal,
+    surchargeTotal: 0,
+    grandTotal,
+    deliveryPerson: '',
+    routeOrder: 9999,
+    paymentReceived: !!paymentReceived,
+    paymentMethod: paymentMethod || 'Cash',
+    amountReceived: paymentReceived ? grandTotal : '',
+    status: 'ACTIVE',
+    category: 'Bulk Food',
+    isBulk: true,
+    notes: (notes || '').trim()
+  };
+
+  const customerRecord = {
+    name: customer.name.trim(),
+    phone: customer.phone.trim(),
+    wingFlat: customer.wingFlat || '',
+    building: customer.building || '',
+    street: customer.street || '',
+    locality: customer.locality || '',
+    pincode: customer.pincode || '',
+    address: formattedAddress,
+    lastOrderDate: date.trim(),
+    updatedAt: new Date().toISOString()
+  };
+
+  if (USE_MOCK) {
+    MOCK_ORDERS.push(orderRecord);
+    const cIdx = MOCK_CUSTOMERS.findIndex(c => c.phone === customer.phone.trim());
+    if (cIdx >= 0) {
+      Object.assign(MOCK_CUSTOMERS[cIdx], customerRecord);
+    } else {
+      MOCK_CUSTOMERS.push(customerRecord);
+    }
+    return res.json({ success: true, orderId, order: orderRecord });
+  }
+
+  try {
+    const batch = db.batch();
+    batch.set(db.collection('orders').doc(orderId), orderRecord);
+    batch.set(db.collection('customers').doc(customer.phone.trim()), customerRecord, { merge: true });
+    await batch.commit();
+
+    res.json({ success: true, orderId, order: orderRecord });
+  } catch (err) {
+    console.error('Error logging bulk order:', err.message);
+    res.status(500).json({ error: 'Failed to log bulk order.' });
+  }
+});
+
+
 function getRawComponents(items, metadata) {
   const meta = metadata || MOCK_METADATA;
   const comp = { 
@@ -2164,6 +2532,7 @@ app.get('/api/admin/kitchen', adminLimiter, requireAdmin, async (req, res) => {
   const outsideOrders = [];
 
   orders.forEach(order => {
+    if (order.isBulk || order.category === 'Bulk Food') return;
     const lunchItems = (order.items || []).filter(i => i.category !== 'Choviar');
     const choviarItems = (order.items || []).filter(i => i.category === 'Choviar');
 
@@ -2521,6 +2890,7 @@ module.exports.recalculateOrderTotals = recalculateOrderTotals;
 module.exports.syncRecurringOrdersForDate = syncRecurringOrdersForDate;
 if (USE_MOCK) {
   module.exports.MOCK_ORDERS = MOCK_ORDERS;
+  module.exports.MOCK_CUSTOMERS = MOCK_CUSTOMERS;
 }
 
 app.get('/debug-mock', (req,res) => res.json(MOCK_ORDERS));
