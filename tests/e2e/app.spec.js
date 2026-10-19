@@ -45,9 +45,14 @@ test.describe('JTS Tiffin App End-to-End', () => {
 
     // Fill the checkout form
     // Note: Phone must be filled first to trigger the lookup and reveal the rest of the form
-    await page.fill('#phone', '9876543210');
+    const testPhone = '98765' + Math.floor(10000 + Math.random() * 90000);
+    await page.fill('#phone', testPhone);
     
     // Wait for customer lookup / form expansion
+    const newAddressRadio = page.locator('text=Enter a new address');
+    if (await newAddressRadio.isVisible({ timeout: 1500 }).catch(() => false)) {
+      await newAddressRadio.click();
+    }
     await page.waitForSelector('#name');
 
     await page.fill('#name', 'Playwright Tester');
