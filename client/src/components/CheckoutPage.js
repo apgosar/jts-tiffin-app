@@ -78,10 +78,11 @@ function ZoneBadge({ zone, surchargeTotal, outsideBlocked, deliveryDateStr }) {
 
 // ─── Order Row ────────────────────────────────────────────────────────────────
 function OrderRow({ item, onIncrement, onDecrement, hidePrices }) {
+  const displayName = item.title || (item.name === 'Thepla (Choviar)' ? 'Thepla' : item.name);
   return (
     <div className="flex items-center justify-between gap-3 py-2.5 text-sm border-b border-gray-100 last:border-0">
       <div className="flex-1 min-w-0">
-        <p className="font-semibold text-gray-800">{item.name}</p>
+        <p className="font-semibold text-gray-800">{displayName}</p>
         {!hidePrices && <p className="text-xs text-gray-500">₹{item.price}/- each</p>}
       </div>
       <div className="flex items-center gap-2 flex-shrink-0">
@@ -352,7 +353,7 @@ export default function CheckoutPage() {
     } else if (zone === 'outside' && outsideBlocked) {
       e.pincode = 'Outside Borivali orders are closed because of Dabbawala Mama Holiday';
     }
-    const invalidThepla = cartItems.find(i => (i.name === 'Thepla' || i.name === 'Extra Thepla') && i.quantity < 6);
+    const invalidThepla = cartItems.find(i => (i.name === 'Thepla' || i.name === 'Extra Thepla' || i.name === 'Thepla (Choviar)') && i.quantity < 6);
     if (invalidThepla) {
       e.thepla = 'Minimum order quantity for Thepla is 6 pcs.';
     }
@@ -365,7 +366,7 @@ export default function CheckoutPage() {
       setServerError('Outside Borivali orders are closed because of Dabbawala Mama Holiday');
       return;
     }
-    const invalidThepla = cartItems.find(i => (i.name === 'Thepla' || i.name === 'Extra Thepla') && i.quantity < 6);
+    const invalidThepla = cartItems.find(i => (i.name === 'Thepla' || i.name === 'Extra Thepla' || i.name === 'Thepla (Choviar)') && i.quantity < 6);
     if (invalidThepla) {
       setServerError('Minimum order quantity for Thepla is 6 pcs.');
       return;
@@ -498,7 +499,13 @@ export default function CheckoutPage() {
                     item={item}
                     hidePrices={isCustomOrder}
                     onIncrement={() => updateQuantity(item.name, 1)}
-                    onDecrement={() => updateQuantity(item.name, -1)}
+                    onDecrement={() => {
+                      if ((item.name === 'Thepla' || item.name === 'Extra Thepla' || item.name === 'Thepla (Choviar)') && item.quantity <= 6) {
+                        updateQuantity(item.name, -item.quantity);
+                      } else {
+                        updateQuantity(item.name, -1);
+                      }
+                    }}
                   />
                 ))}
               </div>
@@ -537,7 +544,13 @@ export default function CheckoutPage() {
                     item={item}
                     hidePrices={isCustomOrder}
                     onIncrement={() => updateQuantity(item.name, 1)}
-                    onDecrement={() => updateQuantity(item.name, -1)}
+                    onDecrement={() => {
+                      if ((item.name === 'Thepla' || item.name === 'Extra Thepla' || item.name === 'Thepla (Choviar)') && item.quantity <= 6) {
+                        updateQuantity(item.name, -item.quantity);
+                      } else {
+                        updateQuantity(item.name, -1);
+                      }
+                    }}
                   />
                 ))}
               </div>

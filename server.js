@@ -93,6 +93,10 @@ let MOCK_METADATA = {
   puriPrice: 5,
   parathaPrice: 12,
   theplaPrice: 12,
+  dalHalfPrice: 25,
+  dalFullPrice: 50,
+  sabjiHalfPrice: 50,
+  sabjiFullPrice: 90,
   lunchCutoff: '05:00',
   choviarCutoff: '11:00',
   tiffinMatrix: {
@@ -207,8 +211,8 @@ function computeServerPrice(itemObj, menuItems, metadata) {
   if (itemName === breadType || itemName === `Extra ${breadType}`) {
     return { price: getBreadPrice(breadType), category: 'Individual' };
   }
-  if (itemName === 'Thepla' || itemName === 'Extra Thepla') {
-    return { price: parseFloat(meta.theplaPrice) || 12, category: 'Individual' };
+  if (itemName === 'Thepla' || itemName === 'Extra Thepla' || itemName === 'Thepla (Choviar)') {
+    return { price: parseFloat(meta.theplaPrice) || 12, category: (itemName === 'Thepla (Choviar)' || clientCategory === 'Choviar') ? 'Choviar' : 'Individual' };
   }
 
   // Custom Order Items
@@ -216,6 +220,8 @@ function computeServerPrice(itemObj, menuItems, metadata) {
   const sabjiNameFull = meta.sabji ? `Sabji (Full) - ${meta.sabji}` : 'Sabji (Full)';
   const dalNameHalf = meta.dal ? `Dal (Half) - ${meta.dal}` : 'Dal (Half)';
   const dalNameFull = meta.dal ? `Dal (Full) - ${meta.dal}` : 'Dal (Full)';
+  const dalKadhiNameHalf = meta.dal ? `Dal / Kadhi (Half) - ${meta.dal}` : 'Dal / Kadhi (Half)';
+  const dalKadhiNameFull = meta.dal ? `Dal / Kadhi (Full) - ${meta.dal}` : 'Dal / Kadhi (Full)';
   const riceNameHalf = meta.rice ? `Rice (Half) - ${meta.rice}` : 'Rice (Half)';
   const riceNameFull = meta.rice ? `Rice (Full) - ${meta.rice}` : 'Rice (Full)';
   const farsanName = meta.farsan ? `Farsan - ${meta.farsan}` : 'Farsan';
@@ -223,8 +229,8 @@ function computeServerPrice(itemObj, menuItems, metadata) {
 
   if (itemName === sabjiNameHalf) return { price: parseFloat(meta.sabjiHalfPrice) || 0, category: 'Individual' };
   if (itemName === sabjiNameFull) return { price: parseFloat(meta.sabjiFullPrice) || 0, category: 'Individual' };
-  if (itemName === dalNameHalf) return { price: parseFloat(meta.dalHalfPrice) || 0, category: 'Individual' };
-  if (itemName === dalNameFull) return { price: parseFloat(meta.dalFullPrice) || 0, category: 'Individual' };
+  if (itemName === dalNameHalf || itemName === dalKadhiNameHalf || itemName === 'Dal (Half)' || itemName === 'Dal / Kadhi (Half)') return { price: parseFloat(meta.dalHalfPrice) || 25, category: 'Individual' };
+  if (itemName === dalNameFull || itemName === dalKadhiNameFull || itemName === 'Dal (Full)' || itemName === 'Dal / Kadhi (Full)') return { price: parseFloat(meta.dalFullPrice) || 50, category: 'Individual' };
   if (itemName === riceNameHalf || itemName === `Rice (Half)`) return { price: parseFloat(meta.riceHalfPrice) || 0, category: 'Individual' };
   if (itemName === riceNameFull || itemName === `Rice (Full)`) return { price: parseFloat(meta.riceFullPrice) || 0, category: 'Individual' };
   if (itemName === `Rice`) return { price: parseFloat(meta.ricePrice) || 0, category: 'Individual' };
@@ -506,7 +512,7 @@ app.post('/api/orders', orderLimiter, async (req, res) => {
     const qty = parseInt(item.quantity, 10);
     let minLimit = 1;
     let limit = MAX_QTY_PER_ITEM;
-    if (item.name === 'Thepla' || item.name === 'Extra Thepla') {
+    if (item.name === 'Thepla' || item.name === 'Extra Thepla' || item.name === 'Thepla (Choviar)') {
       minLimit = 6;
       limit = MAX_ROTI_QTY;
     } else if (item.name === 'Roti') {
@@ -515,7 +521,7 @@ app.post('/api/orders', orderLimiter, async (req, res) => {
       limit = MAX_EXTRA_ROTI_QTY;
     }
     if (!qty || qty < minLimit || qty > limit) {
-      if ((item.name === 'Thepla' || item.name === 'Extra Thepla') && qty < 6) {
+      if ((item.name === 'Thepla' || item.name === 'Extra Thepla' || item.name === 'Thepla (Choviar)') && qty < 6) {
         return res.status(400).json({ error: 'Minimum order quantity for Thepla is 6 pcs.' });
       }
       return res.status(400).json({ error: `Invalid quantity for "${item.name}". Must be ${minLimit}–${limit}.` });
@@ -539,7 +545,7 @@ app.post('/api/orders', orderLimiter, async (req, res) => {
       return res.status(400).json({ error: `Unknown or invalid item: "${item.name}"` });
     }
     const qty = parseInt(item.quantity, 10);
-    if ((item.name === 'Thepla' || item.name === 'Extra Thepla') && qty < 6) {
+    if ((item.name === 'Thepla' || item.name === 'Extra Thepla' || item.name === 'Thepla (Choviar)') && qty < 6) {
       return res.status(400).json({ error: 'Minimum order quantity for Thepla is 6 pcs.' });
     }
     validatedItems.push({ name: item.name, price: serverData.price, quantity: qty, category: serverData.category });
@@ -632,7 +638,10 @@ app.post('/api/orders', orderLimiter, async (req, res) => {
   const time = formatTime(now);
 
   const lunchItems = validatedItems.filter(i => i.category !== 'Choviar');
-  const choviarItems = validatedItems.filter(i => i.category === 'Choviar');
+  const choviarItems = validatedItems.filter(i => i.category === 'Choviar').map(i => ({
+    ...i,
+    name: i.name === 'Thepla (Choviar)' ? 'Thepla' : i.name
+  }));
 
   const lunchSubtotal = lunchItems.reduce((s, i) => s + i.price * i.quantity, 0);
   const choviarSubtotal = choviarItems.reduce((s, i) => s + i.price * i.quantity, 0);
@@ -814,7 +823,7 @@ app.post('/api/orders/recurring', orderLimiter, async (req, res) => {
     const qty = parseInt(item.quantity, 10);
     let minLimit = 1;
     let limit = 20;
-    if (item.name === 'Thepla' || item.name === 'Extra Thepla') {
+    if (item.name === 'Thepla' || item.name === 'Extra Thepla' || item.name === 'Thepla (Choviar)') {
       minLimit = 6;
       limit = 200;
     } else if (item.name === 'Roti') {
@@ -823,7 +832,7 @@ app.post('/api/orders/recurring', orderLimiter, async (req, res) => {
       limit = 50;
     }
     if (!qty || qty < minLimit || qty > limit) {
-      if ((item.name === 'Thepla' || item.name === 'Extra Thepla') && qty < 6) {
+      if ((item.name === 'Thepla' || item.name === 'Extra Thepla' || item.name === 'Thepla (Choviar)') && qty < 6) {
         return res.status(400).json({ error: 'Minimum order quantity for Thepla is 6 pcs.' });
       }
       return res.status(400).json({ error: `Invalid quantity for "${item.name}". Must be ${minLimit}–${limit}.` });
@@ -881,7 +890,10 @@ app.post('/api/orders/recurring', orderLimiter, async (req, res) => {
   const subtotal = validatedItems.reduce((s, i) => s + i.price * i.quantity, 0);
 
   const lunchItems = validatedItems.filter(i => i.category !== 'Choviar');
-  const choviarItems = validatedItems.filter(i => i.category === 'Choviar');
+  const choviarItems = validatedItems.filter(i => i.category === 'Choviar').map(i => ({
+    ...i,
+    name: i.name === 'Thepla (Choviar)' ? 'Thepla' : i.name
+  }));
 
   const lunchSubtotal = lunchItems.reduce((s, i) => s + i.price * i.quantity, 0);
   const choviarSubtotal = choviarItems.reduce((s, i) => s + i.price * i.quantity, 0);
@@ -1280,7 +1292,7 @@ app.put('/api/orders/manage/:orderId', orderLimiter, async (req, res) => {
     const qty = parseInt(item.quantity, 10);
     let minLimit = 1;
     let limit = MAX_QTY_PER_ITEM;
-    if (item.name === 'Thepla' || item.name === 'Extra Thepla') {
+    if (item.name === 'Thepla' || item.name === 'Extra Thepla' || item.name === 'Thepla (Choviar)') {
       minLimit = 6;
       limit = MAX_ROTI_QTY;
     } else if (item.name === 'Roti') {
@@ -1289,7 +1301,7 @@ app.put('/api/orders/manage/:orderId', orderLimiter, async (req, res) => {
       limit = MAX_EXTRA_ROTI_QTY;
     }
     if (!qty || qty < minLimit || qty > limit) {
-      if ((item.name === 'Thepla' || item.name === 'Extra Thepla') && qty < 6) {
+      if ((item.name === 'Thepla' || item.name === 'Extra Thepla' || item.name === 'Thepla (Choviar)') && qty < 6) {
         return res.status(400).json({ error: 'Minimum order quantity for Thepla is 6 pcs.' });
       }
       return res.status(400).json({ error: `Invalid quantity for ${item.name}` });
@@ -1551,7 +1563,7 @@ app.post('/api/admin/orders', adminLimiter, requireAdmin, express.json(), async 
   for (const item of items) {
     const qty = parseInt(item.quantity, 10);
     if (!qty || qty < 1) return res.status(400).json({ error: `Invalid quantity for "${item.name}".` });
-    if ((item.name === 'Thepla' || item.name === 'Extra Thepla') && qty < 6) {
+    if ((item.name === 'Thepla' || item.name === 'Extra Thepla' || item.name === 'Thepla (Choviar)') && qty < 6) {
       return res.status(400).json({ error: 'Minimum order quantity for Thepla is 6 pcs.' });
     }
     const serverData = computeServerPrice(item, menuItems, metadata);
@@ -1579,7 +1591,10 @@ app.post('/api/admin/orders', adminLimiter, requireAdmin, express.json(), async 
   const subtotal = validatedItems.reduce((s, i) => s + i.price * i.quantity, 0);
 
   const lunchItems = validatedItems.filter(i => i.category !== 'Choviar');
-  const choviarItems = validatedItems.filter(i => i.category === 'Choviar');
+  const choviarItems = validatedItems.filter(i => i.category === 'Choviar').map(i => ({
+    ...i,
+    name: i.name === 'Thepla (Choviar)' ? 'Thepla' : i.name
+  }));
 
   const lunchSubtotal = lunchItems.reduce((s, i) => s + i.price * i.quantity, 0);
   const choviarSubtotal = choviarItems.reduce((s, i) => s + i.price * i.quantity, 0);
@@ -1917,15 +1932,15 @@ function getRawComponents(items, metadata) {
         comp.Paratha += 1 * q;
       } else if (n.toLowerCase() === 'extra puri' || n.toLowerCase() === 'puri') {
         comp.Puri += 1 * q;
-      } else if (n.toLowerCase() === 'thepla' || n.toLowerCase() === 'extra thepla') {
+      } else if (n.toLowerCase() === 'thepla' || n.toLowerCase() === 'extra thepla' || n.toLowerCase() === 'thepla (choviar)') {
         comp.Thepla += 1 * q;
       } else if (n.toLowerCase().includes('sabji (half)')) {
         comp.SabjiHalf += q;
       } else if (n.toLowerCase().includes('sabji (full)')) {
         comp.SabjiFull += q;
-      } else if (n.toLowerCase().includes('dal (half)')) {
+      } else if (n.toLowerCase().includes('(half)') && (n.toLowerCase().includes('dal') || n.toLowerCase().includes('kadhi'))) {
         comp.DalHalf += q;
-      } else if (n.toLowerCase().includes('dal (full)')) {
+      } else if (n.toLowerCase().includes('(full)') && (n.toLowerCase().includes('dal') || n.toLowerCase().includes('kadhi'))) {
         comp.DalFull += q;
       } else if (n.toLowerCase().includes('rice (half)')) {
         comp.RiceHalf += q;

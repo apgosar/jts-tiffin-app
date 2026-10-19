@@ -168,6 +168,17 @@ describe('Order Endpoints', () => {
       name: 'Tester', phone: '9999999999', address: 'Test', locality: 'Test', wingFlat: '1', building: 'Test', street: 'Test'
     };
 
+    beforeAll(async () => {
+      const cur = await request(app).get('/api/menu');
+      await request(app)
+        .put('/api/admin/menu')
+        .set('x-admin-password', 'changeme')
+        .send({
+          items: cur.body.menu,
+          metadata: { ...cur.body.metadata, betaTesting: 'Yes', lunchClosed: 'No', choviarClosed: 'No' }
+        });
+    });
+
     it('should process Lunch and Choviar mixed order', async () => {
       const payload = {
         customer: { ...baseCustomer, pincode: '400092' },
@@ -414,6 +425,47 @@ describe('Order Endpoints', () => {
       expect(parathaRes.statusCode).toEqual(200);
       expect(parathaRes.body.success).toBe(true);
       expect(parathaRes.body.grandTotal).toBe(150);
+    });
+
+    it('should reject Thepla (Choviar) if quantity is less than 6', async () => {
+      const payload = {
+        customer: { ...baseCustomer, pincode: '400092' },
+        items: [{ name: 'Thepla (Choviar)', quantity: 5, price: 12, category: 'Choviar' }],
+        paymentMode: 'Cash'
+      };
+      const res = await request(app).post('/api/orders').send(payload);
+      expect(res.statusCode).toEqual(400);
+      expect(res.body.error).toBe('Minimum order quantity for Thepla is 6 pcs.');
+    });
+
+    it('should accept valid Thepla (Choviar) with min 6 pcs and category Choviar', async () => {
+      // 6 Thepla = 6 * 12 = 72. Surcharge < 250 in borivali = 30. Total = 72 + 30 = 102 => rounded = 100.
+      const payload = {
+        customer: { ...baseCustomer, pincode: '400092' },
+        items: [{ name: 'Thepla (Choviar)', quantity: 6, price: 12, category: 'Choviar' }],
+        paymentMode: 'Cash'
+      };
+      const res = await request(app).post('/api/orders').send(payload);
+      expect(res.statusCode).toEqual(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.grandTotal).toBe(100);
+      expect(res.body.orderId).toBeDefined();
+    });
+
+    it('should correctly price Dal / Kadhi (Half) and Dal / Kadhi (Full)', async () => {
+      const payload = {
+        customer: { ...baseCustomer, pincode: '400092' },
+        items: [
+          { name: 'Dal / Kadhi (Half)', quantity: 2, price: 25 },
+          { name: 'Dal / Kadhi (Full)', quantity: 1, price: 50 }
+        ],
+        paymentMode: 'Cash'
+      };
+      const res = await request(app).post('/api/orders').send(payload);
+      expect(res.statusCode).toEqual(200);
+      expect(res.body.success).toBe(true);
+      // 2 * 25 + 1 * 50 = 100 + 30 delivery charge = 130
+      expect(res.body.grandTotal).toBe(130);
     });
   });
 });

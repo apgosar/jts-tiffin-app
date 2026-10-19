@@ -198,7 +198,7 @@ export default function App() {
           correctPrice = Number(metadata?.rotiPrice) || 8;
         } else if (item.name === `Extra ${breadType}`) {
           correctPrice = getBreadPrice(breadType);
-        } else if (item.name === 'Thepla' || item.name === 'Extra Thepla') {
+        } else if (item.name === 'Thepla' || item.name === 'Extra Thepla' || item.name === 'Thepla (Choviar)') {
           correctPrice = Number(metadata?.theplaPrice) || 12;
         } else {
           const menuItem = menu.find(m => m.name === item.name);

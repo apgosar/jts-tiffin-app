@@ -284,18 +284,17 @@ const RotiItem = ({ metadata, cart, updateQuantity }) => {
   );
 };
 
-const TheplaItem = ({ metadata, cart, updateQuantity }) => {
-  const name = 'Thepla';
+const TheplaItem = ({ metadata, cart, updateQuantity, category = 'Individual', name = 'Thepla', title = 'Thepla' }) => {
   const price = Number(metadata?.theplaPrice) || 12;
   const quantity = cart[name]?.quantity || 0;
   
   const handleInc = () => {
     if (quantity === 0) {
-      updateQuantity(name, 6, { name, price, available: true, category: 'Individual' });
+      updateQuantity(name, 6, { name, title, price, available: true, category, isCustom: true });
     } else {
       const next = Math.min(50, quantity + 1);
       const diff = next - quantity;
-      if (diff > 0) updateQuantity(name, diff, { name, price, available: true, category: 'Individual' });
+      if (diff > 0) updateQuantity(name, diff, { name, title, price, available: true, category, isCustom: true });
     }
   };
 
@@ -310,7 +309,7 @@ const TheplaItem = ({ metadata, cart, updateQuantity }) => {
   return (
     <div className="flex items-center justify-between py-3 border-b border-gray-100 last:border-0">
       <div>
-        <p className="font-bold text-gray-800 text-sm">Thepla</p>
+        <p className="font-bold text-gray-800 text-sm">{title}</p>
         <p className="text-[10px] text-gray-500 mt-0.5 font-bold uppercase tracking-wider">
           ₹{price} / pc <span className="text-jts-red font-semibold ml-1">(Min 6 pcs)</span>
         </p>
@@ -339,9 +338,9 @@ function CustomOrderSection({ cart, updateQuantity, metadata }) {
         />
         
         <VariantItem 
-          title="Dal" 
+          title="Dal / Kadhi" 
           subtitle={metadata?.dal} 
-          namePrefix="Dal" 
+          namePrefix="Dal / Kadhi" 
           halfPrice={metadata?.dalHalfPrice} 
           fullPrice={metadata?.dalFullPrice} 
           cart={cart}
@@ -600,7 +599,7 @@ export default function MenuPage() {
                           {metadata.breadType && <div><span className="text-[10px] text-gray-500 font-bold uppercase tracking-wide block">Bread</span><span className="text-sm font-semibold text-gray-800">{metadata.breadType}</span></div>}
                           {metadata.sabji && <div><span className="text-[10px] text-gray-500 font-bold uppercase tracking-wide block">Sabji</span><span className="text-sm font-semibold text-gray-800">{metadata.sabji}</span></div>}
                           {metadata.sweetAvailable === 'Yes' && metadata.sweet && <div><span className="text-[10px] text-gray-500 font-bold uppercase tracking-wide block">Sweet</span><span className="text-sm font-semibold text-gray-800">{metadata.sweet}</span></div>}
-                          {metadata.dal && <div><span className="text-[10px] text-gray-500 font-bold uppercase tracking-wide block">Dal</span><span className="text-sm font-semibold text-gray-800">{metadata.dal}</span></div>}
+                          {metadata.dal && <div><span className="text-[10px] text-gray-500 font-bold uppercase tracking-wide block">Dal / Kadhi</span><span className="text-sm font-semibold text-gray-800">{metadata.dal}</span></div>}
                           {metadata.farsanAvailable === 'Yes' && metadata.farsan && <div><span className="text-[10px] text-gray-500 font-bold uppercase tracking-wide block">Farsan</span><span className="text-sm font-semibold text-gray-800">{metadata.farsan}</span></div>}
                           {metadata.rice && <div><span className="text-[10px] text-gray-500 font-bold uppercase tracking-wide block">Rice</span><span className="text-sm font-semibold text-gray-800">{metadata.rice}</span></div>}
                           {metadata.namkeenAvailable === 'Yes' && <div><span className="text-[10px] text-gray-500 font-bold uppercase tracking-wide block">Included</span><span className="text-sm font-semibold text-gray-800">Namkeen</span></div>}
@@ -667,27 +666,25 @@ export default function MenuPage() {
                   <TiffinCard key={item.name} item={item} cart={cart} updateQuantity={updateQuantity} animDelay={idx * 70} />
                 ))}
 
-                {choviarMenu.filter(item => !['Choviar Special', 'Choviar', 'Full Choviar', 'Family Choviar'].includes(item.name)).length > 0 && (
-                  <>
-                    <div className="flex items-center gap-2 mb-1 mt-2">
-                      <h2 className="text-2xl font-bold text-gray-800 uppercase" style={{ fontFamily: "'Oswald', Impact, sans-serif" }}>Custom Choviar</h2>
-                      <div className="flex-1 border-b-2 border-gray-300"></div>
-                    </div>
-                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mt-1 px-4 py-1 flex flex-col">
-                      {choviarMenu.filter(item => !['Choviar Special', 'Choviar', 'Full Choviar', 'Family Choviar'].includes(item.name)).map((item, idx) => {
-                        if (item.qty && Number(item.qty) > 1) {
-                          return (
-                            <React.Fragment key={item.name}>
-                              <StepperItem title={`${item.name} (Single)`} name={`${item.name} (Single)`} price={Number(item.price)} description={`1 pc${item.description ? ` (${item.description})` : ''}`} qty={1} cart={cart} updateQuantity={updateQuantity} category="Choviar" isCustom={true} />
-                              <StepperItem title={`${item.name} (Full Plate)`} name={`${item.name} (Full Plate)`} price={Number(item.price) * Number(item.qty)} description={`${item.qty} pcs${item.description ? ` (${item.description})` : ''}`} qty={item.qty} cart={cart} updateQuantity={updateQuantity} category="Choviar" isCustom={true} />
-                            </React.Fragment>
-                          );
-                        }
-                        return <StepperItem key={item.name} title={item.name} name={item.name} price={item.price} description={item.description} qty={item.qty} cart={cart} updateQuantity={updateQuantity} category="Choviar" isCustom={true} />;
-                      })}
-                    </div>
-                  </>
-                )}
+                {/* ── Custom Choviar ── */}
+                <div className="flex items-center gap-2 mb-1 mt-2">
+                  <h2 className="text-2xl font-bold text-gray-800 uppercase" style={{ fontFamily: "'Oswald', Impact, sans-serif" }}>Custom Choviar</h2>
+                  <div className="flex-1 border-b-2 border-gray-300"></div>
+                </div>
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mt-1 px-4 py-1 flex flex-col">
+                  <TheplaItem metadata={metadata} cart={cart} updateQuantity={updateQuantity} category="Choviar" name="Thepla (Choviar)" title="Thepla" />
+                  {choviarMenu.filter(item => !['Choviar Special', 'Choviar', 'Full Choviar', 'Family Choviar', 'Thepla'].includes(item.name)).map((item, idx) => {
+                    if (item.qty && Number(item.qty) > 1) {
+                      return (
+                        <React.Fragment key={item.name}>
+                          <StepperItem title={`${item.name} (Single)`} name={`${item.name} (Single)`} price={Number(item.price)} description={`1 pc${item.description ? ` (${item.description})` : ''}`} qty={1} cart={cart} updateQuantity={updateQuantity} category="Choviar" isCustom={true} />
+                          <StepperItem title={`${item.name} (Full Plate)`} name={`${item.name} (Full Plate)`} price={Number(item.price) * Number(item.qty)} description={`${item.qty} pcs${item.description ? ` (${item.description})` : ''}`} qty={item.qty} cart={cart} updateQuantity={updateQuantity} category="Choviar" isCustom={true} />
+                        </React.Fragment>
+                      );
+                    }
+                    return <StepperItem key={item.name} title={item.name} name={item.name} price={item.price} description={item.description} qty={item.qty} cart={cart} updateQuantity={updateQuantity} category="Choviar" isCustom={true} />;
+                  })}
+                </div>
                 </>
                 )}
               </div>

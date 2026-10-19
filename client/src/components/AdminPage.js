@@ -301,7 +301,7 @@ function AdminNewOrderModal({ password, currentMetadata, currentMenu, onClose, o
       if (bType === 'paratha') return parseFloat(currentMetadata?.parathaPrice) || 12;
       return parseFloat(currentMetadata?.rotiPrice) || 8;
     }
-    if (name === 'Thepla' || name === 'Extra Thepla') {
+    if (name === 'Thepla' || name === 'Extra Thepla' || name === 'Thepla (Choviar)') {
       return parseFloat(currentMetadata?.theplaPrice) || 12;
     }
     return 0;
@@ -1110,10 +1110,10 @@ function MenuTab({ password, currentMenu, currentMetadata, onMenuSaved }) {
           </div>
         </div>
 
-        {/* Dal */}
+        {/* Dal / Kadhi */}
         <div>
-          <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide block mb-1">Dal Name</label>
-          <input type="text" value={metadata.dal || ''} onChange={e => updateMeta('dal', e.target.value)} placeholder="e.g. Gujarati Dal" className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
+          <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide block mb-1">Dal / Kadhi Name</label>
+          <input type="text" value={metadata.dal || ''} onChange={e => updateMeta('dal', e.target.value)} placeholder="e.g. Gujarati Dal / Kadhi" className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
         </div>
 
         {/* Farsan */}
@@ -3759,11 +3759,11 @@ function SettingsTab({ password, currentMetadata, onMetadataSaved }) {
             <input type="number" value={metadata.sabjiFullPrice || ''} onChange={e => updateMeta('sabjiFullPrice', e.target.value)} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
           </div>
           <div>
-            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Dal (Half)</label>
+            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Dal / Kadhi (Half)</label>
             <input type="number" value={metadata.dalHalfPrice || ''} onChange={e => updateMeta('dalHalfPrice', e.target.value)} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
           </div>
           <div>
-            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Dal (Full)</label>
+            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Dal / Kadhi (Full)</label>
             <input type="number" value={metadata.dalFullPrice || ''} onChange={e => updateMeta('dalFullPrice', e.target.value)} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-jts-red focus:outline-none" />
           </div>
           <div>
