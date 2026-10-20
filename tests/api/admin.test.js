@@ -53,6 +53,43 @@ describe('Admin Endpoints', () => {
     });
   });
 
+  describe('PUT /api/admin/orders/:orderId', () => {
+    it('should reject without x-admin-password header', async () => {
+      const res = await request(app).put('/api/admin/orders/O-TEST-1').send({ grandTotal: 250 });
+      expect(res.statusCode).toEqual(401);
+    });
+
+    it('should return 404 for nonexistent order', async () => {
+      const res = await request(app)
+        .put('/api/admin/orders/NONEXISTENT_ORDER_999')
+        .set('x-admin-password', 'changeme')
+        .send({ grandTotal: 250 });
+      expect(res.statusCode).toEqual(404);
+    });
+
+    it('should update grandTotal and status for mock order', async () => {
+      const { MOCK_ORDERS } = require('../../server');
+      MOCK_ORDERS.push({
+        orderId: 'O-UPDATE-TEST-1',
+        phone: '9999911111',
+        name: 'Update Tester',
+        date: '20/10/2026',
+        grandTotal: 140,
+        status: 'ACTIVE'
+      });
+
+      const res = await request(app)
+        .put('/api/admin/orders/O-UPDATE-TEST-1')
+        .set('x-admin-password', 'changeme')
+        .send({ grandTotal: 220, status: 'CANCELLED', cancelledReason: 'Admin manual cancel' });
+      expect(res.statusCode).toEqual(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.order.grandTotal).toBe(220);
+      expect(res.body.order.status).toBe('CANCELLED');
+      expect(res.body.order.cancelledReason).toBe('Admin manual cancel');
+    });
+  });
+
   describe('PUT /api/admin/menu', () => {
     it('should require items array', async () => {
       const res = await request(app).put('/api/admin/menu').set('x-admin-password', 'changeme').send({});

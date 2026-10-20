@@ -11,7 +11,8 @@ import {
   getAdminCustomers,
   createAdminCustomer,
   updateAdminCustomer,
-  createAdminBulkOrder
+  createAdminBulkOrder,
+  updateAdminOrder
 } from '../services/api';
 import { toBlob } from 'html-to-image';
 import * as XLSX from 'xlsx';
@@ -4303,6 +4304,39 @@ function BillingTab({ password }) {
   });
   const [isRecording, setIsRecording] = useState(false);
 
+  const handleEditOrderPrice = async (order) => {
+    const id = order.orderId || order.id;
+    const currentPrice = order.grandTotal || 0;
+    const input = window.prompt(`Edit grand total for order #${id} (${order.date}):`, currentPrice);
+    if (input === null) return;
+    const newTotal = Number(input.trim());
+    if (isNaN(newTotal) || newTotal < 0) {
+      return alert('Please enter a valid positive number');
+    }
+    try {
+      await updateAdminOrder(id, { grandTotal: newTotal }, password);
+      alert('Order price updated successfully!');
+      setSelectedCustomer(null);
+      setRefreshKey(prev => prev + 1);
+    } catch (err) {
+      alert(err.response?.data?.error || err.message || 'Failed to update order price');
+    }
+  };
+
+  const handleCancelOrder = async (order) => {
+    const id = order.orderId || order.id;
+    if (!window.confirm(`Are you sure you want to cancel order #${id} for ${selectedCustomer?.name || 'customer'} on ${order.date}? This will remove it from active billing.`)) return;
+    const reason = window.prompt('Reason for cancellation (optional):', 'Cancelled by Admin') || 'Cancelled by Admin';
+    try {
+      await updateAdminOrder(id, { status: 'CANCELLED', cancelledReason: reason }, password);
+      alert('Order cancelled successfully!');
+      setSelectedCustomer(null);
+      setRefreshKey(prev => prev + 1);
+    } catch (err) {
+      alert(err.response?.data?.error || err.message || 'Failed to cancel order');
+    }
+  };
+
   const handleRecordPayment = async (e) => {
     e.preventDefault();
     if (!selectedCustomer) return;
@@ -5087,6 +5121,27 @@ function BillingTab({ password }) {
                           Payment: ₹{order.paid} received {order.paymentMethod ? `via ${order.paymentMethod}` : ''} {order.paymentDate ? `on ${order.paymentDate}` : ''}
                         </p>
                       )}
+                      <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-gray-200 text-xs">
+                        <span className="text-[11px] text-gray-400 font-mono">#{order.orderId || order.id}</span>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleEditOrderPrice(order)}
+                            className="px-2 py-0.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded text-[11px] font-semibold transition"
+                            title="Edit billed price for this order"
+                          >
+                            ✏️ Edit Price
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleCancelOrder(order)}
+                            className="px-2 py-0.5 bg-red-50 text-red-700 hover:bg-red-100 rounded text-[11px] font-semibold transition"
+                            title="Cancel this order and remove from billing"
+                          >
+                            ❌ Cancel Order
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   );
                 })}

@@ -1980,6 +1980,53 @@ app.put('/api/admin/orders/delivery/batch', adminLimiter, requireAdmin, express.
   }
 });
 
+// PUT /api/admin/orders/:orderId - Admin update order grandTotal, status, or cancellation reason
+app.put('/api/admin/orders/:orderId', adminLimiter, requireAdmin, express.json(), async (req, res) => {
+  const { orderId } = req.params;
+  const { grandTotal, status, cancelledReason } = req.body;
+
+  try {
+    if (USE_MOCK) {
+      const o = MOCK_ORDERS.find(ord => ord.orderId === orderId);
+      if (!o) return res.status(404).json({ error: 'Order not found' });
+      if (grandTotal !== undefined && grandTotal !== null && !isNaN(Number(grandTotal))) {
+        o.grandTotal = Number(grandTotal);
+      }
+      if (status !== undefined) {
+        o.status = status;
+      }
+      if (cancelledReason !== undefined) {
+        o.cancelledReason = cancelledReason;
+      }
+      return res.json({ success: true, order: o });
+    }
+
+    const orderRef = db.collection('orders').doc(orderId);
+    const doc = await orderRef.get();
+    if (!doc.exists) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    const updateData = {};
+    if (grandTotal !== undefined && grandTotal !== null && !isNaN(Number(grandTotal))) {
+      updateData.grandTotal = Number(grandTotal);
+    }
+    if (status !== undefined) {
+      updateData.status = status;
+    }
+    if (cancelledReason !== undefined) {
+      updateData.cancelledReason = cancelledReason;
+    }
+
+    await orderRef.update(updateData);
+    const updatedDoc = await orderRef.get();
+    res.json({ success: true, order: updatedDoc.data() });
+  } catch (err) {
+    console.error(`[PUT /api/admin/orders/${orderId}] Error:`, err);
+    res.status(500).json({ error: 'Failed to update order: ' + err.message });
+  }
+});
+
 app.put('/api/admin/menu', adminLimiter, requireAdmin, async (req, res) => {
   const { items, metadata } = req.body;
   if (!Array.isArray(items) || items.length === 0) {

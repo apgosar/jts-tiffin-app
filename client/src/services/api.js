@@ -51,3 +51,6 @@ export const updateAdminCustomer = (phone, data, password) =>
 export const createAdminBulkOrder = (data, password) =>
   API.post('/api/admin/orders/bulk', data, adminHeaders(password));
 
+export const updateAdminOrder = (orderId, data, password) =>
+  API.put(`/api/admin/orders/${encodeURIComponent(orderId)}`, data, adminHeaders(password));
+
