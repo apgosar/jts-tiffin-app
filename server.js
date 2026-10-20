@@ -1131,6 +1131,17 @@ app.get('/api/customer/billing', publicLimiter, async (req, res) => {
     return new Date(year, month - 1, day);
   };
 
+  const parseDateToComp = (dStr) => {
+    if (!dStr) return 0;
+    const parts = dStr.split('/');
+    if (parts.length !== 3) return 0;
+    const [d, m, y] = parts.map(Number);
+    if (isNaN(d) || isNaN(m) || isNaN(y)) return 0;
+    return y * 10000 + m * 100 + d;
+  };
+  const now = new Date();
+  const todayComp = now.getFullYear() * 10000 + (now.getMonth() + 1) * 100 + now.getDate();
+
   const mapBillingOrder = (o) => {
     const grandTotal = Number(o.grandTotal) || 0;
     let paid = 0;
@@ -1152,6 +1163,9 @@ app.get('/api/customer/billing', publicLimiter, async (req, res) => {
       }
     }
 
+    const orderComp = parseDateToComp(o.date);
+    const isTillDate = orderComp <= todayComp;
+
     return {
       orderId: o.orderId || o.id,
       date: o.date,
@@ -1160,6 +1174,8 @@ app.get('/api/customer/billing', publicLimiter, async (req, res) => {
       grandTotal,
       paid,
       outstanding,
+      isTillDate,
+      isFuture: !isTillDate,
       paymentReceived: !!o.paymentReceived,
       paymentMethod: o.paymentMethod || 'Cash',
       amountReceived: o.amountReceived || '',

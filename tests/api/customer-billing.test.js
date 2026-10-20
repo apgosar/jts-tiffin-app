@@ -52,6 +52,16 @@ describe('Customer Billing Endpoints', () => {
             grandTotal: 150,
             paymentReceived: false,
             status: 'CANCELLED'
+          },
+          {
+            orderId: 'O-BILL-FUTURE',
+            phone: phone,
+            date: '25/12/2099',
+            category: 'Lunch',
+            itemsSummary: 'Full Lunch x 1',
+            grandTotal: 150,
+            paymentReceived: false,
+            status: 'ACTIVE'
           }
         );
       }
@@ -71,12 +81,21 @@ describe('Customer Billing Endpoints', () => {
       expect(paidOrder.paymentReceived).toBe(true);
       expect(paidOrder.paid).toBe(150);
       expect(paidOrder.outstanding).toBe(0);
+      expect(paidOrder.isTillDate).toBe(true);
+      expect(paidOrder.isFuture).toBe(false);
 
       const unpaidOrder = res.body.orders.find(o => o.orderId === 'O-BILL-2');
       expect(unpaidOrder).toBeDefined();
       expect(unpaidOrder.paymentReceived).toBe(false);
       expect(unpaidOrder.paid).toBe(0);
       expect(unpaidOrder.outstanding).toBe(120);
+      expect(unpaidOrder.isTillDate).toBe(true);
+      expect(unpaidOrder.isFuture).toBe(false);
+
+      const futureOrder = res.body.orders.find(o => o.orderId === 'O-BILL-FUTURE');
+      expect(futureOrder).toBeDefined();
+      expect(futureOrder.isTillDate).toBe(false);
+      expect(futureOrder.isFuture).toBe(true);
     });
   });
 });

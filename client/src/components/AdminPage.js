@@ -4239,6 +4239,21 @@ function BulkFoodTab({ password, onSwitchToBilling }) {
   );
 }
 
+// Billing Date Helpers (Integer comparison YYYYMMDD to safely compare dates)
+const parseBillingDateToComp = (dStr) => {
+  if (!dStr) return 0;
+  const parts = dStr.split('/');
+  if (parts.length !== 3) return 0;
+  const [d, m, y] = parts.map(Number);
+  if (isNaN(d) || isNaN(m) || isNaN(y)) return 0;
+  return y * 10000 + m * 100 + d;
+};
+
+const getBillingTodayComp = () => {
+  const now = new Date();
+  return now.getFullYear() * 10000 + (now.getMonth() + 1) * 100 + now.getDate();
+};
+
 // ─── Billing Tab ──────────────────────────────────────────────────────────────
 function BillingTab({ password }) {
   const [monthPickerValue, setMonthPickerValue] = useState(() => {
@@ -4305,7 +4320,16 @@ function BillingTab({ password }) {
              orderId: lastOrder.orderId || lastOrder.id,
              paymentReceived: true,
              paymentMethod: recordMethod,
-             amountReceived: lastOrder.paid + remaining,
+             amountReceived: (lastOrder.paid || 0) + remaining,
+             paymentDate: formattedDate
+           });
+        } else if (selectedCustomer.orders.length > 0) {
+           const lastOrder = selectedCustomer.orders[selectedCustomer.orders.length - 1];
+           updates.push({
+             orderId: lastOrder.orderId || lastOrder.id,
+             paymentReceived: true,
+             paymentMethod: recordMethod,
+             amountReceived: (lastOrder.paid || 0) + remaining,
              paymentDate: formattedDate
            });
         }
@@ -4339,6 +4363,7 @@ function BillingTab({ password }) {
         const res = await getAdminOrders({ month: apiMonth }, password);
         
         const orders = res.data.orders || [];
+        const todayComp = getBillingTodayComp();
         
         // Aggregate all customer orders (both paid and unpaid)
         const groups = {};
@@ -4375,22 +4400,43 @@ function BillingTab({ password }) {
               totalBilled: 0,
               totalPaid: 0,
               totalPending: 0,
+              totalUpcoming: 0,
+              deliveredOrdersCount: 0,
+              upcomingOrdersCount: 0,
               orders: [],
               unpaidOrders: []
             };
           }
           
+          const orderComp = parseBillingDateToComp(order.date);
+          const isTillDate = orderComp <= todayComp;
+          order.isTillDate = isTillDate;
+          order.isFuture = !isTillDate;
           order.outstanding = outstanding;
           order.paid = paid;
 
-          groups[phone].totalBilled += grandTotal;
-          groups[phone].totalPaid += paid;
-          groups[phone].totalPending += outstanding;
           groups[phone].orders.push(order);
-          if (outstanding > 0) {
-            groups[phone].unpaidOrders.push(order);
+
+          if (isTillDate) {
+            groups[phone].totalBilled += grandTotal;
+            groups[phone].totalPaid += paid;
+            groups[phone].deliveredOrdersCount += 1;
+            if (outstanding > 0) {
+              groups[phone].unpaidOrders.push(order);
+            }
+          } else {
+            groups[phone].totalUpcoming += grandTotal;
+            groups[phone].upcomingOrdersCount += 1;
+            if (paid > 0) {
+              groups[phone].totalPaid += paid;
+            }
           }
         }
+
+        // Compute totalPending for each customer based only on orders delivered till date
+        Object.values(groups).forEach(cust => {
+          cust.totalPending = Math.max(0, cust.totalBilled - cust.totalPaid);
+        });
 
         const customerList = Object.values(groups).map(cust => {
           const sortByDate = (a, b) => {
@@ -4492,7 +4538,7 @@ function BillingTab({ password }) {
       lines.push(`*STATUS: PAID IN FULL ✅*`);
       lines.push(`*Balance Due: ₹0/-*`);
     } else {
-      lines.push(`*Pending Orders:*`);
+      lines.push(`*Pending Orders (Till Date):*`);
       (cust.unpaidOrders || []).forEach(o => {
         let line = `• ${o.date}: ${o.itemsSummary} - ₹${o.outstanding}`;
         if (o.paid > 0 && o.outstanding > 0) {
@@ -4504,7 +4550,8 @@ function BillingTab({ password }) {
       });
       lines.push(`--------------------------------`);
       if (cust.totalPaid > 0) {
-        lines.push(`*Total Billed:* ₹${(cust.totalBilled || 0).toLocaleString('en-IN')}/- (${cust.orders.length} orders)`);
+        const billedCount = cust.deliveredOrdersCount || cust.orders.filter(o => o.isTillDate).length;
+        lines.push(`*Total Billed (Till Date):* ₹${(cust.totalBilled || 0).toLocaleString('en-IN')}/- (${billedCount} orders)`);
         lines.push(`*Total Paid:* ₹${(cust.totalPaid || 0).toLocaleString('en-IN')}/-`);
       }
       lines.push(`*Total Pending: ₹${cust.totalPending.toLocaleString('en-IN')}/-*`);
@@ -4546,6 +4593,7 @@ function BillingTab({ password }) {
   const totalBilledAmt = customers.reduce((sum, c) => sum + c.totalBilled, 0);
   const totalPaidAmt = customers.reduce((sum, c) => sum + c.totalPaid, 0);
   const totalPendingAmt = customers.filter(c => c.totalPending > 0).reduce((sum, c) => sum + c.totalPending, 0);
+  const totalUpcomingAmt = customers.reduce((sum, c) => sum + (c.totalUpcoming || 0), 0);
 
   return (
     <div className="space-y-4">
@@ -4652,7 +4700,10 @@ function BillingTab({ password }) {
             <p className="text-lg sm:text-2xl font-black text-gray-900">
               ₹{totalBilledAmt.toLocaleString('en-IN')}/-
             </p>
-            <p className="text-[11px] text-gray-400 mt-0.5">{allTotalCount} customer{allTotalCount === 1 ? '' : 's'}</p>
+            <p className="text-[11px] text-gray-400 mt-0.5">
+              {allTotalCount} customer{allTotalCount === 1 ? '' : 's'}
+              {totalUpcomingAmt > 0 ? ` • ₹${totalUpcomingAmt.toLocaleString('en-IN')} scheduled` : ''}
+            </p>
           </div>
           <div className="px-2">
             <p className="text-xs text-green-600 font-medium mb-0.5 uppercase tracking-wide">Total Received</p>
@@ -4732,7 +4783,8 @@ function BillingTab({ password }) {
                       </span>
                     )}
                     <span className="text-xs text-gray-400">
-                      • {cust.orders.length} order{cust.orders.length === 1 ? '' : 's'} (₹{cust.totalBilled.toLocaleString('en-IN')})
+                      • {cust.deliveredOrdersCount || cust.orders.filter(o => o.isTillDate).length} delivered (₹{cust.totalBilled.toLocaleString('en-IN')})
+                      {cust.upcomingOrdersCount > 0 && ` • ${cust.upcomingOrdersCount} scheduled`}
                       {isPartial && ` • ₹${cust.totalPaid.toLocaleString('en-IN')} paid`}
                     </span>
                   </div>
@@ -4800,13 +4852,21 @@ function BillingTab({ password }) {
                         <div className="flex flex-col">
                           <span className="font-bold text-gray-800">{order.date}</span>
                           <span className="text-xs text-gray-500 mt-0.5">{order.itemsSummary}</span>
-                          {order.outstanding === 0 && <span className="text-[10px] text-green-600 font-bold mt-0.5">Paid ✅</span>}
-                          {order.paid > 0 && order.outstanding > 0 && <span className="text-[10px] text-orange-600 font-bold mt-0.5">Partial: ₹{order.paid} paid</span>}
-                          {order.paid > 0 && order.outstanding < 0 && <span className="text-[10px] text-green-600 font-bold mt-0.5">Excess: ₹{order.paid} paid</span>}
+                          {order.isFuture && !order.paid ? (
+                            <span className="text-[10px] text-blue-600 font-bold mt-0.5">Scheduled 🕒</span>
+                          ) : order.outstanding === 0 ? (
+                            <span className="text-[10px] text-green-600 font-bold mt-0.5">Paid ✅</span>
+                          ) : order.paid > 0 && order.outstanding > 0 ? (
+                            <span className="text-[10px] text-orange-600 font-bold mt-0.5">Partial: ₹{order.paid} paid</span>
+                          ) : order.paid > 0 && order.outstanding < 0 ? (
+                            <span className="text-[10px] text-green-600 font-bold mt-0.5">Excess: ₹{order.paid} paid</span>
+                          ) : (
+                            <span className="text-[10px] text-red-600 font-bold mt-0.5">Due: ₹{order.outstanding}</span>
+                          )}
                         </div>
                         <div className="text-right shrink-0 mt-0.5">
                           <span className="font-bold text-gray-900">₹{(order.grandTotal || 0).toLocaleString('en-IN')}</span>
-                          {order.outstanding > 0 && order.outstanding !== order.grandTotal && (
+                          {!order.isFuture && order.outstanding > 0 && order.outstanding !== order.grandTotal && (
                             <span className="block text-[10px] text-jts-red font-bold">Due: ₹{order.outstanding}</span>
                           )}
                         </div>
@@ -4817,9 +4877,15 @@ function BillingTab({ password }) {
                   {isLastPage && (
                     <div className="space-y-2 mt-6">
                       <div className="flex justify-between items-center text-xs text-gray-500 px-1">
-                        <span>Total Billed ({billOrders.length} orders):</span>
+                        <span>Total Billed ({shareData.deliveredOrdersCount ?? shareData.orders.filter(o => o.isTillDate).length} delivered):</span>
                         <span className="font-bold text-gray-700">₹{(shareData.totalBilled || 0).toLocaleString('en-IN')}/-</span>
                       </div>
+                      {shareData.upcomingOrdersCount > 0 && (
+                        <div className="flex justify-between items-center text-xs text-blue-600 px-1">
+                          <span>Upcoming ({shareData.upcomingOrdersCount} scheduled):</span>
+                          <span className="font-bold">₹{(shareData.totalUpcoming || 0).toLocaleString('en-IN')}/-</span>
+                        </div>
+                      )}
                       {shareData.totalPaid > 0 && (
                         <div className="flex justify-between items-center text-xs text-green-600 px-1">
                           <span>Total Paid:</span>
@@ -4915,7 +4981,7 @@ function BillingTab({ password }) {
               {/* Balance Summary Box */}
               <div className="bg-gray-50 rounded-xl p-3 border border-gray-100 grid grid-cols-3 divide-x divide-gray-200 text-center">
                 <div>
-                  <span className="block text-[11px] text-gray-500 font-medium">Billed</span>
+                  <span className="block text-[11px] text-gray-500 font-medium">Billed (Till Date)</span>
                   <span className="font-bold text-gray-900 text-sm">₹{(selectedCustomer.totalBilled || 0).toLocaleString('en-IN')}</span>
                 </div>
                 <div>
@@ -4923,7 +4989,7 @@ function BillingTab({ password }) {
                   <span className="font-bold text-green-600 text-sm">₹{(selectedCustomer.totalPaid || 0).toLocaleString('en-IN')}</span>
                 </div>
                 <div>
-                  <span className="block text-[11px] text-gray-500 font-medium">Pending</span>
+                  <span className="block text-[11px] text-gray-500 font-medium">Outstanding</span>
                   <span className={`font-black text-sm ${selectedCustomer.totalPending > 0 ? 'text-jts-red' : 'text-green-600'}`}>
                     ₹{(selectedCustomer.totalPending || 0).toLocaleString('en-IN')}
                   </span>
@@ -4961,6 +5027,7 @@ function BillingTab({ password }) {
                 {(modalOrderFilter === 'pending' ? selectedCustomer.unpaidOrders : selectedCustomer.orders).map((order, idx) => {
                   const isOrderPaid = order.outstanding === 0;
                   const isOrderPartial = order.paid > 0 && order.outstanding > 0;
+                  const isOrderFuture = order.isFuture && !isOrderPaid;
                   
                   return (
                     <div key={order.orderId || idx} className="bg-gray-50 rounded-xl p-3 border border-gray-100">
@@ -4971,13 +5038,15 @@ function BillingTab({ password }) {
                             <span className="text-[10px] bg-green-100 text-green-700 font-bold px-1.5 py-0.5 rounded">Paid ✅</span>
                           ) : isOrderPartial ? (
                             <span className="text-[10px] bg-amber-100 text-amber-700 font-bold px-1.5 py-0.5 rounded">Partial ⚠️</span>
+                          ) : isOrderFuture ? (
+                            <span className="text-[10px] bg-blue-100 text-blue-700 font-bold px-1.5 py-0.5 rounded">Scheduled 🕒</span>
                           ) : (
                             <span className="text-[10px] bg-red-100 text-red-700 font-bold px-1.5 py-0.5 rounded">Pending ⏳</span>
                           )}
                         </div>
                         <div className="text-right">
                           <span className="font-bold text-gray-900 text-sm">₹{(order.grandTotal || 0).toLocaleString('en-IN')}</span>
-                          {order.outstanding > 0 && order.outstanding !== order.grandTotal && (
+                          {!isOrderFuture && order.outstanding > 0 && order.outstanding !== order.grandTotal && (
                             <span className="block text-[11px] text-jts-red font-bold">Due: ₹{order.outstanding}</span>
                           )}
                         </div>

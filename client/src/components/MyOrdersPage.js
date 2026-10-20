@@ -4,7 +4,7 @@ import { useCart } from '../App';
 import { 
   ChevronLeft, LogIn, Calendar, XCircle, Search, Edit3, 
   CheckCircle, CreditCard, Package, Copy, Check, AlertCircle, 
-  MessageCircle, QrCode, ArrowUpRight, RefreshCw 
+  MessageCircle, QrCode, ArrowUpRight, RefreshCw, Clock 
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import LoadingSpinner from './LoadingSpinner';
@@ -284,25 +284,51 @@ export default function MyOrdersPage() {
     return new Date(parseInt(y, 10), parseInt(m, 10) - 1, parseInt(d, 10));
   };
 
+  const parseDateToComp = (dStr) => {
+    if (!dStr) return 0;
+    const parts = dStr.split('/');
+    if (parts.length !== 3) return 0;
+    const [d, m, y] = parts.map(Number);
+    if (isNaN(d) || isNaN(m) || isNaN(y)) return 0;
+    return y * 10000 + m * 100 + d;
+  };
+
+  const getTodayComp = () => {
+    const now = new Date();
+    return now.getFullYear() * 10000 + (now.getMonth() + 1) * 100 + now.getDate();
+  };
+
   const startObj = startDate ? new Date(startDate + 'T00:00:00') : null;
   const endObj   = endDate   ? new Date(endDate + 'T23:59:59')   : null;
+
+  const todayComp = getTodayComp();
 
   const filteredBillingOrders = billingOrders.filter(o => {
     const oDate = parseOrderDate(o.date);
     if (startObj && oDate < startObj) return false;
     if (endObj && oDate > endObj) return false;
     return true;
+  }).map(o => {
+    const isTillDate = parseDateToComp(o.date) <= todayComp;
+    return {
+      ...o,
+      isTillDate,
+      isFuture: !isTillDate
+    };
   });
 
-  const totalBilled = filteredBillingOrders.reduce((sum, o) => sum + (Number(o.grandTotal) || 0), 0);
+  const deliveredBillingOrders = filteredBillingOrders.filter(o => o.isTillDate);
+  const upcomingBillingOrders = filteredBillingOrders.filter(o => o.isFuture);
+
+  const totalBilled = deliveredBillingOrders.reduce((sum, o) => sum + (Number(o.grandTotal) || 0), 0);
   const totalPaid = filteredBillingOrders.reduce((sum, o) => sum + (Number(o.paid) || 0), 0);
-  const totalOutstanding = filteredBillingOrders.reduce((sum, o) => sum + (Number(o.outstanding) || 0), 0);
-  const unpaidCount = filteredBillingOrders.filter(o => o.outstanding > 0).length;
-  const paidCount = filteredBillingOrders.filter(o => o.outstanding === 0).length;
+  const totalOutstanding = deliveredBillingOrders.reduce((sum, o) => sum + (Number(o.outstanding) || 0), 0);
+  const unpaidCount = deliveredBillingOrders.filter(o => o.outstanding > 0).length;
+  const paidCount = filteredBillingOrders.filter(o => o.outstanding === 0 || o.paymentReceived).length;
 
   const displayedBillingOrders = filteredBillingOrders.filter(o => {
-    if (billingFilter === 'unpaid') return o.outstanding > 0;
-    if (billingFilter === 'paid') return o.outstanding === 0;
+    if (billingFilter === 'unpaid') return o.isTillDate && o.outstanding > 0;
+    if (billingFilter === 'paid') return o.outstanding === 0 || o.paymentReceived;
     return true;
   });
 
@@ -525,7 +551,10 @@ export default function MyOrdersPage() {
                   <div className="bg-white rounded-2xl p-3.5 shadow-sm border border-gray-100">
                     <p className="text-[11px] text-gray-400 font-bold uppercase tracking-wider">Total Billed</p>
                     <p className="text-xl font-black text-gray-800 mt-0.5">₹{totalBilled.toLocaleString('en-IN')}</p>
-                    <p className="text-[10px] text-gray-500 font-medium mt-0.5">{filteredBillingOrders.length} orders</p>
+                    <p className="text-[10px] text-gray-500 font-medium mt-0.5">
+                      {deliveredBillingOrders.length} delivered
+                      {upcomingBillingOrders.length > 0 && ` • ${upcomingBillingOrders.length} scheduled`}
+                    </p>
                   </div>
                   <div className="bg-white rounded-2xl p-3.5 shadow-sm border border-gray-100">
                     <p className="text-[11px] text-gray-400 font-bold uppercase tracking-wider">Total Paid</p>
@@ -547,7 +576,7 @@ export default function MyOrdersPage() {
                           ₹{totalOutstanding.toLocaleString('en-IN')}
                         </p>
                         <p className="text-xs text-red-100/90 font-medium mt-1">
-                          {unpaidCount} unpaid {unpaidCount === 1 ? 'order' : 'orders'} in selected period
+                          {unpaidCount} unpaid {unpaidCount === 1 ? 'order' : 'orders'} delivered till date
                         </p>
                       </div>
                       <div className="w-10 h-10 rounded-2xl bg-white/10 flex items-center justify-center backdrop-blur-sm">
@@ -623,14 +652,15 @@ export default function MyOrdersPage() {
                   ) : (
                     <div className="space-y-2.5">
                       {displayedBillingOrders.map(order => {
-                        const isPaid = order.outstanding === 0;
+                        const isPaid = order.outstanding === 0 || order.paymentReceived;
                         const isPartial = order.paid > 0 && order.outstanding > 0;
+                        const isScheduled = order.isFuture && !isPaid;
 
                         return (
                           <div 
                             key={order.orderId} 
                             className={`bg-white rounded-2xl p-4 shadow-sm border transition ${
-                              isPaid ? 'border-gray-200' : 'border-red-200 bg-red-50/10'
+                              isPaid ? 'border-gray-200' : isScheduled ? 'border-blue-200 bg-blue-50/10' : 'border-red-200 bg-red-50/10'
                             }`}
                           >
                             <div className="flex justify-between items-start">
@@ -681,6 +711,16 @@ export default function MyOrdersPage() {
                                     </span>
                                     <span className="text-[10px] font-bold text-jts-red mt-0.5">
                                       Due: ₹{order.outstanding} (₹{order.paid} paid)
+                                    </span>
+                                  </div>
+                                ) : isScheduled ? (
+                                  <div className="flex flex-col items-end">
+                                    <span className="inline-flex items-center gap-1 bg-blue-100 text-blue-800 text-xs font-bold px-2.5 py-1 rounded-full">
+                                      <Clock size={12} />
+                                      Scheduled
+                                    </span>
+                                    <span className="text-[10px] font-semibold text-blue-600 mt-0.5">
+                                      Billed on delivery
                                     </span>
                                   </div>
                                 ) : (
