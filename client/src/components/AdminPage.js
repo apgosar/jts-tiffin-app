@@ -4032,16 +4032,16 @@ function BulkFoodTab({ password, onSwitchToBilling }) {
             </span>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+          <div className="overflow-x-auto pb-1">
+            <table className="w-full text-left text-xs min-w-[500px]">
               <thead>
                 <tr className="border-b border-gray-200 text-gray-500 font-bold uppercase tracking-wider">
-                  <th className="py-2 px-1 w-8 text-center">#</th>
-                  <th className="py-2 px-2">Item Name *</th>
-                  <th className="py-2 px-2 w-24">Qty *</th>
-                  <th className="py-2 px-2 w-28">Price (₹) *</th>
-                  <th className="py-2 px-2 w-28 text-right">Total (₹)</th>
-                  <th className="py-2 px-1 w-10 text-center"></th>
+                  <th className="py-2 px-1 w-7 text-center">#</th>
+                  <th className="py-2 px-2 min-w-[180px] whitespace-nowrap">Item Name *</th>
+                  <th className="py-2 px-1.5 w-16 sm:w-20 text-center whitespace-nowrap">Qty *</th>
+                  <th className="py-2 px-1.5 w-20 sm:w-24 text-right whitespace-nowrap">Price (₹) *</th>
+                  <th className="py-2 px-2 w-20 sm:w-24 text-right whitespace-nowrap">Total (₹)</th>
+                  <th className="py-2 px-1 w-8 text-center"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -4055,17 +4055,17 @@ function BulkFoodTab({ password, onSwitchToBilling }) {
                       <td className="py-2 px-1 text-center font-bold text-gray-400">
                         {idx + 1}
                       </td>
-                      <td className="py-2 px-2">
+                      <td className="py-2 px-2 min-w-[180px]">
                         <input
                           type="text"
                           placeholder="Item Name"
                           value={row.item}
                           onChange={e => handleItemChange(idx, 'item', e.target.value)}
-                          className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-jts-red"
+                          className="w-full min-w-[170px] px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-jts-red"
                           required
                         />
                       </td>
-                      <td className="py-2 px-2">
+                      <td className="py-2 px-1.5 w-16 sm:w-20">
                         <input
                           type="number"
                           min="1"
@@ -4073,11 +4073,11 @@ function BulkFoodTab({ password, onSwitchToBilling }) {
                           placeholder="Qty"
                           value={row.quantity}
                           onChange={e => handleItemChange(idx, 'quantity', e.target.value)}
-                          className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs font-bold text-center focus:outline-none focus:ring-1 focus:ring-jts-red"
+                          className="w-full px-1.5 py-1.5 border border-gray-200 rounded-lg text-xs font-bold text-center focus:outline-none focus:ring-1 focus:ring-jts-red"
                           required
                         />
                       </td>
-                      <td className="py-2 px-2">
+                      <td className="py-2 px-1.5 w-20 sm:w-24">
                         <input
                           type="number"
                           min="0"
@@ -4085,11 +4085,11 @@ function BulkFoodTab({ password, onSwitchToBilling }) {
                           placeholder="Rate ₹"
                           value={row.price}
                           onChange={e => handleItemChange(idx, 'price', e.target.value)}
-                          className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs font-bold text-right focus:outline-none focus:ring-1 focus:ring-jts-red"
+                          className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-xs font-bold text-right focus:outline-none focus:ring-1 focus:ring-jts-red"
                           required
                         />
                       </td>
-                      <td className="py-2 px-2 text-right font-black text-gray-800 text-xs">
+                      <td className="py-2 px-2 text-right font-black text-gray-800 text-xs whitespace-nowrap">
                         ₹{rowTotal.toLocaleString('en-IN')}
                       </td>
                       <td className="py-2 px-1 text-center">
