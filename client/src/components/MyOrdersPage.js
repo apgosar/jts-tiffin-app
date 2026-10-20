@@ -324,11 +324,11 @@ export default function MyOrdersPage() {
   const totalPaid = filteredBillingOrders.reduce((sum, o) => sum + (Number(o.paid) || 0), 0);
   const totalOutstanding = deliveredBillingOrders.reduce((sum, o) => sum + (Number(o.outstanding) || 0), 0);
   const unpaidCount = deliveredBillingOrders.filter(o => o.outstanding > 0).length;
-  const paidCount = filteredBillingOrders.filter(o => o.outstanding === 0 || o.paymentReceived).length;
+  const paidCount = filteredBillingOrders.filter(o => o.outstanding <= 0 || o.paymentReceived || (o.paid >= o.grandTotal && o.grandTotal > 0)).length;
 
   const displayedBillingOrders = filteredBillingOrders.filter(o => {
     if (billingFilter === 'unpaid') return o.isTillDate && o.outstanding > 0;
-    if (billingFilter === 'paid') return o.outstanding === 0 || o.paymentReceived;
+    if (billingFilter === 'paid') return o.outstanding <= 0 || o.paymentReceived || (o.paid >= o.grandTotal && o.grandTotal > 0);
     return true;
   });
 
@@ -652,7 +652,7 @@ export default function MyOrdersPage() {
                   ) : (
                     <div className="space-y-2.5">
                       {displayedBillingOrders.map(order => {
-                        const isPaid = order.outstanding === 0 || order.paymentReceived;
+                        const isPaid = order.outstanding <= 0 || order.paymentReceived || (order.paid >= order.grandTotal && order.grandTotal > 0);
                         const isPartial = order.paid > 0 && order.outstanding > 0;
                         const isScheduled = order.isFuture && !isPaid;
 

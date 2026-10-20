@@ -1296,51 +1296,95 @@ app.get('/api/customer/billing', publicLimiter, async (req, res) => {
   const istTime = new Date(utc + (3600000 * 5.5));
   const todayComp = istTime.getFullYear() * 10000 + (istTime.getMonth() + 1) * 100 + istTime.getDate();
 
-  const mapBillingOrder = (o) => {
-    const grandTotal = Number(o.grandTotal) || 0;
-    let paid = 0;
-    let outstanding = grandTotal;
+  const allocateCustomerBillingOrders = (ordersList) => {
+    // Sort chronologically ascending
+    const sorted = [...ordersList].sort((a, b) => parseDate(a.date) - parseDate(b.date));
 
-    if (o.paymentReceived) {
-      if (o.amountReceived !== undefined && o.amountReceived !== '') {
-        const amt = Number(o.amountReceived);
-        if (!isNaN(amt)) {
-          paid = amt;
-          outstanding = grandTotal - paid;
+    // Pass 1: compute direct paid, self-allocation and excess
+    sorted.forEach(o => {
+      const grandTotal = Number(o.grandTotal) || 0;
+      let directPaid = 0;
+      if (o.paymentReceived) {
+        if (o.amountReceived !== undefined && o.amountReceived !== '') {
+          const amt = Number(o.amountReceived);
+          directPaid = !isNaN(amt) ? amt : grandTotal;
         } else {
-          paid = grandTotal;
-          outstanding = 0;
+          directPaid = grandTotal;
         }
-      } else {
-        paid = grandTotal;
-        outstanding = 0;
       }
-    }
+      o.directPaid = directPaid;
+      const appliedToSelf = Math.min(grandTotal, directPaid);
+      o.paid = appliedToSelf;
+      o.outstanding = Math.max(0, grandTotal - appliedToSelf);
+      o.excessPaid = Math.max(0, directPaid - grandTotal);
+      o.creditNotes = [];
+    });
 
-    const orderComp = parseDateToComp(o.date);
-    const isTillDate = orderComp <= todayComp;
+    // Pass 2: credit excess to previous outstanding orders, then subsequent
+    sorted.forEach((o, idx) => {
+      if (o.excessPaid <= 0) return;
+      let remaining = o.excessPaid;
 
-    return {
-      orderId: o.orderId || o.id,
-      date: o.date,
-      category: o.category || 'Lunch',
-      itemsSummary: o.itemsSummary || (o.items || []).map(i => `${i.name}x${i.quantity}`).join(', '),
-      grandTotal,
-      paid,
-      outstanding,
-      isTillDate,
-      isFuture: !isTillDate,
-      paymentReceived: !!o.paymentReceived,
-      paymentMethod: o.paymentMethod || 'Cash',
-      amountReceived: o.amountReceived || '',
-      paymentDate: o.paymentDate || '',
-      status: o.status || 'ACTIVE'
-    };
+      // 1. Credit previous unpaid orders
+      for (let prevIdx = idx - 1; prevIdx >= 0 && remaining > 0; prevIdx--) {
+        const prev = sorted[prevIdx];
+        if (prev.outstanding > 0) {
+          const credit = Math.min(prev.outstanding, remaining);
+          prev.paid += credit;
+          prev.outstanding -= credit;
+          prev.creditNotes.push(`₹${credit} credited from payment on ${o.date}`);
+          o.creditNotes.push(`₹${credit} applied to ${prev.date} order`);
+          remaining -= credit;
+        }
+      }
+
+      // 2. Credit subsequent unpaid orders if excess remains
+      for (let nextIdx = idx + 1; nextIdx < sorted.length && remaining > 0; nextIdx++) {
+        const next = sorted[nextIdx];
+        if (next.outstanding > 0) {
+          const credit = Math.min(next.outstanding, remaining);
+          next.paid += credit;
+          next.outstanding -= credit;
+          next.creditNotes.push(`₹${credit} credited from advance payment on ${o.date}`);
+          o.creditNotes.push(`₹${credit} applied in advance to ${next.date} order`);
+          remaining -= credit;
+        }
+      }
+
+      if (remaining > 0) {
+        o.paid += remaining;
+      }
+    });
+
+    return sorted.map(o => {
+      const grandTotal = Number(o.grandTotal) || 0;
+      const orderComp = parseDateToComp(o.date);
+      const isTillDate = orderComp <= todayComp;
+
+      return {
+        orderId: o.orderId || o.id,
+        date: o.date,
+        category: o.category || 'Lunch',
+        itemsSummary: o.itemsSummary || (o.items || []).map(i => `${i.name}x${i.quantity}`).join(', '),
+        grandTotal,
+        paid: o.paid,
+        directPaid: o.directPaid,
+        outstanding: o.outstanding,
+        isTillDate,
+        isFuture: !isTillDate,
+        paymentReceived: o.outstanding === 0 || !!o.paymentReceived,
+        paymentMethod: o.paymentMethod || 'Cash',
+        amountReceived: o.amountReceived || '',
+        paymentDate: o.paymentDate || '',
+        status: o.status || 'ACTIVE',
+        creditNotes: o.creditNotes || []
+      };
+    }).sort((a, b) => parseDate(b.date) - parseDate(a.date));
   };
 
   if (USE_MOCK) {
     const orders = MOCK_ORDERS.filter(o => o.phone === queryPhone && o.status !== 'CANCELLED');
-    const mapped = orders.map(mapBillingOrder).sort((a, b) => parseDate(b.date) - parseDate(a.date));
+    const mapped = allocateCustomerBillingOrders(orders);
     const customer = MOCK_CUSTOMERS.find(c => c.phone === queryPhone) || { phone: queryPhone };
     return res.json({
       success: true,
@@ -1363,7 +1407,7 @@ app.get('/api/customer/billing', publicLimiter, async (req, res) => {
       .map(doc => ({ id: doc.id, ...doc.data() }))
       .filter(o => o.status !== 'CANCELLED');
 
-    const mapped = orders.map(mapBillingOrder).sort((a, b) => parseDate(b.date) - parseDate(a.date));
+    const mapped = allocateCustomerBillingOrders(orders);
     const custData = custSnap.exists ? custSnap.data() : {};
 
     res.json({

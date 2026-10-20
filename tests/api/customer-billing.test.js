@@ -97,5 +97,51 @@ describe('Customer Billing Endpoints', () => {
       expect(futureOrder.isTillDate).toBe(false);
       expect(futureOrder.isFuture).toBe(true);
     });
+
+    it('should smartly credit excess payment from an order to previous outstanding order', async () => {
+      const creditPhone = '9991112222';
+      const { MOCK_ORDERS } = require('../../server');
+      MOCK_ORDERS.push(
+        {
+          orderId: 'O-CREDIT-1',
+          phone: creditPhone,
+          date: '01/10/2026',
+          category: 'Lunch',
+          itemsSummary: 'Mini Lunch x 1',
+          grandTotal: 140,
+          paymentReceived: false,
+          status: 'ACTIVE'
+        },
+        {
+          orderId: 'O-CREDIT-2',
+          phone: creditPhone,
+          date: '02/10/2026',
+          category: 'Lunch',
+          itemsSummary: 'Mini Lunch x 1',
+          grandTotal: 140,
+          paymentReceived: true,
+          amountReceived: '280',
+          paymentMethod: 'Cash',
+          status: 'ACTIVE'
+        }
+      );
+
+      const res = await request(app).get(`/api/customer/billing?phone=${creditPhone}`);
+      expect(res.statusCode).toEqual(200);
+      expect(res.body.success).toBe(true);
+
+      const order1 = res.body.orders.find(o => o.orderId === 'O-CREDIT-1');
+      const order2 = res.body.orders.find(o => o.orderId === 'O-CREDIT-2');
+
+      expect(order1).toBeDefined();
+      expect(order1.paid).toBe(140);
+      expect(order1.outstanding).toBe(0);
+      expect(order1.paymentReceived).toBe(true);
+
+      expect(order2).toBeDefined();
+      expect(order2.paid).toBe(140);
+      expect(order2.outstanding).toBe(0);
+      expect(order2.paymentReceived).toBe(true);
+    });
   });
 });

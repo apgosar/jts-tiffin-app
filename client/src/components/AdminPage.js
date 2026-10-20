@@ -11,8 +11,7 @@ import {
   getAdminCustomers,
   createAdminCustomer,
   updateAdminCustomer,
-  createAdminBulkOrder,
-  updateAdminOrder
+  createAdminBulkOrder
 } from '../services/api';
 import { toBlob } from 'html-to-image';
 import * as XLSX from 'xlsx';
@@ -4304,39 +4303,6 @@ function BillingTab({ password }) {
   });
   const [isRecording, setIsRecording] = useState(false);
 
-  const handleEditOrderPrice = async (order) => {
-    const id = order.orderId || order.id;
-    const currentPrice = order.grandTotal || 0;
-    const input = window.prompt(`Edit grand total for order #${id} (${order.date}):`, currentPrice);
-    if (input === null) return;
-    const newTotal = Number(input.trim());
-    if (isNaN(newTotal) || newTotal < 0) {
-      return alert('Please enter a valid positive number');
-    }
-    try {
-      await updateAdminOrder(id, { grandTotal: newTotal }, password);
-      alert('Order price updated successfully!');
-      setSelectedCustomer(null);
-      setRefreshKey(prev => prev + 1);
-    } catch (err) {
-      alert(err.response?.data?.error || err.message || 'Failed to update order price');
-    }
-  };
-
-  const handleCancelOrder = async (order) => {
-    const id = order.orderId || order.id;
-    if (!window.confirm(`Are you sure you want to cancel order #${id} for ${selectedCustomer?.name || 'customer'} on ${order.date}? This will remove it from active billing.`)) return;
-    const reason = window.prompt('Reason for cancellation (optional):', 'Cancelled by Admin') || 'Cancelled by Admin';
-    try {
-      await updateAdminOrder(id, { status: 'CANCELLED', cancelledReason: reason }, password);
-      alert('Order cancelled successfully!');
-      setSelectedCustomer(null);
-      setRefreshKey(prev => prev + 1);
-    } catch (err) {
-      alert(err.response?.data?.error || err.message || 'Failed to cancel order');
-    }
-  };
-
   const handleRecordPayment = async (e) => {
     e.preventDefault();
     if (!selectedCustomer) return;
@@ -4427,26 +4393,6 @@ function BillingTab({ password }) {
         for (const order of orders) {
           if (order.status === 'CANCELLED') continue;
           
-          const grandTotal = Number(order.grandTotal) || 0;
-          let outstanding = grandTotal;
-          let paid = 0;
-
-          if (order.paymentReceived) {
-            if (order.amountReceived !== undefined && order.amountReceived !== '') {
-              const amount = Number(order.amountReceived);
-              if (!isNaN(amount)) {
-                paid = amount;
-                outstanding = grandTotal - paid;
-              } else {
-                paid = grandTotal;
-                outstanding = 0; // Fully paid
-              }
-            } else {
-              paid = grandTotal;
-              outstanding = 0; // Fully paid
-            }
-          }
-          
           const phone = order.phone || 'Unknown';
           if (!groups[phone]) {
             groups[phone] = {
@@ -4463,47 +4409,103 @@ function BillingTab({ password }) {
               unpaidOrders: []
             };
           }
-          
-          const orderComp = parseBillingDateToComp(order.date);
-          const isTillDate = orderComp <= todayComp;
-          order.isTillDate = isTillDate;
-          order.isFuture = !isTillDate;
-          order.outstanding = outstanding;
-          order.paid = paid;
-
           groups[phone].orders.push(order);
-
-          if (isTillDate) {
-            groups[phone].totalBilled += grandTotal;
-            groups[phone].totalPaid += paid;
-            groups[phone].deliveredOrdersCount += 1;
-            if (outstanding > 0) {
-              groups[phone].unpaidOrders.push(order);
-            }
-          } else {
-            groups[phone].totalUpcoming += grandTotal;
-            groups[phone].upcomingOrdersCount += 1;
-            if (paid > 0) {
-              groups[phone].totalPaid += paid;
-            }
-          }
         }
 
-        // Compute totalPending for each customer based only on orders delivered till date
+        const sortByDateAsc = (a, b) => {
+          const [d1, m1, y1] = (a.date || '').split('/').map(Number);
+          const [d2, m2, y2] = (b.date || '').split('/').map(Number);
+          return new Date(y1, m1 - 1, d1) - new Date(y2, m2 - 1, d2);
+        };
+
+        // For each customer, smartly allocate payments across their orders
         Object.values(groups).forEach(cust => {
+          cust.orders.sort(sortByDateAsc);
+
+          // Pass 1: compute direct payment, self-allocation, and excess for each order
+          cust.orders.forEach(order => {
+            const grandTotal = Number(order.grandTotal) || 0;
+            let directPaid = 0;
+            if (order.paymentReceived) {
+              if (order.amountReceived !== undefined && order.amountReceived !== '') {
+                const amount = Number(order.amountReceived);
+                directPaid = !isNaN(amount) ? amount : grandTotal;
+              } else {
+                directPaid = grandTotal;
+              }
+            }
+            order.directPaid = directPaid;
+            const appliedToSelf = Math.min(grandTotal, directPaid);
+            order.paid = appliedToSelf;
+            order.outstanding = Math.max(0, grandTotal - appliedToSelf);
+            order.excessPaid = Math.max(0, directPaid - grandTotal);
+            order.creditNotes = [];
+          });
+
+          // Pass 2: credit excess to previous outstanding orders, then forward to upcoming
+          cust.orders.forEach((order, idx) => {
+            if (order.excessPaid <= 0) return;
+            let remaining = order.excessPaid;
+
+            // 1. Credit previous unpaid orders
+            for (let prevIdx = idx - 1; prevIdx >= 0 && remaining > 0; prevIdx--) {
+              const prev = cust.orders[prevIdx];
+              if (prev.outstanding > 0) {
+                const credit = Math.min(prev.outstanding, remaining);
+                prev.paid += credit;
+                prev.outstanding -= credit;
+                prev.creditNotes.push(`₹${credit} credited from payment on ${order.date}`);
+                order.creditNotes.push(`₹${credit} applied to ${prev.date} order`);
+                remaining -= credit;
+              }
+            }
+
+            // 2. Credit subsequent unpaid orders if excess remains
+            for (let nextIdx = idx + 1; nextIdx < cust.orders.length && remaining > 0; nextIdx++) {
+              const next = cust.orders[nextIdx];
+              if (next.outstanding > 0) {
+                const credit = Math.min(next.outstanding, remaining);
+                next.paid += credit;
+                next.outstanding -= credit;
+                next.creditNotes.push(`₹${credit} credited from advance payment on ${order.date}`);
+                order.creditNotes.push(`₹${credit} applied in advance to ${next.date} order`);
+                remaining -= credit;
+              }
+            }
+
+            if (remaining > 0) {
+              order.paid += remaining;
+            }
+          });
+
+          // Pass 3: aggregate totals and categorize delivered vs upcoming
+          cust.orders.forEach(order => {
+            const grandTotal = Number(order.grandTotal) || 0;
+            const orderComp = parseBillingDateToComp(order.date);
+            const isTillDate = orderComp <= todayComp;
+            order.isTillDate = isTillDate;
+            order.isFuture = !isTillDate;
+
+            if (isTillDate) {
+              cust.totalBilled += grandTotal;
+              cust.totalPaid += order.paid;
+              cust.deliveredOrdersCount += 1;
+              if (order.outstanding > 0) {
+                cust.unpaidOrders.push(order);
+              }
+            } else {
+              cust.totalUpcoming += grandTotal;
+              cust.upcomingOrdersCount += 1;
+              if (order.paid > 0) {
+                cust.totalPaid += order.paid;
+              }
+            }
+          });
+
           cust.totalPending = Math.max(0, cust.totalBilled - cust.totalPaid);
         });
 
-        const customerList = Object.values(groups).map(cust => {
-          const sortByDate = (a, b) => {
-            const [d1, m1, y1] = (a.date || '').split('/');
-            const [d2, m2, y2] = (b.date || '').split('/');
-            return new Date(y1, m1 - 1, d1) - new Date(y2, m2 - 1, d2);
-          };
-          cust.orders.sort(sortByDate);
-          cust.unpaidOrders.sort(sortByDate);
-          return cust;
-        }).sort((a, b) => a.name.localeCompare(b.name));
+        const customerList = Object.values(groups).sort((a, b) => a.name.localeCompare(b.name));
 
         setCustomers(customerList);
       } catch (err) {
@@ -4910,12 +4912,10 @@ function BillingTab({ password }) {
                           <span className="text-xs text-gray-500 mt-0.5">{order.itemsSummary}</span>
                           {order.isFuture && !order.paid ? (
                             <span className="text-[10px] text-blue-600 font-bold mt-0.5">Scheduled 🕒</span>
-                          ) : order.outstanding === 0 ? (
+                          ) : order.outstanding <= 0 || order.paid >= order.grandTotal ? (
                             <span className="text-[10px] text-green-600 font-bold mt-0.5">Paid ✅</span>
                           ) : order.paid > 0 && order.outstanding > 0 ? (
                             <span className="text-[10px] text-orange-600 font-bold mt-0.5">Partial: ₹{order.paid} paid</span>
-                          ) : order.paid > 0 && order.outstanding < 0 ? (
-                            <span className="text-[10px] text-green-600 font-bold mt-0.5">Excess: ₹{order.paid} paid</span>
                           ) : (
                             <span className="text-[10px] text-red-600 font-bold mt-0.5">Due: ₹{order.outstanding}</span>
                           )}
@@ -5089,7 +5089,7 @@ function BillingTab({ password }) {
 
               <div className="space-y-2.5">
                 {(modalOrderFilter === 'pending' ? selectedCustomer.unpaidOrders : selectedCustomer.orders).map((order, idx) => {
-                  const isOrderPaid = order.outstanding === 0;
+                  const isOrderPaid = order.outstanding <= 0 || order.paid >= order.grandTotal;
                   const isOrderPartial = order.paid > 0 && order.outstanding > 0;
                   const isOrderFuture = order.isFuture && !isOrderPaid;
                   
@@ -5116,32 +5116,20 @@ function BillingTab({ password }) {
                         </div>
                       </div>
                       <p className="text-xs text-gray-600 leading-relaxed">{order.itemsSummary}</p>
-                      {order.paid > 0 && (
+                      {order.directPaid > 0 && (
                         <p className="text-[11px] text-green-700 font-medium mt-1 pt-1 border-t border-gray-100 border-dashed">
-                          Payment: ₹{order.paid} received {order.paymentMethod ? `via ${order.paymentMethod}` : ''} {order.paymentDate ? `on ${order.paymentDate}` : ''}
+                          Payment: ₹{order.directPaid} received {order.paymentMethod ? `via ${order.paymentMethod}` : ''} {order.paymentDate ? `on ${order.paymentDate}` : ''}
                         </p>
                       )}
-                      <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-gray-200 text-xs">
-                        <span className="text-[11px] text-gray-400 font-mono">#{order.orderId || order.id}</span>
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => handleEditOrderPrice(order)}
-                            className="px-2 py-0.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded text-[11px] font-semibold transition"
-                            title="Edit billed price for this order"
-                          >
-                            ✏️ Edit Price
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleCancelOrder(order)}
-                            className="px-2 py-0.5 bg-red-50 text-red-700 hover:bg-red-100 rounded text-[11px] font-semibold transition"
-                            title="Cancel this order and remove from billing"
-                          >
-                            ❌ Cancel Order
-                          </button>
+                      {order.creditNotes && order.creditNotes.length > 0 && (
+                        <div className="mt-1 space-y-0.5 pt-1 border-t border-gray-100 border-dashed">
+                          {order.creditNotes.map((note, nIdx) => (
+                            <p key={nIdx} className="text-[11px] text-emerald-600 font-medium">
+                              ↳ {note}
+                            </p>
+                          ))}
                         </div>
-                      </div>
+                      )}
                     </div>
                   );
                 })}
