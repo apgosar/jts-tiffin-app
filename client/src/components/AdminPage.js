@@ -934,13 +934,26 @@ function MenuTab({ password, currentMenu, currentMetadata, onMenuSaved }) {
     });
   };
 
+  const today = new Date();
+  const todayLabel = today.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
+  const todayDateStr = `${String(today.getDate()).padStart(2, '0')}/${String(today.getMonth() + 1).padStart(2, '0')}/${today.getFullYear()}`;
+
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowLabel = tomorrow.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
+  const tomorrowDateStr = `${String(tomorrow.getDate()).padStart(2, '0')}/${String(tomorrow.getMonth() + 1).padStart(2, '0')}/${tomorrow.getFullYear()}`;
+
   const handleSave = async () => {
     setSaving(true);
     setMsg('');
     try {
-      const res = await updateAdminMenu({ items, metadata }, password);
-      const updatedCount = res.data?.updatedRecurringCount;
-      const recMsg = updatedCount > 0 ? ` Applied new prices to ${updatedCount} recurring orders.` : '';
+      const targetSyncDate = metadata.liveMenuDate || tomorrowDateStr;
+      const res = await updateAdminMenu({ items, metadata, targetDate: targetSyncDate }, password);
+      const updatedCount = res.data?.updatedRecurringCount || 0;
+      const cancelledCount = res.data?.cancelledRecurringCount || 0;
+      let recMsg = '';
+      if (updatedCount > 0) recMsg += ` Applied new prices to ${updatedCount} recurring orders.`;
+      if (cancelledCount > 0) recMsg += ` Cancelled ${cancelledCount} recurring orders due to meal closure.`;
       setMsg(`✅ Menu saved successfully!${recMsg}`);
       // Notify parent so currentMenu stays in sync — prevents qty/fields resetting on tab switch
       if (onMenuSaved) onMenuSaved(items, metadata);
@@ -965,9 +978,12 @@ function MenuTab({ password, currentMenu, currentMetadata, onMenuSaved }) {
     setSaving(true);
     setMsg('');
     try {
-      const res = await updateAdminMenu({ items, metadata: newMeta }, password);
-      const updatedCount = res.data?.updatedRecurringCount;
-      const recMsg = updatedCount > 0 ? ` Applied new prices to ${updatedCount} recurring orders.` : '';
+      const res = await updateAdminMenu({ items, metadata: newMeta, targetDate: dateStr }, password);
+      const updatedCount = res.data?.updatedRecurringCount || 0;
+      const cancelledCount = res.data?.cancelledRecurringCount || 0;
+      let recMsg = '';
+      if (updatedCount > 0) recMsg += ` Applied new prices to ${updatedCount} recurring orders.`;
+      if (cancelledCount > 0) recMsg += ` Cancelled ${cancelledCount} recurring orders due to meal closure.`;
       setMsg(`✅ Menu is now LIVE for ${target === 'today' ? 'TODAY' : 'TOMORROW'} (${dateStr})!${recMsg}`);
       if (onMenuSaved) onMenuSaved(items, newMeta);
     } catch (err) {
@@ -979,13 +995,17 @@ function MenuTab({ password, currentMenu, currentMetadata, onMenuSaved }) {
   };
 
   const handleSyncRecurring = async () => {
-    if (!metadata.liveMenuDate) return;
+    const syncDate = metadata.liveMenuDate || tomorrowDateStr;
+    if (!syncDate) return;
     setSaving(true);
     setMsg('');
     try {
-      const res = await recalculateRecurringOrders(metadata.liveMenuDate, password);
+      const res = await recalculateRecurringOrders(syncDate, password);
       const count = res.data?.count || 0;
-      setMsg(`✅ Synced ${count} recurring orders for ${metadata.liveMenuDate} with latest menu prices!`);
+      const cancelled = res.data?.cancelledCount || 0;
+      let syncMsg = `✅ Synced ${count} recurring orders for ${syncDate} with latest menu prices!`;
+      if (cancelled > 0) syncMsg += ` (${cancelled} cancelled due to meal closure)`;
+      setMsg(syncMsg);
     } catch (err) {
       setMsg('❌ ' + (err.response?.data?.error || 'Failed to sync recurring orders.'));
     } finally {
@@ -993,15 +1013,6 @@ function MenuTab({ password, currentMenu, currentMetadata, onMenuSaved }) {
       setTimeout(() => setMsg(''), 5000);
     }
   };
-
-  const today = new Date();
-  const todayLabel = today.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
-  const todayDateStr = `${String(today.getDate()).padStart(2, '0')}/${String(today.getMonth() + 1).padStart(2, '0')}/${today.getFullYear()}`;
-
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const tomorrowLabel = tomorrow.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
-  const tomorrowDateStr = `${String(tomorrow.getDate()).padStart(2, '0')}/${String(tomorrow.getMonth() + 1).padStart(2, '0')}/${tomorrow.getFullYear()}`;
 
   return (
     <div className="flex flex-col gap-4">
@@ -4242,16 +4253,27 @@ function BulkFoodTab({ password, onSwitchToBilling }) {
 // Billing Date Helpers (Integer comparison YYYYMMDD to safely compare dates)
 const parseBillingDateToComp = (dStr) => {
   if (!dStr) return 0;
-  const parts = dStr.split('/');
-  if (parts.length !== 3) return 0;
-  const [d, m, y] = parts.map(Number);
-  if (isNaN(d) || isNaN(m) || isNaN(y)) return 0;
-  return y * 10000 + m * 100 + d;
+  if (dStr.includes('/')) {
+    const parts = dStr.split('/');
+    if (parts.length === 3) {
+      const [d, m, y] = parts.map(Number);
+      if (!isNaN(d) && !isNaN(m) && !isNaN(y)) return y * 10000 + m * 100 + d;
+    }
+  } else if (dStr.includes('-')) {
+    const parts = dStr.split('-');
+    if (parts.length === 3) {
+      const [y, m, d] = parts.map(Number);
+      if (!isNaN(d) && !isNaN(m) && !isNaN(y)) return y * 10000 + m * 100 + d;
+    }
+  }
+  return 0;
 };
 
 const getBillingTodayComp = () => {
   const now = new Date();
-  return now.getFullYear() * 10000 + (now.getMonth() + 1) * 100 + now.getDate();
+  const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+  const ist = new Date(utc + (3600000 * 5.5));
+  return ist.getFullYear() * 10000 + (ist.getMonth() + 1) * 100 + ist.getDate();
 };
 
 // ─── Billing Tab ──────────────────────────────────────────────────────────────
@@ -4784,7 +4806,7 @@ function BillingTab({ password }) {
                     )}
                     <span className="text-xs text-gray-400">
                       • {cust.deliveredOrdersCount || cust.orders.filter(o => o.isTillDate).length} delivered (₹{cust.totalBilled.toLocaleString('en-IN')})
-                      {cust.upcomingOrdersCount > 0 && ` • ${cust.upcomingOrdersCount} scheduled`}
+                      {cust.upcomingOrdersCount > 0 && ` • ${cust.upcomingOrdersCount} scheduled (₹${(cust.totalUpcoming || 0).toLocaleString('en-IN')})`}
                       {isPartial && ` • ₹${cust.totalPaid.toLocaleString('en-IN')} paid`}
                     </span>
                   </div>
@@ -4995,6 +5017,14 @@ function BillingTab({ password }) {
                   </span>
                 </div>
               </div>
+
+              {selectedCustomer.totalUpcoming > 0 && (
+                <div className="bg-blue-50 border border-blue-100 rounded-xl py-1.5 px-3 text-center">
+                  <span className="text-xs text-blue-800 font-semibold">
+                    🕒 Scheduled (Upcoming): ₹{(selectedCustomer.totalUpcoming || 0).toLocaleString('en-IN')} ({selectedCustomer.upcomingOrdersCount} order{selectedCustomer.upcomingOrdersCount === 1 ? '' : 's'})
+                  </span>
+                </div>
+              )}
 
               {/* Order Filter in Modal */}
               <div className="flex items-center justify-between">

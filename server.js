@@ -243,31 +243,46 @@ function computeServerPrice(itemObj, menuItems, metadata) {
     return { price: parseFloat(meta.theplaPrice) || 12, category: (itemName === 'Thepla (Choviar)' || clientCategory === 'Choviar') ? 'Choviar' : 'Individual' };
   }
 
-  // Custom Order Items
-  const sabjiNameHalf = meta.sabji ? `Sabji (Half) - ${meta.sabji}` : 'Sabji (Half)';
-  const sabjiNameFull = meta.sabji ? `Sabji (Full) - ${meta.sabji}` : 'Sabji (Full)';
-  const dalNameHalf = meta.dal ? `Dal (Half) - ${meta.dal}` : 'Dal (Half)';
-  const dalNameFull = meta.dal ? `Dal (Full) - ${meta.dal}` : 'Dal (Full)';
-  const dalKadhiNameHalf = meta.dal ? `Dal / Kadhi (Half) - ${meta.dal}` : 'Dal / Kadhi (Half)';
-  const dalKadhiNameFull = meta.dal ? `Dal / Kadhi (Full) - ${meta.dal}` : 'Dal / Kadhi (Full)';
-  const riceNameHalf = meta.rice ? `Rice (Half) - ${meta.rice}` : 'Rice (Half)';
-  const riceNameFull = meta.rice ? `Rice (Full) - ${meta.rice}` : 'Rice (Full)';
-  const farsanName = meta.farsan ? `Farsan - ${meta.farsan}` : 'Farsan';
-  const sweetName = meta.sweet ? `Sweet - ${meta.sweet}` : 'Sweet';
-
-  if (itemName === sabjiNameHalf) return { price: parseFloat(meta.sabjiHalfPrice) || 0, category: 'Individual' };
-  if (itemName === sabjiNameFull) return { price: parseFloat(meta.sabjiFullPrice) || 0, category: 'Individual' };
-  if (itemName === dalNameHalf || itemName === dalKadhiNameHalf || itemName === 'Dal (Half)' || itemName === 'Dal / Kadhi (Half)') return { price: parseFloat(meta.dalHalfPrice) || 25, category: 'Individual' };
-  if (itemName === dalNameFull || itemName === dalKadhiNameFull || itemName === 'Dal (Full)' || itemName === 'Dal / Kadhi (Full)') return { price: parseFloat(meta.dalFullPrice) || 50, category: 'Individual' };
-  if (itemName === riceNameHalf || itemName === `Rice (Half)`) return { price: parseFloat(meta.riceHalfPrice) || 0, category: 'Individual' };
-  if (itemName === riceNameFull || itemName === `Rice (Full)`) return { price: parseFloat(meta.riceFullPrice) || 0, category: 'Individual' };
-  if (itemName === `Rice`) return { price: parseFloat(meta.ricePrice) || 0, category: 'Individual' };
-  if (itemName === farsanName) return { price: parseFloat(meta.farsanPrice) || 0, category: 'Individual' };
-  if (itemName === sweetName) return { price: parseFloat(meta.sweetPrice) || 0, category: 'Individual' };
+  // Custom Order Items - check prefix so that dish name changes (e.g. Sabji (Full) - Bhindi vs Paneer) don't prevent price updates
+  if (itemName.startsWith('Sabji (Half)')) {
+    const updatedName = meta.sabji ? `Sabji (Half) - ${meta.sabji}` : itemName;
+    return { price: parseFloat(meta.sabjiHalfPrice) || 0, category: 'Individual', name: updatedName };
+  }
+  if (itemName.startsWith('Sabji (Full)')) {
+    const updatedName = meta.sabji ? `Sabji (Full) - ${meta.sabji}` : itemName;
+    return { price: parseFloat(meta.sabjiFullPrice) || 0, category: 'Individual', name: updatedName };
+  }
+  if (itemName.startsWith('Dal / Kadhi (Half)') || itemName.startsWith('Dal (Half)')) {
+    const updatedName = meta.dal ? `Dal / Kadhi (Half) - ${meta.dal}` : itemName;
+    return { price: parseFloat(meta.dalHalfPrice) || 25, category: 'Individual', name: updatedName };
+  }
+  if (itemName.startsWith('Dal / Kadhi (Full)') || itemName.startsWith('Dal (Full)')) {
+    const updatedName = meta.dal ? `Dal / Kadhi (Full) - ${meta.dal}` : itemName;
+    return { price: parseFloat(meta.dalFullPrice) || 50, category: 'Individual', name: updatedName };
+  }
+  if (itemName.startsWith('Rice (Half)')) {
+    const updatedName = meta.rice ? `Rice (Half) - ${meta.rice}` : itemName;
+    return { price: parseFloat(meta.riceHalfPrice) || 0, category: 'Individual', name: updatedName };
+  }
+  if (itemName.startsWith('Rice (Full)')) {
+    const updatedName = meta.rice ? `Rice (Full) - ${meta.rice}` : itemName;
+    return { price: parseFloat(meta.riceFullPrice) || 0, category: 'Individual', name: updatedName };
+  }
+  if (itemName === 'Rice' || itemName.startsWith('Rice -')) {
+    return { price: parseFloat(meta.ricePrice) || 0, category: 'Individual' };
+  }
+  if (itemName.startsWith('Farsan')) {
+    const updatedName = meta.farsan ? `Farsan - ${meta.farsan}` : itemName;
+    return { price: parseFloat(meta.farsanPrice) || 0, category: 'Individual', name: updatedName };
+  }
+  if (itemName.startsWith('Sweet')) {
+    const updatedName = meta.sweet ? `Sweet - ${meta.sweet}` : itemName;
+    return { price: parseFloat(meta.sweetPrice) || 0, category: 'Individual', name: updatedName };
+  }
 
   // Regular menu item (Lunch / Choviar fallback)
-  const item = (menuItems || []).find(m => m.name === itemName);
-  if (item) return { price: item.price, category: item.category || 'Lunch' };
+  const item = (menuItems || []).find(m => m.name.toLowerCase() === itemName.toLowerCase());
+  if (item) return { price: item.price, category: item.category || 'Lunch', name: item.name };
 
   return null;
 }
@@ -329,20 +344,68 @@ function recalculateOrderTotals(order, updatedItems) {
   };
 }
 
-async function syncRecurringOrdersForDate(targetDate, menuItems, metadata, existingBatch = null) {
+async function syncRecurringOrdersForDate(targetDate, menuItems, metadata = {}, existingBatch = null) {
   if (!targetDate || typeof targetDate !== 'string' || !/^\d{2}\/\d{2}\/\d{4}$/.test(targetDate.trim())) {
-    return 0;
+    return { updatedCount: 0, cancelledCount: 0, valueOf: () => 0, toString: () => '0' };
   }
   const dateStr = targetDate.trim();
+  const isLunchClosed = metadata.lunchClosed === 'Yes';
+  const isChoviarClosed = metadata.choviarClosed === 'Yes';
 
   if (USE_MOCK) {
     const activeRecurring = MOCK_ORDERS.filter(o => o.date === dateStr && o.isRecurring && o.status === 'ACTIVE');
+    let updatedCount = 0;
+    let cancelledCount = 0;
+
     for (const ord of activeRecurring) {
-      const updatedItems = (ord.items || []).map(item => {
+      const isLunchOrder = ord.category === 'Lunch' || (ord.items || []).some(i => i.category !== 'Choviar');
+      const isChoviarOrder = ord.category === 'Choviar' || (ord.items || []).some(i => i.category === 'Choviar');
+
+      if (isLunchClosed && isLunchOrder && !isChoviarOrder) {
+        ord.status = 'CANCELLED';
+        ord.cancelledReason = 'Lunch closed by admin';
+        cancelledCount++;
+        continue;
+      }
+      if (isChoviarClosed && isChoviarOrder && !isLunchOrder) {
+        ord.status = 'CANCELLED';
+        ord.cancelledReason = 'Choviar closed by admin';
+        cancelledCount++;
+        continue;
+      }
+      if (isLunchClosed && isChoviarClosed) {
+        ord.status = 'CANCELLED';
+        ord.cancelledReason = 'Meal closed by admin';
+        cancelledCount++;
+        continue;
+      }
+
+      let currentItems = ord.items || [];
+      if (isLunchClosed && isLunchOrder) {
+        currentItems = currentItems.filter(i => i.category === 'Choviar');
+        if (currentItems.length === 0) {
+          ord.status = 'CANCELLED';
+          ord.cancelledReason = 'Lunch closed by admin';
+          cancelledCount++;
+          continue;
+        }
+      }
+      if (isChoviarClosed && isChoviarOrder) {
+        currentItems = currentItems.filter(i => i.category !== 'Choviar');
+        if (currentItems.length === 0) {
+          ord.status = 'CANCELLED';
+          ord.cancelledReason = 'Choviar closed by admin';
+          cancelledCount++;
+          continue;
+        }
+      }
+
+      const updatedItems = currentItems.map(item => {
         const serverData = computeServerPrice(item, menuItems, metadata);
         if (serverData && typeof serverData.price === 'number') {
           return {
             ...item,
+            name: serverData.name || item.name,
             price: serverData.price,
             category: serverData.category || item.category || ord.category || 'Lunch',
           };
@@ -354,8 +417,15 @@ async function syncRecurringOrdersForDate(targetDate, menuItems, metadata, exist
       ord.itemsSummary = recalculated.itemsSummary;
       ord.surchargeTotal = recalculated.surchargeTotal;
       ord.grandTotal = recalculated.grandTotal;
+      updatedCount++;
     }
-    return activeRecurring.length;
+
+    return {
+      updatedCount,
+      cancelledCount,
+      valueOf: () => updatedCount,
+      toString: () => String(updatedCount)
+    };
   }
 
   const snap = await db.collection('orders')
@@ -365,19 +435,79 @@ async function syncRecurringOrdersForDate(targetDate, menuItems, metadata, exist
     .get();
 
   const docs = snap.docs || [];
-  if (docs.length === 0) return 0;
+  if (docs.length === 0) {
+    return {
+      updatedCount: 0,
+      cancelledCount: 0,
+      valueOf: () => 0,
+      toString: () => '0'
+    };
+  }
 
   const batch = existingBatch || db.batch();
   let updatedCount = 0;
+  let cancelledCount = 0;
 
   for (const doc of docs) {
     const orderData = typeof doc.data === 'function' ? doc.data() : (doc.ref ? doc.ref : {});
-    const currentItems = orderData.items || [];
+    const isLunchOrder = orderData.category === 'Lunch' || (orderData.items || []).some(i => i.category !== 'Choviar');
+    const isChoviarOrder = orderData.category === 'Choviar' || (orderData.items || []).some(i => i.category === 'Choviar');
+
+    if (isLunchClosed && isLunchOrder && !isChoviarOrder) {
+      batch.update(doc.ref, {
+        status: 'CANCELLED',
+        cancelledReason: 'Lunch closed by admin'
+      });
+      cancelledCount++;
+      continue;
+    }
+    if (isChoviarClosed && isChoviarOrder && !isLunchOrder) {
+      batch.update(doc.ref, {
+        status: 'CANCELLED',
+        cancelledReason: 'Choviar closed by admin'
+      });
+      cancelledCount++;
+      continue;
+    }
+    if (isLunchClosed && isChoviarClosed) {
+      batch.update(doc.ref, {
+        status: 'CANCELLED',
+        cancelledReason: 'Meal closed by admin'
+      });
+      cancelledCount++;
+      continue;
+    }
+
+    let currentItems = orderData.items || [];
+    if (isLunchClosed && isLunchOrder) {
+      currentItems = currentItems.filter(i => i.category === 'Choviar');
+      if (currentItems.length === 0) {
+        batch.update(doc.ref, {
+          status: 'CANCELLED',
+          cancelledReason: 'Lunch closed by admin'
+        });
+        cancelledCount++;
+        continue;
+      }
+    }
+    if (isChoviarClosed && isChoviarOrder) {
+      currentItems = currentItems.filter(i => i.category !== 'Choviar');
+      if (currentItems.length === 0) {
+        batch.update(doc.ref, {
+          status: 'CANCELLED',
+          cancelledReason: 'Choviar closed by admin'
+        });
+        cancelledCount++;
+        continue;
+      }
+    }
+
     const updatedItems = currentItems.map(item => {
       const serverData = computeServerPrice(item, menuItems, metadata);
       if (serverData && typeof serverData.price === 'number') {
         return {
           ...item,
+          name: serverData.name || item.name,
           price: serverData.price,
           category: serverData.category || item.category || orderData.category || 'Lunch',
         };
@@ -399,7 +529,12 @@ async function syncRecurringOrdersForDate(targetDate, menuItems, metadata, exist
     await batch.commit();
   }
 
-  return updatedCount;
+  return {
+    updatedCount,
+    cancelledCount,
+    valueOf: () => updatedCount,
+    toString: () => String(updatedCount)
+  };
 }
 
 function getZone(pincode) {
@@ -1033,6 +1168,10 @@ app.post('/api/orders/recurring', orderLimiter, async (req, res) => {
 // 📱 CUSTOMER PORTAL 📱
 // GET /api/orders/manage?phone=XXXXXXXXXX
 app.get('/api/orders/manage', publicLimiter, async (req, res) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+
   const { phone } = req.query;
   if (!phone || !/^[6-9]\d{9}$/.test(phone.trim())) {
     return res.status(400).json({ error: 'Invalid phone number' });
@@ -1118,6 +1257,10 @@ app.get('/api/orders/manage', publicLimiter, async (req, res) => {
 
 // GET /api/customer/billing?phone=XXXXXXXXXX
 app.get('/api/customer/billing', publicLimiter, async (req, res) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+
   const { phone } = req.query;
   if (!phone || !/^[6-9]\d{9}$/.test(phone.trim())) {
     return res.status(400).json({ error: 'Invalid phone number' });
@@ -1133,14 +1276,25 @@ app.get('/api/customer/billing', publicLimiter, async (req, res) => {
 
   const parseDateToComp = (dStr) => {
     if (!dStr) return 0;
-    const parts = dStr.split('/');
-    if (parts.length !== 3) return 0;
-    const [d, m, y] = parts.map(Number);
-    if (isNaN(d) || isNaN(m) || isNaN(y)) return 0;
-    return y * 10000 + m * 100 + d;
+    if (dStr.includes('/')) {
+      const parts = dStr.split('/');
+      if (parts.length === 3) {
+        const [d, m, y] = parts.map(Number);
+        if (!isNaN(d) && !isNaN(m) && !isNaN(y)) return y * 10000 + m * 100 + d;
+      }
+    } else if (dStr.includes('-')) {
+      const parts = dStr.split('-');
+      if (parts.length === 3) {
+        const [y, m, d] = parts.map(Number);
+        if (!isNaN(d) && !isNaN(m) && !isNaN(y)) return y * 10000 + m * 100 + d;
+      }
+    }
+    return 0;
   };
   const now = new Date();
-  const todayComp = now.getFullYear() * 10000 + (now.getMonth() + 1) * 100 + now.getDate();
+  const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+  const istTime = new Date(utc + (3600000 * 5.5));
+  const todayComp = istTime.getFullYear() * 10000 + (istTime.getMonth() + 1) * 100 + istTime.getDate();
 
   const mapBillingOrder = (o) => {
     const grandTotal = Number(o.grandTotal) || 0;
@@ -1535,6 +1689,10 @@ app.post('/api/admin/login', adminLimiter, (req, res) => {
 });
 
 app.get('/api/admin/orders', adminLimiter, requireAdmin, async (req, res) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+
   const { date, month } = req.query;
   // If neither is provided (like the frontend's auth ping), just return empty orders.
   if (!date && !month) return res.json({ success: true, orders: [] });
@@ -1843,9 +2001,17 @@ app.put('/api/admin/menu', adminLimiter, requireAdmin, async (req, res) => {
     if (metadata) MOCK_METADATA = { ...MOCK_METADATA, ...metadata };
     effectiveMetadata = { ...MOCK_METADATA };
 
-    const targetDate = req.body.targetDate || (metadata && metadata.liveMenuDate) || effectiveMetadata.liveMenuDate;
-    const updatedCount = await syncRecurringOrdersForDate(targetDate, MOCK_MENU, effectiveMetadata);
-    return res.json({ success: true, updatedRecurringCount: updatedCount });
+    const now = new Date();
+    const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+    const istTime = new Date(utc + (3600000 * 5.5));
+    istTime.setDate(istTime.getDate() + 1);
+    const tomorrowDateStr = `${String(istTime.getDate()).padStart(2, '0')}/${String(istTime.getMonth() + 1).padStart(2, '0')}/${istTime.getFullYear()}`;
+
+    const targetDate = req.body.targetDate || (metadata && metadata.liveMenuDate) || effectiveMetadata.liveMenuDate || tomorrowDateStr;
+    const syncRes = await syncRecurringOrdersForDate(targetDate, MOCK_MENU, effectiveMetadata);
+    const updatedCount = typeof syncRes === 'object' ? syncRes.updatedCount : syncRes;
+    const cancelledCount = typeof syncRes === 'object' ? syncRes.cancelledCount : 0;
+    return res.json({ success: true, updatedRecurringCount: updatedCount, cancelledRecurringCount: cancelledCount });
   }
 
   try {
@@ -1889,11 +2055,19 @@ app.put('/api/admin/menu', adminLimiter, requireAdmin, async (req, res) => {
       batch.set(metaRef, effectiveMetadata);
     }
 
-    const targetDate = req.body.targetDate || (metadata && metadata.liveMenuDate) || effectiveMetadata.liveMenuDate;
-    const updatedRecurringCount = await syncRecurringOrdersForDate(targetDate, validMenuItems, effectiveMetadata, batch);
+    const now = new Date();
+    const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+    const istTime = new Date(utc + (3600000 * 5.5));
+    istTime.setDate(istTime.getDate() + 1);
+    const tomorrowDateStr = `${String(istTime.getDate()).padStart(2, '0')}/${String(istTime.getMonth() + 1).padStart(2, '0')}/${istTime.getFullYear()}`;
+
+    const targetDate = req.body.targetDate || (metadata && metadata.liveMenuDate) || effectiveMetadata.liveMenuDate || tomorrowDateStr;
+    const syncRes = await syncRecurringOrdersForDate(targetDate, validMenuItems, effectiveMetadata, batch);
+    const updatedRecurringCount = typeof syncRes === 'object' ? syncRes.updatedCount : syncRes;
+    const cancelledRecurringCount = typeof syncRes === 'object' ? syncRes.cancelledCount : 0;
 
     await batch.commit();
-    res.json({ success: true, updatedRecurringCount });
+    res.json({ success: true, updatedRecurringCount, cancelledRecurringCount });
   } catch (err) {
     console.error('Error saving menu:', err.message);
     res.status(500).json({ error: 'Failed to save menu.' });
@@ -1909,8 +2083,10 @@ app.post('/api/admin/orders/recalculate-recurring', adminLimiter, requireAdmin, 
     }
 
     const dateStr = String(targetDate).trim();
-    const count = await syncRecurringOrdersForDate(dateStr, menuItems, metadata);
-    res.json({ success: true, count, date: dateStr });
+    const syncRes = await syncRecurringOrdersForDate(dateStr, menuItems, metadata);
+    const count = typeof syncRes === 'object' ? syncRes.updatedCount : syncRes;
+    const cancelledCount = typeof syncRes === 'object' ? syncRes.cancelledCount : 0;
+    res.json({ success: true, count, cancelledCount, date: dateStr });
   } catch (err) {
     console.error('Error recalculating recurring orders:', err.message);
     res.status(500).json({ error: 'Failed to recalculate recurring orders.' });

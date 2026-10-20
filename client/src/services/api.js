@@ -14,7 +14,7 @@ export const updateOrder = (orderId, phone, payload) =>
 export const placeOrder = (data) => API.post('/api/orders', data);
 
 export const getCustomerBilling = (phone) =>
-  API.get('/api/customer/billing', { params: { phone } });
+  API.get('/api/customer/billing', { params: { phone, _t: Date.now() } });
 
 // ─── Admin endpoints ──────────────────────────────────────────────────────────
 function adminHeaders(password) {
@@ -22,7 +22,7 @@ function adminHeaders(password) {
 }
 
 export const getAdminOrders = (params, password) =>
-  API.get('/api/admin/orders', { params, ...adminHeaders(password) });
+  API.get('/api/admin/orders', { params: { ...(params || {}), _t: Date.now() }, ...adminHeaders(password) });
 
 export const updateAdminMenu = (data, password) =>
   API.put('/api/admin/menu', data, adminHeaders(password));
